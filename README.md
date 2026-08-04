@@ -1,68 +1,92 @@
-*Psst �looking for a shareable component template? Go here --> [sveltejs/component-template](https://github.com/sveltejs/component-template)*
+# Kaleidoscope
 
----
+An interactive kaleidoscope: a drifting field of shards, mirrored around the centre and
+rendered on a 2D canvas. Built with React 19, TypeScript and Vite.
 
-# svelte app
+Move the pointer over the artwork to nudge the shards. Every look is described by a small
+set of settings, so any pattern can be reproduced from its seed or shared as a link.
 
-This is a project template for [Svelte](https://svelte.dev) apps. It lives at https://github.com/sveltejs/template.
-
-To create a new project based on this template using [degit](https://github.com/Rich-Harris/degit):
-
-```bash
-npx degit sveltejs/template svelte-app
-cd svelte-app
-```
-
-*Note that you will need to have [Node.js](https://nodejs.org) installed.*
-
-
-## Get started
-
-Install the dependencies...
+## Getting started
 
 ```bash
-cd svelte-app
 npm install
-```
-
-...then start [Rollup](https://rollupjs.org):
-
-```bash
 npm run dev
 ```
 
-Navigate to [localhost:5000](http://localhost:5000). You should see your app running. Edit a component file in `src`, save it, and reload the page to see your changes.
+The dev server prints a local URL (http://localhost:5173 by default).
 
+## Scripts
 
-## Deploying to the web
+| Script                  | What it does                               |
+| ----------------------- | ------------------------------------------ |
+| `npm run dev`           | Vite dev server with hot module replacement |
+| `npm run build`         | Typecheck, then build to `dist/`            |
+| `npm run preview`       | Serve the production build locally          |
+| `npm run typecheck`     | TypeScript, no emit                         |
+| `npm run lint`          | ESLint (type-aware)                         |
+| `npm run format`        | Prettier, write                             |
+| `npm run test`          | Vitest, single run                          |
+| `npm run test:watch`    | Vitest, watch mode                          |
+| `npm run test:coverage` | Vitest with a V8 coverage report            |
 
-### With [now](https://zeit.co/now)
+## How it renders
 
-Install `now` if you haven't already:
+A kaleidoscope is a small chamber of loose chips seen through mirrors, and the renderer
+works the same way:
 
-```bash
-npm install -g now
+1. **The cell.** `lib/scene.ts` keeps a field of shards in a unit cell that tiles
+   infinitely. Shards drift, spin, pulse and slide along the palette; positions wrap, so
+   the field never runs out however far it pans.
+2. **The wedge.** Once per frame the visible tiles are painted into a single offscreen
+   wedge (`lib/renderer.ts`). Fading that surface instead of clearing it is what produces
+   motion trails.
+3. **The mirrors.** The wedge is blitted around the centre, every other copy reflected, so
+   neighbouring wedges always meet edge to edge.
+
+Drawing the shards once and blitting the result keeps the per-frame cost proportional to
+the shard count rather than to `shards x segments`.
+
+Everything under `src/lib/` is plain TypeScript with no React imports, which is what makes
+the interesting parts testable without a browser.
+
+## Layout
+
+```
+src/
+  components/    Canvas surface and the control panel
+    controls/    Small labelled form fields
+  hooks/         Animation frame, element size, media queries, settings state
+  lib/           Rendering engine, palettes, settings — no React
+  test/          Vitest setup and a fake 2D context
 ```
 
-Then, from within your project folder:
+## Settings
 
-```bash
-now
-```
+| Setting  | Range           | Effect                                            |
+| -------- | --------------- | ------------------------------------------------- |
+| Segments | 4–36 (even)     | Mirrored wedges around the centre                 |
+| Spin     | -0.5–0.5 turns/s | Rotation of the mirror assembly; negative reverses |
+| Zoom     | 0.5x–3x         | Magnification of the object cell                  |
+| Count    | 4–60            | Shards in the cell                                 |
+| Trails   | 0–95%           | How long each frame lingers                       |
+| Palette  | 5 presets       | Shard colours and backdrop                        |
+| Glow     | on/off          | Additive blending, so overlaps bloom              |
+| Seed     | any text        | Seeds the shard generator; same seed, same shards |
 
-As an alternative, use the [Now desktop client](https://zeit.co/download) and simply drag the unzipped project folder to the taskbar icon.
+Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
+link wins over stored settings on load. Both are treated as untrusted input and clamped to
+the ranges above, so a hand-edited link cannot push an out-of-range value into the
+renderer.
 
-### With [surge](https://surge.sh/)
+## Accessibility
 
-Install `surge` if you haven't already:
+- Motion is paused by default when the system asks for reduced motion, and changing that
+  preference mid-session hands control back to it.
+- Every control is labelled; sliders expose formatted values via `aria-valuetext`.
+- The canvas carries a text description, and action feedback is announced politely.
 
-```bash
-npm install -g surge
-```
+## Deploying
 
-Then, from within your project folder:
-
-```bash
-npm run build
-surge public
-```
+`npm run build` emits a static bundle to `dist/`, which any static host will serve. The
+repository's `.htaccess` is for Apache deployments; copy it alongside the built files if
+that is where the site lives.
