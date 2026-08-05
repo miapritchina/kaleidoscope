@@ -105,10 +105,16 @@ A photo cannot tile the way the shard field does, so zoom is floored at 1x — b
 its edges would show inside the wedge — and panning is bounded by however much of the
 image hangs outside the mirrored area.
 
+The camera draws a fresh frame into the mirrors on every animation frame, so what you see
+is live rather than a snapshot.
+
 ## Accessibility
 
 - Motion is paused by default when the system asks for reduced motion, and changing that
-  preference mid-session hands control back to it.
+  preference mid-session hands control back to it. A live camera is the exception: it keeps
+  drawing and the mirrors are held still instead, because freezing a feed on its first
+  frame does not reduce motion, it just breaks what the viewer asked for. An explicit Pause
+  still freezes it.
 - Every control is labelled; sliders expose formatted values via `aria-valuetext`.
 - The canvas carries a text description, and action feedback is announced politely.
 

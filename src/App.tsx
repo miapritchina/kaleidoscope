@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import styles from './App.module.css';
 import { ControlPanel } from './components/ControlPanel';
@@ -7,6 +7,7 @@ import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
+import { resolvePlayback } from './lib/playback';
 import { settingsToSearchParams } from './lib/settings';
 
 export function App() {
@@ -28,7 +29,18 @@ export function App() {
     setPlayOverride(null);
   }
 
-  const isPlaying = playOverride ?? !prefersReducedMotion;
+  const { isPlaying, suppressSpin } = resolvePlayback({
+    source: settings.source,
+    prefersReducedMotion,
+    override: playOverride,
+  });
+
+  // The panel keeps showing the chosen spin; only what is rendered is held
+  // still. Memoised so the canvas does not see a new object every render.
+  const renderedSettings = useMemo(
+    () => (suppressSpin && settings.speed !== 0 ? { ...settings, speed: 0 } : settings),
+    [settings, suppressSpin],
+  );
 
   const image = useImageSource();
   // The video element lives here so it can sit in the document — Safari will
@@ -104,7 +116,12 @@ export function App() {
           announce(`Loaded ${file.name}.`);
         }}
       >
-        <Kaleidoscope ref={kaleidoscopeRef} settings={settings} paused={!isPlaying} media={media} />
+        <Kaleidoscope
+          ref={kaleidoscopeRef}
+          settings={renderedSettings}
+          paused={!isPlaying}
+          media={media}
+        />
 
         {emptyState ? <p className={styles.emptyState}>{emptyState}</p> : null}
 
@@ -149,10 +166,11 @@ export function App() {
           cameraMessage={camera.message}
         />
 
-        {prefersReducedMotion && (
+        {prefersReducedMotion && playOverride === null && (
           <p className={styles.notice}>
-            Motion is paused because your system asks for reduced motion. Press Play to animate
-            anyway.
+            {isPlaying
+              ? 'Your system asks for reduced motion, so the mirrors are held still. The camera feed is live.'
+              : 'Motion is paused because your system asks for reduced motion. Press Play to animate anyway.'}
           </p>
         )}
       </aside>
