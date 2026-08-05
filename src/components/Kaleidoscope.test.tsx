@@ -20,7 +20,7 @@ describe('Kaleidoscope', () => {
 
     expect(canvas.tagName).toBe('CANVAS');
     expect(canvas).toHaveAccessibleName(
-      `Kaleidoscope with ${String(DEFAULT_SETTINGS.segments)} mirrored segments, seed ${DEFAULT_SETTINGS.seed}`,
+      `Kaleidoscope with ${String(DEFAULT_SETTINGS.mirrors)} mirrors, seed ${DEFAULT_SETTINGS.seed}`,
     );
   });
 

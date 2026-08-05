@@ -44,7 +44,9 @@ export interface DrawMediaOptions {
   size: number;
   /** Magnification. Values below 1 are ignored — see the note in the body. */
   zoom: number;
-  /** Pointer offset from the centre, each axis in `[-1, 1]`. */
+  /** Rotation of the media about the wedge apex, in radians. */
+  rotation: number;
+  /** Drag position, each axis in `[-1, 1]`. */
   pan: { x: number; y: number };
   /** Opacity of this frame; below 1 the previous frames show through as trails. */
   alpha: number;
@@ -64,7 +66,7 @@ export interface DrawMediaOptions {
 export function drawMedia(
   ctx: CanvasRenderingContext2D,
   media: MediaElement,
-  { size, zoom, pan, alpha }: DrawMediaOptions,
+  { size, zoom, rotation, pan, alpha }: DrawMediaOptions,
 ): void {
   const { width, height } = getMediaSize(media);
 
@@ -89,6 +91,9 @@ export function drawMedia(
   ctx.save();
   ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
   ctx.globalCompositeOperation = 'source-over';
+  // Rotating about the apex still covers the wedge: the covered square's
+  // inscribed circle has radius `size`, which is the sector's reach.
+  ctx.rotate(rotation);
   ctx.drawImage(
     media,
     -drawWidth / 2 + clampUnit(pan.x) * slackX,

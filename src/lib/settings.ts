@@ -18,8 +18,16 @@ export interface Settings {
    * `camera` only means "reopen that panel", not "reopen that picture".
    */
   source: SourceId;
-  /** Number of mirrored wedges around the centre. Always even. */
-  segments: number;
+  /**
+   * Number of mirror lines through the centre.
+   *
+   * Each mirror produces a reflected pair, so the pattern repeats `2 x mirrors`
+   * times around the circle — a 3-mirror kaleidoscope gives the familiar
+   * hexagonal figure. Counting mirrors rather than wedges is both what the
+   * physical instrument has and what keeps the wedge count even, which the
+   * alternating reflections require in order to meet edge to edge.
+   */
+  mirrors: number;
   /** Rotation speed in turns per second; negative values spin anticlockwise. */
   speed: number;
   /** How many shards live in the source cell. */
@@ -47,7 +55,7 @@ export interface NumericLimit {
  * value can never reach the renderer.
  */
 export const LIMITS = {
-  segments: { min: 4, max: 36, step: 2 },
+  mirrors: { min: 2, max: 18, step: 1 },
   speed: { min: -0.5, max: 0.5, step: 0.01 },
   shards: { min: 4, max: 60, step: 1 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
@@ -56,7 +64,7 @@ export const LIMITS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
-  segments: 12,
+  mirrors: 6,
   speed: 0.05,
   shards: 24,
   zoom: 1.2,
@@ -93,7 +101,7 @@ export function sanitizeSettings(input: unknown): Settings {
 
   return {
     source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
-    segments: clampToLimit(toNumber(raw.segments, DEFAULT_SETTINGS.segments), LIMITS.segments),
+    mirrors: clampToLimit(readMirrors(raw), LIMITS.mirrors),
     speed: clampToLimit(toNumber(raw.speed, DEFAULT_SETTINGS.speed), LIMITS.speed),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
@@ -117,7 +125,7 @@ export function randomizeSeed(settings: Settings): Settings {
  */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
-    segments: String(settings.segments),
+    mirrors: String(settings.mirrors),
     speed: String(settings.speed),
     shards: String(settings.shards),
     zoom: String(settings.zoom),
@@ -128,11 +136,31 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
   });
 }
 
+/**
+ * Every query parameter the decoder understands, legacy names included.
+ *
+ * Derived from the encoder's own output so the two cannot drift: a hand-kept
+ * list silently stops recognising whatever is added next, and a parameter
+ * missing from it is a shared link that quietly opens on the wrong settings.
+ */
+const KNOWN_PARAMS: readonly string[] = [
+  ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
+  'segments', // Superseded by `mirrors`.
+  'source', // Never encoded, but tolerated in a hand-written link.
+];
+
+/** True when a URL carries anything this module would read. */
+export function hasSettingsParams(params: URLSearchParams): boolean {
+  return KNOWN_PARAMS.some((name) => params.has(name));
+}
+
 /** Decodes a query string produced by {@link settingsToSearchParams}. */
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
   const glow = params.get('glow');
 
   return sanitizeSettings({
+    mirrors: params.get('mirrors'),
+    // Accepted for links made before this was counted in mirrors.
     segments: params.get('segments'),
     speed: params.get('speed'),
     shards: params.get('shards'),
@@ -142,6 +170,25 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     paletteId: params.get('palette'),
     seed: params.get('seed'),
   });
+}
+
+/**
+ * Reads the mirror count, accepting the wedge count this setting used to be.
+ *
+ * Links and stored settings from before the change carry `segments`, which was
+ * twice the mirror count. Halving it reproduces the same figure rather than
+ * silently snapping an old link to the default.
+ */
+function readMirrors(raw: Partial<Record<string, unknown>>): number {
+  if (raw.mirrors !== undefined && raw.mirrors !== null) {
+    return toNumber(raw.mirrors, DEFAULT_SETTINGS.mirrors);
+  }
+
+  if (raw.segments !== undefined && raw.segments !== null) {
+    return toNumber(raw.segments, DEFAULT_SETTINGS.mirrors * 2) / 2;
+  }
+
+  return DEFAULT_SETTINGS.mirrors;
 }
 
 function toNumber(value: unknown, fallback: number): number {

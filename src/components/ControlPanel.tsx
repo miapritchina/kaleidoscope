@@ -127,16 +127,19 @@ export function ControlPanel({
       </fieldset>
 
       <fieldset className={styles.group}>
-        <legend className={styles.legend}>Mirrors</legend>
+        {/* Not "Mirrors": a legend sharing its name with a control inside it
+            is ambiguous to read out and to query. */}
+        <legend className={styles.legend}>Assembly</legend>
 
         <RangeField
-          label="Segments"
-          value={settings.segments}
-          limit={LIMITS.segments}
+          label="Mirrors"
+          value={settings.mirrors}
+          limit={LIMITS.mirrors}
+          format={(value) => `${value} (${value * 2}-fold)`}
           onChange={(value) => {
-            onChange('segments', value);
+            onChange('mirrors', value);
           }}
-          description="Mirrored wedges around the centre."
+          description="Mirror lines through the centre. Each one reflects, so the figure repeats twice per mirror — 3 gives the classic hexagonal kaleidoscope."
         />
         <RangeField
           label="Spin"
@@ -146,7 +149,7 @@ export function ControlPanel({
           onChange={(value) => {
             onChange('speed', value);
           }}
-          description="Negative values spin anticlockwise."
+          description="Turns the source inside the mirrors, so the figure evolves. Negative goes anticlockwise."
         />
         <RangeField
           label="Zoom"

@@ -1,9 +1,14 @@
 .stage {
   width: 100%;
   height: 100%;
-  /* The canvas is decorative-but-interactive; a crosshair hints at that. */
-  cursor: crosshair;
+  /* The source is draggable, so say so before and during the gesture. */
+  cursor: grab;
+  /* Without this, a touch drag scrolls the page instead of moving the source. */
   touch-action: none;
+}
+
+.dragging {
+  cursor: grabbing;
 }
 
 .canvas {

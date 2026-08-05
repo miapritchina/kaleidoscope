@@ -78,33 +78,51 @@ describe('KaleidoscopeRenderer', () => {
     expect(main.calls).toHaveLength(0);
   });
 
-  it('blits one wedge per segment', () => {
+  it('blits two wedges per mirror', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, segments: 8 });
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 4 });
 
     expect(main.countOf('drawImage')).toBe(8);
     expect(main.countOf('clip')).toBe(8);
   });
 
-  it('rounds an odd segment count up to an even one, so mirrors pair off', () => {
+  it('supports an odd mirror count, three included', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, segments: 7 });
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 3 });
 
-    expect(main.countOf('drawImage')).toBe(8);
+    // Three mirrors give the classic hexagonal figure: six wedges.
+    expect(main.countOf('drawImage')).toBe(6);
+    expect(main.countOf('scale')).toBe(3);
   });
 
   it('mirrors alternate wedges', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, segments: 8 });
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 4 });
 
     // Half of the wedges are reflected copies of the other half.
     expect(main.countOf('scale')).toBe(4);
+  });
+
+  // Spinning the assembly makes the whole figure revolve rigidly; spinning the
+  // source makes the figure evolve, which is what turning a real tube does.
+  it('turns the source, not the assembly', () => {
+    const { renderer, main, wedge } = createRenderer();
+    const scene = createScene('seed', 6);
+    // A value that is not a multiple of the wedge step, so the assertion below
+    // cannot pass by coinciding with a wedge's own placement.
+    scene.rotation = 0.1234;
+
+    renderer.resize(200, 200, 1);
+    renderer.render(scene, DEFAULT_SETTINGS);
+
+    expect(wedge.argsOf('rotate')).toContainEqual([0.1234]);
+    expect(main.argsOf('rotate')).not.toContainEqual([0.1234]);
   });
 
   it('balances every save with a restore', () => {

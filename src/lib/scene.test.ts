@@ -7,6 +7,8 @@ import { createScene, drawCell, SHARD_KINDS, updateScene } from './scene';
 
 const ramp = createColorRamp(getPalette('aurora'));
 
+const BASE = { rotation: 0, pan: { x: 0, y: 0 }, ramp, glow: false };
+
 describe('createScene', () => {
   it('is deterministic for a given seed', () => {
     expect(createScene('abc', 12).shards).toEqual(createScene('abc', 12).shards);
@@ -40,13 +42,13 @@ describe('createScene', () => {
 });
 
 describe('updateScene', () => {
-  const pointer = { x: 0, y: 0 };
+  const drag = { x: 0, y: 0 };
 
   it('keeps shard positions wrapped into the unit cell', () => {
     const scene = createScene('wrap', 20);
 
     for (let i = 0; i < 400; i += 1) {
-      updateScene(scene, { dt: 0.05, speed: 0.2, pointer });
+      updateScene(scene, { dt: 0.05, speed: 0.2, drag });
     }
 
     for (const shard of scene.shards) {
@@ -60,7 +62,7 @@ describe('updateScene', () => {
   it('rotates by speed x 2pi per second', () => {
     const scene = createScene('spin', 4);
 
-    updateScene(scene, { dt: 0.05, speed: 1, pointer });
+    updateScene(scene, { dt: 0.05, speed: 1, drag });
 
     expect(scene.rotation).toBeCloseTo(Math.PI * 2 * 0.05, 6);
   });
@@ -68,7 +70,7 @@ describe('updateScene', () => {
   it('spins backwards for a negative speed', () => {
     const scene = createScene('spin', 4);
 
-    updateScene(scene, { dt: 0.05, speed: -1, pointer });
+    updateScene(scene, { dt: 0.05, speed: -1, drag });
 
     expect(scene.rotation).toBeLessThan(0);
   });
@@ -76,7 +78,7 @@ describe('updateScene', () => {
   it('clamps an oversized frame so a backgrounded tab cannot jump', () => {
     const scene = createScene('clamp', 4);
 
-    updateScene(scene, { dt: 30, speed: 1, pointer });
+    updateScene(scene, { dt: 30, speed: 1, drag });
 
     expect(scene.elapsed).toBeCloseTo(1 / 20, 6);
   });
@@ -84,20 +86,21 @@ describe('updateScene', () => {
   it('ignores negative time steps', () => {
     const scene = createScene('negative', 4);
 
-    updateScene(scene, { dt: -5, speed: 1, pointer });
+    updateScene(scene, { dt: -5, speed: 1, drag });
 
     expect(scene.elapsed).toBe(0);
     expect(scene.rotation).toBe(0);
   });
 
-  it('lets the pointer steer the pan', () => {
-    const left = createScene('pan', 4);
-    const right = createScene('pan', 4);
+  it('records the drag as a position, so the source stays where it is let go', () => {
+    const scene = createScene('pan', 4);
 
-    updateScene(left, { dt: 0.1, speed: 0, pointer: { x: -1, y: 0 } });
-    updateScene(right, { dt: 0.1, speed: 0, pointer: { x: 1, y: 0 } });
+    updateScene(scene, { dt: 0.1, speed: 0, drag: { x: 0.5, y: -0.25 } });
+    expect(scene.drag).toEqual({ x: 0.5, y: -0.25 });
 
-    expect(right.pan.x).toBeGreaterThan(left.pan.x);
+    // Holding still must not keep accumulating, the way a velocity would.
+    updateScene(scene, { dt: 0.1, speed: 0, drag: { x: 0.5, y: -0.25 } });
+    expect(scene.drag).toEqual({ x: 0.5, y: -0.25 });
   });
 });
 
@@ -106,10 +109,10 @@ describe('drawCell', () => {
     const scene = createScene('tiles', 3);
 
     const zoomedOut = createFakeContext();
-    drawCell(asContext(zoomedOut), scene, { size: 400, cellSize: 200, ramp, glow: false });
+    drawCell(asContext(zoomedOut), scene, { ...BASE, size: 400, cellSize: 200 });
 
     const zoomedIn = createFakeContext();
-    drawCell(asContext(zoomedIn), scene, { size: 400, cellSize: 400, ramp, glow: false });
+    drawCell(asContext(zoomedIn), scene, { ...BASE, size: 400, cellSize: 400 });
 
     // A smaller cell needs more tiles, so more shards get drawn.
     expect(zoomedOut.countOf('translate')).toBeGreaterThan(zoomedIn.countOf('translate'));
@@ -119,8 +122,8 @@ describe('drawCell', () => {
     const scene = createScene('empty', 5);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { size: 0, cellSize: 100, ramp, glow: false });
-    drawCell(asContext(context), scene, { size: 100, cellSize: 0, ramp, glow: false });
+    drawCell(asContext(context), scene, { ...BASE, size: 0, cellSize: 100 });
+    drawCell(asContext(context), scene, { ...BASE, size: 100, cellSize: 0 });
 
     expect(context.calls).toHaveLength(0);
   });
@@ -129,7 +132,7 @@ describe('drawCell', () => {
     const scene = createScene('glow', 2);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { size: 100, cellSize: 100, ramp, glow: true });
+    drawCell(asContext(context), scene, { ...BASE, size: 100, cellSize: 100, glow: true });
 
     expect(context.globalCompositeOperation).toBe('lighter');
   });
@@ -138,7 +141,7 @@ describe('drawCell', () => {
     const scene = createScene('balance', 6);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { size: 200, cellSize: 150, ramp, glow: false });
+    drawCell(asContext(context), scene, { ...BASE, size: 200, cellSize: 150 });
 
     expect(context.countOf('save')).toBe(context.countOf('restore'));
   });

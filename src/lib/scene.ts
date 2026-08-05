@@ -40,16 +40,16 @@ export interface Scene {
   readonly shards: Shard[];
   /** Accumulated pan of the cell, in cells. */
   pan: { x: number; y: number };
-  /** Accumulated rotation of the mirror assembly, in radians. */
+  /** Accumulated rotation of the source within the mirrors, in radians. */
   rotation: number;
   /**
-   * Latest pointer offset from the centre, each axis in `[-1, 1]`.
+   * Where the viewer has dragged the source to, each axis in `[-1, 1]`.
    *
-   * The shard field integrates this into {@link Scene.pan}, but photo and
-   * camera sources need the raw offset: an image cannot tile, so panning has to
-   * be bounded by how much of it hangs outside the wedge.
+   * A position rather than a velocity: the source follows the pointer and stays
+   * where it is let go, which is what dragging something means. A photo cannot
+   * tile, so its travel is bounded by however much hangs outside the wedge.
    */
-  pointer: { x: number; y: number };
+  drag: { x: number; y: number };
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -59,15 +59,18 @@ export interface SceneUpdate {
   dt: number;
   /** Rotation speed in turns per second. */
   speed: number;
-  /** Pointer offset from the centre, each axis in `[-1, 1]`. */
-  pointer: { x: number; y: number };
+  /** Current drag position, each axis in `[-1, 1]`. */
+  drag: { x: number; y: number };
 }
 
 /** Largest step the simulation will take, so a backgrounded tab cannot jump. */
 const MAX_STEP_SECONDS = 1 / 20;
 
-/** How strongly the pointer pushes the cell around, in cells per second. */
-const POINTER_INFLUENCE = 0.09;
+/** How far a full drag moves the shard field, in cells. */
+export const DRAG_CELLS = 1.5;
+
+/** Idle drift of the shard field, in cells per second. */
+const DRIFT = 0.01;
 
 /** Builds a deterministic field of shards for the given seed. */
 export function createScene(seed: string, shardCount: number): Scene {
@@ -101,7 +104,7 @@ export function createScene(seed: string, shardCount: number): Scene {
     shards,
     pan: { x: 0, y: 0 },
     rotation: 0,
-    pointer: { x: 0, y: 0 },
+    drag: { x: 0, y: 0 },
     elapsed: 0,
   };
 }
@@ -112,15 +115,14 @@ export function createScene(seed: string, shardCount: number): Scene {
  * Mutation is deliberate: this runs every frame and the scene is owned by the
  * renderer, never by React state, so there is nothing to diff.
  */
-export function updateScene(scene: Scene, { dt, speed, pointer }: SceneUpdate): Scene {
+export function updateScene(scene: Scene, { dt, speed, drag }: SceneUpdate): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
   scene.elapsed += step;
   scene.rotation += speed * Math.PI * 2 * step;
-  scene.pointer.x = pointer.x;
-  scene.pointer.y = pointer.y;
-  scene.pan.x += (pointer.x * POINTER_INFLUENCE + 0.01) * step;
-  scene.pan.y += pointer.y * POINTER_INFLUENCE * step;
+  scene.drag.x = drag.x;
+  scene.drag.y = drag.y;
+  scene.pan.x += DRIFT * step;
 
   for (const shard of scene.shards) {
     shard.x = wrapUnit(shard.x + shard.vx * step);
@@ -137,6 +139,10 @@ export interface DrawCellOptions {
   size: number;
   /** Side of one tile of the cell, in device pixels. */
   cellSize: number;
+  /** Rotation of the field about the wedge apex, in radians. */
+  rotation: number;
+  /** Pan of the field, in cells. */
+  pan: { x: number; y: number };
   ramp: ColorRamp;
   /** Additive blending for overlapping shards. */
   glow: boolean;
@@ -145,26 +151,37 @@ export interface DrawCellOptions {
 /**
  * Paints the shard field across a square region, tiling the unit cell as many
  * times as needed to cover it. The caller is responsible for clearing or fading
- * the surface first.
+ * the surface first, and for placing the wedge apex at the origin.
  */
 export function drawCell(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { size, cellSize, ramp, glow }: DrawCellOptions,
+  { size, cellSize, rotation, pan, ramp, glow }: DrawCellOptions,
 ): void {
   if (size <= 0 || cellSize <= 0) {
     return;
   }
 
-  const tiles = Math.ceil(size / cellSize) + 1;
-  const offsetX = wrapTo(scene.pan.x * cellSize, cellSize);
-  const offsetY = wrapTo(scene.pan.y * cellSize, cellSize);
+  // The visible square is `[0, size]` on both axes from the apex. Rotating the
+  // field means covering that square in the field's own frame, so its corners
+  // are mapped back through the inverse rotation and tiles laid over the result.
+  // Tiling a rotation-agnostic bounding box instead would draw up to twice the
+  // shards needed at the shallow angles that dominate.
+  const bounds = rotatedBounds(size, -rotation);
+  const offsetX = wrapTo(pan.x * cellSize, cellSize);
+  const offsetY = wrapTo(pan.y * cellSize, cellSize);
+
+  const firstColumn = Math.floor((bounds.minX - offsetX) / cellSize);
+  const lastColumn = Math.ceil((bounds.maxX - offsetX) / cellSize);
+  const firstRow = Math.floor((bounds.minY - offsetY) / cellSize);
+  const lastRow = Math.ceil((bounds.maxY - offsetY) / cellSize);
 
   ctx.save();
   ctx.globalCompositeOperation = glow ? 'lighter' : 'source-over';
+  ctx.rotate(rotation);
 
-  for (let row = -1; row < tiles; row += 1) {
-    for (let column = -1; column < tiles; column += 1) {
+  for (let row = firstRow; row <= lastRow; row += 1) {
+    for (let column = firstColumn; column <= lastColumn; column += 1) {
       const originX = offsetX + column * cellSize;
       const originY = offsetY + row * cellSize;
 
@@ -173,7 +190,7 @@ export function drawCell(
           x: originX + shard.x * cellSize,
           y: originY + shard.y * cellSize,
           scale: cellSize,
-          bounds: size,
+          bounds,
           elapsed: scene.elapsed,
           ramp,
         });
@@ -184,11 +201,43 @@ export function drawCell(
   ctx.restore();
 }
 
+interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** Axis-aligned bounds of the square `[0, size]^2` rotated by `angle`. */
+function rotatedBounds(size: number, angle: number): Bounds {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const xs: number[] = [];
+  const ys: number[] = [];
+
+  for (const [x, y] of [
+    [0, 0],
+    [size, 0],
+    [0, size],
+    [size, size],
+  ] as const) {
+    xs.push(x * cos - y * sin);
+    ys.push(x * sin + y * cos);
+  }
+
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
 interface DrawShardOptions {
   x: number;
   y: number;
   scale: number;
-  bounds: number;
+  bounds: Bounds;
   elapsed: number;
   ramp: ColorRamp;
 }
@@ -201,8 +250,13 @@ function drawShard(
   const pulse = 1 + Math.sin(elapsed * 1.3 + shard.phase) * shard.pulse;
   const radius = shard.radius * scale * pulse;
 
-  // Cheap cull: tiles are drawn beyond the visible square on every side.
-  if (x + radius < 0 || y + radius < 0 || x - radius > bounds || y - radius > bounds) {
+  // Cheap cull: tiles are laid beyond the visible region on every side.
+  if (
+    x + radius < bounds.minX ||
+    y + radius < bounds.minY ||
+    x - radius > bounds.maxX ||
+    y - radius > bounds.maxY
+  ) {
     return;
   }
 

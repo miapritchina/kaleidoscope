@@ -2,6 +2,8 @@ import { useEffect, useImperativeHandle, useMemo, useRef, type RefObject } from 
 
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
+import { usePointerDrag } from '../hooks/usePointerDrag';
+import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene } from '../lib/scene';
@@ -33,7 +35,7 @@ export interface KaleidoscopeProps {
 export function Kaleidoscope({ settings, paused = false, media = null, ref }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
-  const pointerRef = useRef({ x: 0, y: 0 });
+  const drag = usePointerDrag();
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
   // A new seed or shard count means a genuinely different scene; anything else
@@ -88,7 +90,7 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
     updateScene(scene, {
       dt: deltaSeconds,
       speed: settings.speed,
-      pointer: pointerRef.current,
+      drag: drag.positionRef.current,
     });
     renderer.render(scene, settings, media);
   }, !paused);
@@ -96,17 +98,8 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
   return (
     <div
       ref={containerRef}
-      className={styles.stage}
-      onPointerMove={(event) => {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        pointerRef.current = {
-          x: clampUnit(((event.clientX - bounds.left) / bounds.width) * 2 - 1),
-          y: clampUnit(((event.clientY - bounds.top) / bounds.height) * 2 - 1),
-        };
-      }}
-      onPointerLeave={() => {
-        pointerRef.current = { x: 0, y: 0 };
-      }}
+      className={cx(styles.stage, drag.isDragging && styles.dragging)}
+      {...drag.handlers}
     >
       <canvas
         ref={canvasRef}
@@ -118,19 +111,15 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
   );
 }
 
-function clampUnit(value: number): number {
-  return Math.min(1, Math.max(-1, value));
-}
-
-function describe({ segments, source, seed }: Settings): string {
-  const mirrors = `Kaleidoscope with ${segments} mirrored segments`;
+function describe({ mirrors, source, seed }: Settings): string {
+  const assembly = `Kaleidoscope with ${mirrors} mirrors`;
 
   switch (source) {
     case 'image':
-      return `${mirrors}, mirroring an uploaded photo`;
+      return `${assembly}, mirroring an uploaded photo`;
     case 'camera':
-      return `${mirrors}, mirroring the live camera`;
+      return `${assembly}, mirroring the live camera`;
     case 'shards':
-      return `${mirrors}, seed ${seed}`;
+      return `${assembly}, seed ${seed}`;
   }
 }
