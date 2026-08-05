@@ -5,6 +5,10 @@ import { defineConfig } from 'vitest/config';
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative asset URLs, so the build works wherever it is served from: the
+  // domain root, a project subpath like /kaleidoscope/ on GitHub Pages, or the
+  // local preview. An absolute base would 404 under a subpath.
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {

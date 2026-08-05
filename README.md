@@ -17,8 +17,8 @@ The dev server prints a local URL (http://localhost:5173 by default).
 
 ## Scripts
 
-| Script                  | What it does                               |
-| ----------------------- | ------------------------------------------ |
+| Script                  | What it does                                |
+| ----------------------- | ------------------------------------------- |
 | `npm run dev`           | Vite dev server with hot module replacement |
 | `npm run build`         | Typecheck, then build to `dist/`            |
 | `npm run preview`       | Serve the production build locally          |
@@ -62,16 +62,16 @@ src/
 
 ## Settings
 
-| Setting  | Range           | Effect                                            |
-| -------- | --------------- | ------------------------------------------------- |
-| Segments | 4–36 (even)     | Mirrored wedges around the centre                 |
+| Setting  | Range            | Effect                                             |
+| -------- | ---------------- | -------------------------------------------------- |
+| Segments | 4–36 (even)      | Mirrored wedges around the centre                  |
 | Spin     | -0.5–0.5 turns/s | Rotation of the mirror assembly; negative reverses |
-| Zoom     | 0.5x–3x         | Magnification of the object cell                  |
-| Count    | 4–60            | Shards in the cell                                 |
-| Trails   | 0–95%           | How long each frame lingers                       |
-| Palette  | 5 presets       | Shard colours and backdrop                        |
-| Glow     | on/off          | Additive blending, so overlaps bloom              |
-| Seed     | any text        | Seeds the shard generator; same seed, same shards |
+| Zoom     | 0.5x–3x          | Magnification of the object cell                   |
+| Count    | 4–60             | Shards in the cell                                 |
+| Trails   | 0–95%            | How long each frame lingers                        |
+| Palette  | 5 presets        | Shard colours and backdrop                         |
+| Glow     | on/off           | Additive blending, so overlaps bloom               |
+| Seed     | any text         | Seeds the shard generator; same seed, same shards  |
 
 Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
 link wins over stored settings on load. Both are treated as untrusted input and clamped to
@@ -87,6 +87,16 @@ renderer.
 
 ## Deploying
 
-`npm run build` emits a static bundle to `dist/`, which any static host will serve. The
-repository's `.htaccess` is for Apache deployments; copy it alongside the built files if
-that is where the site lives.
+`npm run build` emits a static bundle to `dist/`. Asset URLs are relative
+(`base: './'` in `vite.config.ts`), so the same build works at a domain root, at a
+project subpath, or from the local preview.
+
+### GitHub Pages
+
+`.github/workflows/deploy.yml` builds and publishes `dist/` on every push to `master`.
+It requires **Settings -> Pages -> Source** to be set to **GitHub Actions**. The
+"Deploy from a branch" option cannot serve this app: it publishes the repository as-is,
+including the source `index.html`, which points at TypeScript no browser can execute.
+
+The repository's `.htaccess` is for Apache deployments; copy it alongside the built files
+if the site lives there instead.
