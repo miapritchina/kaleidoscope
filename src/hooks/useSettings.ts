@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer } from 'react';
 
 import {
   DEFAULT_SETTINGS,
+  hasSettingsParams,
   randomizeSeed,
   sanitizeSettings,
   settingsFromSearchParams,
@@ -76,7 +77,7 @@ function readInitialSettings(): Settings {
 
   const params = new URLSearchParams(window.location.search);
 
-  if (params.has('seed') || params.has('palette') || params.has('segments')) {
+  if (hasSettingsParams(params)) {
     return settingsFromSearchParams(params);
   }
 

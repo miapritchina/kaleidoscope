@@ -4,8 +4,9 @@ An interactive kaleidoscope, rendered on a 2D canvas. Mirror a generated field o
 shards, a photo of your own, or a live camera feed. Built with React 19, TypeScript and
 Vite.
 
-Move the pointer over the artwork to steer it. Every look is described by a small set of
-settings, so a generated pattern can be reproduced from its seed or shared as a link.
+Drag the artwork to move the source around inside the mirrors. Every look is described by
+a small set of settings, so a generated pattern can be reproduced from its seed or shared
+as a link.
 
 ## Getting started
 
@@ -69,17 +70,27 @@ src/
 
 ## Settings
 
-| Setting  | Range               | Effect                                             |
-| -------- | ------------------- | -------------------------------------------------- |
-| Input    | shards/photo/camera | What the mirrors repeat                            |
-| Segments | 4–36 (even)         | Mirrored wedges around the centre                  |
-| Spin     | -0.5–0.5 turns/s    | Rotation of the mirror assembly; negative reverses |
-| Zoom     | 0.5x–3x             | Magnification of the object cell                   |
-| Count    | 4–60                | Shards in the cell                                 |
-| Trails   | 0–95%               | How long each frame lingers                        |
-| Palette  | 5 presets           | Shard colours and backdrop                         |
-| Glow     | on/off              | Additive blending, so overlaps bloom               |
-| Seed     | any text            | Seeds the shard generator; same seed, same shards  |
+| Setting | Range               | Effect                                                               |
+| ------- | ------------------- | -------------------------------------------------------------------- |
+| Input   | shards/photo/camera | What the mirrors repeat                                              |
+| Mirrors | 2–18                | Mirror lines through the centre; the figure repeats twice per mirror |
+| Spin    | -0.5–0.5 turns/s    | Turns the source inside the mirrors; negative reverses               |
+| Zoom    | 0.5x–3x             | Magnification of the object cell                                     |
+| Count   | 4–60                | Shards in the cell                                                   |
+| Trails  | 0–95%               | How long each frame lingers                                          |
+| Palette | 5 presets           | Shard colours and backdrop                                           |
+| Glow    | on/off              | Additive blending, so overlaps bloom                                 |
+| Seed    | any text            | Seeds the shard generator; same seed, same shards                    |
+
+**Mirrors** counts mirror lines, the way the physical instrument does, not wedges. Each
+mirror reflects, so `N` mirrors give `2N` wedges and `N`-fold rotational symmetry — 3 is
+the classic hexagonal kaleidoscope. Counting this way also keeps the wedge count even,
+which the alternating reflections need in order to meet edge to edge. Links made when this
+control counted wedges are still read correctly, at half the number.
+
+**Spin** turns the source inside a fixed assembly, so the figure evolves the way a real
+kaleidoscope's does when the tube is turned. Rotating the finished figure instead would
+just revolve the whole picture rigidly.
 
 The last four apply to the shard field only; the rest apply to every source.
 
@@ -101,8 +112,12 @@ uploaded, and no frame is stored. The camera is requested only while it is the s
 source, and its tracks are stopped the moment you switch away, so the camera light does
 not stay on behind your back.
 
+Drag the artwork to move the source around. It follows the pointer and stays where it is
+let go; a drag across half the stage is a full sweep of the travel. The pointer is only
+tracked while held down, so nothing moves when you are merely passing over the canvas.
+
 A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
-its edges would show inside the wedge — and panning is bounded by however much of the
+its edges would show inside the wedge — and its travel is bounded by however much of the
 image hangs outside the mirrored area.
 
 The camera draws a fresh frame into the mirrors on every animation frame, so what you see

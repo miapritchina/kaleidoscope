@@ -1,7 +1,7 @@
 import { createColorRamp, type ColorRamp } from './colorRamp';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { getPalette, type Palette } from './palettes';
-import { drawCell, type Scene } from './scene';
+import { DRAG_CELLS, drawCell, type Scene } from './scene';
 import type { Settings } from './settings';
 
 /** Which source last painted the wedge, so a switch can clear it. */
@@ -129,7 +129,7 @@ export class KaleidoscopeRenderer {
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
     this.#paintWedge(scene, settings, palette, ramp, mode, frame ?? null);
-    this.#composite(scene, settings, palette);
+    this.#composite(settings, palette);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
@@ -172,7 +172,8 @@ export class KaleidoscopeRenderer {
       drawMedia(ctx, media, {
         size: this.#radius,
         zoom: settings.zoom,
-        pan: scene.pointer,
+        rotation: scene.rotation,
+        pan: scene.drag,
         alpha: 1 - settings.trails,
       });
       ctx.restore();
@@ -192,18 +193,29 @@ export class KaleidoscopeRenderer {
       return;
     }
 
+    ctx.save();
+    // Match the media path: the apex is the origin the field rotates about.
+    ctx.translate(SEAM_BLEED, SEAM_BLEED);
     drawCell(ctx, scene, {
-      size,
-      cellSize: size * BASE_CELL_FRACTION * settings.zoom,
+      size: this.#radius,
+      cellSize: this.#radius * BASE_CELL_FRACTION * settings.zoom,
+      rotation: scene.rotation,
+      pan: {
+        x: scene.pan.x + scene.drag.x * DRAG_CELLS,
+        y: scene.pan.y + scene.drag.y * DRAG_CELLS,
+      },
       ramp,
       glow: settings.glow,
     });
+    ctx.restore();
   }
 
   /** Mirrors the wedge around the centre. */
-  #composite(scene: Scene, settings: Settings, palette: Palette): void {
+  #composite(settings: Settings, palette: Palette): void {
     const ctx = this.#ctx;
-    const segments = Math.max(4, Math.round(settings.segments / 2) * 2);
+    // Two wedges per mirror — one reflected — so the count is always even and
+    // neighbouring wedges meet edge to edge.
+    const segments = Math.max(2, Math.round(settings.mirrors)) * 2;
     const step = (Math.PI * 2) / segments;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -213,8 +225,10 @@ export class KaleidoscopeRenderer {
     ctx.fillRect(0, 0, this.#width, this.#height);
 
     ctx.save();
+    // The assembly is fixed; spin rotates the source inside the wedge, so the
+    // figure evolves the way a real kaleidoscope's does when you turn the tube,
+    // rather than rigidly revolving on screen.
     ctx.translate(this.#width / 2, this.#height / 2);
-    ctx.rotate(scene.rotation);
 
     for (let i = 0; i < segments; i += 1) {
       ctx.save();

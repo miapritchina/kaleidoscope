@@ -26,7 +26,7 @@ describe('ControlPanel', () => {
   it('labels every control', () => {
     renderPanel();
 
-    expect(screen.getByLabelText('Segments')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mirrors')).toBeInTheDocument();
     expect(screen.getByLabelText('Spin')).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
@@ -37,9 +37,9 @@ describe('ControlPanel', () => {
   });
 
   it('shows the current values next to their labels', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, segments: 18, zoom: 2, trails: 0.5 } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, mirrors: 9, zoom: 2, trails: 0.5 } });
 
-    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.getByText('9 (18-fold)')).toBeInTheDocument();
     expect(screen.getByText('2.00x')).toBeInTheDocument();
     expect(screen.getByText('50%')).toBeInTheDocument();
   });
@@ -58,9 +58,9 @@ describe('ControlPanel', () => {
 
     // jsdom does not implement arrow-key stepping on range inputs, so the
     // change event is dispatched directly.
-    fireEvent.change(screen.getByLabelText('Segments'), { target: { value: '18' } });
+    fireEvent.change(screen.getByLabelText('Mirrors'), { target: { value: '3' } });
 
-    expect(props.onChange).toHaveBeenCalledWith('segments', 18);
+    expect(props.onChange).toHaveBeenCalledWith('mirrors', 3);
   });
 
   it('describes slider values to assistive tech', () => {
@@ -145,7 +145,7 @@ describe('ControlPanel', () => {
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
-    expect(screen.getByLabelText('Segments')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mirrors')).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
   });

@@ -7,7 +7,7 @@ import { settingsReducer, useSettings } from './useSettings';
 /** One valid, genuinely different value per setting. */
 const CHANGES = [
   ['source', 'camera'],
-  ['segments', 20],
+  ['mirrors', 3],
   ['speed', 0.2],
   ['shards', 40],
   ['zoom', 2],
@@ -19,13 +19,13 @@ const CHANGES = [
 
 describe('settingsReducer', () => {
   it('validates values as they are set', () => {
-    const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key: 'segments', value: 9999 });
+    const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key: 'mirrors', value: 9999 });
 
-    expect(next.segments).toBe(LIMITS.segments.max);
+    expect(next.mirrors).toBe(LIMITS.mirrors.max);
   });
 
   it('returns the same object when nothing changes, so renders are skipped', () => {
-    const action = { type: 'set', key: 'segments', value: DEFAULT_SETTINGS.segments } as const;
+    const action = { type: 'set', key: 'mirrors', value: DEFAULT_SETTINGS.mirrors } as const;
 
     expect(settingsReducer(DEFAULT_SETTINGS, action)).toBe(DEFAULT_SETTINGS);
   });
@@ -49,7 +49,7 @@ describe('settingsReducer', () => {
     const next = settingsReducer(DEFAULT_SETTINGS, { type: 'randomize' });
 
     expect(next.seed).not.toBe(DEFAULT_SETTINGS.seed);
-    expect(next.segments).toBe(DEFAULT_SETTINGS.segments);
+    expect(next.mirrors).toBe(DEFAULT_SETTINGS.mirrors);
   });
 
   it('resets to the defaults', () => {
@@ -94,6 +94,14 @@ describe('useSettings', () => {
     const { result } = renderHook(() => useSettings());
 
     expect(result.current.settings).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('reads a url that carries only one setting', () => {
+    window.history.replaceState(null, '', '/?mirrors=3');
+
+    const { result } = renderHook(() => useSettings());
+
+    expect(result.current.settings.mirrors).toBe(3);
   });
 
   it('prefers the url over stored settings', () => {

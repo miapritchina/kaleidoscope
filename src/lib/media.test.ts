@@ -47,6 +47,7 @@ describe('drawMedia', () => {
     drawMedia(asContext(ctx), media, {
       size: 100,
       zoom: 1,
+      rotation: 0,
       pan: NO_PAN,
       alpha: 1,
       ...options,
@@ -137,6 +138,12 @@ describe('drawMedia', () => {
   it('draws nothing for degenerate input', () => {
     expect(draw(fakeImage(400, 400), { size: 0 }).drawn).toBeNull();
     expect(draw(fakeImage(0, 0)).drawn).toBeNull();
+  });
+
+  it('rotates about the apex, so the source turns inside the mirrors', () => {
+    const { ctx } = draw(fakeImage(400, 400), { rotation: Math.PI / 3 });
+
+    expect(ctx.argsOf('rotate')[0]).toEqual([Math.PI / 3]);
   });
 
   it('balances save with restore', () => {
