@@ -56,6 +56,7 @@ describe('sanitizeSettings', () => {
     });
 
     expect(result).toEqual({
+      source: DEFAULT_SETTINGS.source,
       segments: LIMITS.segments.max,
       speed: DEFAULT_SETTINGS.speed,
       shards: 30,

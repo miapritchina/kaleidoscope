@@ -1,20 +1,12 @@
 import { createColorRamp, type ColorRamp } from './colorRamp';
+import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { getPalette, type Palette } from './palettes';
 import { drawCell, type Scene } from './scene';
 import type { Settings } from './settings';
 
-/**
- * Composites the kaleidoscope.
- *
- * The shard field is painted once per frame into an offscreen wedge, then the
- * wedge is blitted around the centre with alternating mirrors. That keeps the
- * per-frame cost proportional to the shard count rather than to
- * `shards x segments`, and it is what makes the reflections line up exactly.
- *
- * All geometry is in device pixels; the canvas backing store is sized by
- * {@link KaleidoscopeRenderer.resize} and never scaled by the DPR, which avoids
- * compounding transforms.
- */
+/** Which source last painted the wedge, so a switch can clear it. */
+type WedgeMode = 'shards' | 'media' | 'empty';
+
 /**
  * Size of the object cell relative to the mirror length, at `zoom: 1`.
  *
@@ -24,9 +16,28 @@ import type { Settings } from './settings';
  */
 const BASE_CELL_FRACTION = 0.32;
 
-/** How far each wedge's clip is bled outwards, in device pixels. */
-const SEAM_BLEED = 1;
+/**
+ * How far each wedge's clip is bled outwards, in device pixels.
+ *
+ * Two antialiased clip edges meeting at a seam each cover the boundary pixel
+ * about halfway, and compositing them one after another reaches only ~75% —
+ * the backdrop shows through as a dark spoke. Bleeding past the seam lets a
+ * neighbour cover it completely.
+ */
+const SEAM_BLEED = 2;
 
+/**
+ * Composites the kaleidoscope.
+ *
+ * The source — shard field, photo or camera — is painted once per frame into an
+ * offscreen wedge, then the wedge is blitted around the centre with alternating
+ * mirrors. That keeps the per-frame cost proportional to the source rather than
+ * to `source x segments`, and it is what makes the reflections line up exactly.
+ *
+ * All geometry is in device pixels; the canvas backing store is sized by
+ * {@link KaleidoscopeRenderer.resize} and never scaled by the DPR, which avoids
+ * compounding transforms.
+ */
 export class KaleidoscopeRenderer {
   readonly #canvas: HTMLCanvasElement;
   readonly #ctx: CanvasRenderingContext2D;
@@ -38,6 +49,7 @@ export class KaleidoscopeRenderer {
   #radius = 0;
   #vignette: CanvasGradient | null = null;
   #ramp: ColorRamp | null = null;
+  #mode: WedgeMode | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -86,15 +98,24 @@ export class KaleidoscopeRenderer {
 
     this.#canvas.width = width;
     this.#canvas.height = height;
-    this.#wedge.width = this.#radius;
-    this.#wedge.height = this.#radius;
+    // The wedge surface carries a margin around its apex so that the bled clip
+    // finds painted pixels there rather than empty canvas, which would defeat
+    // the whole point and leave the seam showing.
+    this.#wedge.width = this.#radius + SEAM_BLEED * 2;
+    this.#wedge.height = this.#radius + SEAM_BLEED * 2;
 
     this.#vignette = this.#createVignette();
     this.#ramp = null; // The gradient cache is tied to the old geometry.
   }
 
-  /** Draws one frame. Call after {@link resize} and after advancing the scene. */
-  render(scene: Scene, settings: Settings): void {
+  /**
+   * Draws one frame. Call after {@link resize} and after advancing the scene.
+   *
+   * @param media Photo or camera element to mirror instead of the shard field.
+   *   Ignored unless `settings.source` selects it, and skipped until it has
+   *   pixels — a source that is chosen but not ready renders as the backdrop.
+   */
+  render(scene: Scene, settings: Settings, media?: MediaElement | null): void {
     if (this.#width === 0 || this.#height === 0) {
       return;
     }
@@ -103,7 +124,11 @@ export class KaleidoscopeRenderer {
     const ramp = this.#ramp?.palette === palette ? this.#ramp : createColorRamp(palette);
     this.#ramp = ramp;
 
-    this.#paintWedge(scene, settings, palette, ramp);
+    const frame = settings.source === 'shards' ? null : media;
+    const mode: WedgeMode =
+      settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
+
+    this.#paintWedge(scene, settings, palette, ramp, mode, frame ?? null);
     this.#composite(scene, settings, palette);
   }
 
@@ -112,10 +137,47 @@ export class KaleidoscopeRenderer {
     return this.#canvas.toDataURL(type);
   }
 
-  /** Paints the shard field into the offscreen wedge surface. */
-  #paintWedge(scene: Scene, settings: Settings, palette: Palette, ramp: ColorRamp): void {
+  /** Paints the chosen source into the offscreen wedge surface. */
+  #paintWedge(
+    scene: Scene,
+    settings: Settings,
+    palette: Palette,
+    ramp: ColorRamp,
+    mode: WedgeMode,
+    media: MediaElement | null,
+  ): void {
     const ctx = this.#wedgeCtx;
-    const size = this.#radius;
+    // Paint the whole surface, margin included.
+    const size = this.#radius + SEAM_BLEED * 2;
+
+    // Switching sources would otherwise leave the previous one ghosting under
+    // the new frames, since neither path clears unconditionally.
+    if (mode !== this.#mode) {
+      this.#mode = mode;
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = palette.background;
+      ctx.fillRect(0, 0, size, size);
+      ctx.restore();
+    }
+
+    if (mode === 'media' && media) {
+      // Media covers the surface opaquely, so trails come from drawing each
+      // frame semi-transparently over its predecessors rather than from fading
+      // towards the backdrop.
+      ctx.save();
+      // drawMedia centres on the apex, which sits inside the margin.
+      ctx.translate(SEAM_BLEED, SEAM_BLEED);
+      drawMedia(ctx, media, {
+        size: this.#radius,
+        zoom: settings.zoom,
+        pan: scene.pointer,
+        alpha: 1 - settings.trails,
+      });
+      ctx.restore();
+      return;
+    }
 
     // Fading instead of clearing is what produces motion trails; at `trails: 0`
     // the fill is fully opaque and this is an ordinary clear.
@@ -125,6 +187,10 @@ export class KaleidoscopeRenderer {
     ctx.fillStyle = palette.background;
     ctx.fillRect(0, 0, size, size);
     ctx.restore();
+
+    if (mode === 'empty') {
+      return;
+    }
 
     drawCell(ctx, scene, {
       size,
@@ -163,7 +229,8 @@ export class KaleidoscopeRenderer {
       }
 
       this.#clipWedge(step);
-      ctx.drawImage(this.#wedge, 0, 0);
+      // Line the surface's apex up with the centre, discounting the margin.
+      ctx.drawImage(this.#wedge, -SEAM_BLEED, -SEAM_BLEED);
 
       ctx.restore();
     }

@@ -65,6 +65,20 @@
   color: var(--text);
 }
 
+.hint,
+.error {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.hint {
+  color: var(--text-muted);
+}
+
+.error {
+  color: #ff9f9f;
+}
+
 .status {
   min-height: 1.2rem;
   margin: 0;

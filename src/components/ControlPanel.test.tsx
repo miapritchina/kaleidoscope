@@ -13,6 +13,9 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onReset: vi.fn(),
     onSave: vi.fn(),
     onShare: vi.fn(),
+    onSelectImage: vi.fn(),
+    onClearImage: vi.fn(),
+    cameraStatus: 'idle',
     ...overrides,
   };
 
@@ -108,6 +111,100 @@ describe('ControlPanel', () => {
     expect(props.onSave).toHaveBeenCalledOnce();
     expect(props.onShare).toHaveBeenCalledOnce();
     expect(props.onReset).toHaveBeenCalledOnce();
+  });
+
+  it('offers the three input sources', () => {
+    renderPanel();
+
+    const input = screen.getByLabelText('Input');
+
+    expect(input).toHaveValue('shards');
+    expect([...(input as HTMLSelectElement).options].map((option) => option.value)).toEqual([
+      'shards',
+      'image',
+      'camera',
+    ]);
+  });
+
+  it('reports source changes', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.selectOptions(screen.getByLabelText('Input'), 'camera');
+
+    expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
+  });
+
+  it('hides shard-only controls when a photo is the source', () => {
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
+
+    // Shard-specific
+    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Palette')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
+
+    // Shared across every source
+    expect(screen.getByLabelText('Segments')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
+    expect(screen.getByLabelText('Trails')).toBeInTheDocument();
+  });
+
+  it('shows the photo picker only for the photo source', () => {
+    const { unmount } = renderPanel();
+    expect(screen.queryByLabelText('Photo')).not.toBeInTheDocument();
+    unmount();
+
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
+    expect(screen.getByLabelText('Photo')).toBeInTheDocument();
+  });
+
+  it('passes a chosen photo to the handler', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
+    const file = new File(['x'], 'holiday.png', { type: 'image/png' });
+
+    await user.upload(screen.getByLabelText('Photo'), file);
+
+    expect(props.onSelectImage).toHaveBeenCalledWith(file);
+  });
+
+  it('offers to remove a chosen photo', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel({
+      settings: { ...DEFAULT_SETTINGS, source: 'image' },
+      imageName: 'holiday.png',
+    });
+
+    expect(screen.getByText('holiday.png')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Remove photo' }));
+
+    expect(props.onClearImage).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces an image error as an alert', () => {
+    renderPanel({
+      settings: { ...DEFAULT_SETTINGS, source: 'image' },
+      imageError: 'notes.txt is not an image.',
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('notes.txt is not an image.');
+  });
+
+  it('explains the camera state', () => {
+    renderPanel({
+      settings: { ...DEFAULT_SETTINGS, source: 'camera' },
+      cameraStatus: 'denied',
+      cameraMessage: 'Camera access was blocked. Allow it in your browser, then try again.',
+    });
+
+    expect(screen.getByText(/Camera access was blocked/)).toBeInTheDocument();
+  });
+
+  it('states that camera frames stay local', () => {
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'camera' }, cameraStatus: 'active' });
+
+    expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
   });
 
   it('announces status messages politely', () => {

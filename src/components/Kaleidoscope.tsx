@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef, type RefObject } from 
 
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
+import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene } from '../lib/scene';
 import type { Settings } from '../lib/settings';
@@ -17,6 +18,8 @@ export interface KaleidoscopeProps {
   settings: Settings;
   /** Pauses the simulation. The last frame stays on screen. */
   paused?: boolean;
+  /** Photo or camera element to mirror, when `settings.source` selects one. */
+  media?: MediaElement | null;
   ref?: RefObject<KaleidoscopeHandle | null>;
 }
 
@@ -27,7 +30,7 @@ export interface KaleidoscopeProps {
  * lives in refs. React owns the settings; the animation loop owns the pixels.
  * Re-rendering this component never restarts the animation.
  */
-export function Kaleidoscope({ settings, paused = false, ref }: KaleidoscopeProps) {
+export function Kaleidoscope({ settings, paused = false, media = null, ref }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
   const pointerRef = useRef({ x: 0, y: 0 });
@@ -69,8 +72,10 @@ export function Kaleidoscope({ settings, paused = false, ref }: KaleidoscopeProp
     }
 
     renderer.resize(size.width, size.height, window.devicePixelRatio);
-    renderer.render(scene, settings);
-  }, [size.width, size.height, scene, settings]);
+    // Repaint on any of these even while paused, so a newly picked photo or a
+    // changed setting shows up without needing the animation to be running.
+    renderer.render(scene, settings, media);
+  }, [size.width, size.height, scene, settings, media]);
 
   useAnimationFrame((deltaSeconds) => {
     const renderer = rendererRef.current;
@@ -85,7 +90,7 @@ export function Kaleidoscope({ settings, paused = false, ref }: KaleidoscopeProp
       speed: settings.speed,
       pointer: pointerRef.current,
     });
-    renderer.render(scene, settings);
+    renderer.render(scene, settings, media);
   }, !paused);
 
   return (
@@ -107,7 +112,7 @@ export function Kaleidoscope({ settings, paused = false, ref }: KaleidoscopeProp
         ref={canvasRef}
         className={styles.canvas}
         role="img"
-        aria-label={`Kaleidoscope with ${String(settings.segments)} mirrored segments, seed ${settings.seed}`}
+        aria-label={describe(settings)}
       />
     </div>
   );
@@ -115,4 +120,17 @@ export function Kaleidoscope({ settings, paused = false, ref }: KaleidoscopeProp
 
 function clampUnit(value: number): number {
   return Math.min(1, Math.max(-1, value));
+}
+
+function describe({ segments, source, seed }: Settings): string {
+  const mirrors = `Kaleidoscope with ${segments} mirrored segments`;
+
+  switch (source) {
+    case 'image':
+      return `${mirrors}, mirroring an uploaded photo`;
+    case 'camera':
+      return `${mirrors}, mirroring the live camera`;
+    case 'shards':
+      return `${mirrors}, seed ${seed}`;
+  }
 }

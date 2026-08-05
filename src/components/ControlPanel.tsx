@@ -1,8 +1,10 @@
 import { useState } from 'react';
 
+import type { CameraStatus } from '../hooks/useCamera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type Settings } from '../lib/settings';
+import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
+import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
 import { SelectField } from './controls/SelectField';
 import { TextField } from './controls/TextField';
@@ -18,12 +20,34 @@ export interface ControlPanelProps {
   onShare: () => void;
   /** Feedback for the most recent action, announced politely. */
   status?: string;
+  /** Name of the chosen photo, if any. */
+  imageName?: string | null;
+  imageError?: string | null;
+  onSelectImage: (file: File) => void;
+  onClearImage: () => void;
+  cameraStatus: CameraStatus;
+  cameraMessage?: string | null;
 }
 
 const PALETTE_OPTIONS = PALETTES.map((palette) => ({
   value: palette.id,
   label: palette.name,
 }));
+
+const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
+  { value: 'shards', label: 'Shards' },
+  { value: 'image', label: 'Photo' },
+  { value: 'camera', label: 'Camera' },
+];
+
+const CAMERA_HINTS: Record<CameraStatus, string> = {
+  idle: 'The camera is off.',
+  starting: 'Waiting for camera permission…',
+  active: 'Live. Nothing is uploaded — frames stay in this browser.',
+  denied: 'Camera access was blocked.',
+  unavailable: 'No camera available.',
+  error: 'The camera could not be started.',
+};
 
 export function ControlPanel({
   settings,
@@ -33,6 +57,12 @@ export function ControlPanel({
   onSave,
   onShare,
   status,
+  imageName,
+  imageError,
+  onSelectImage,
+  onClearImage,
+  cameraStatus,
+  cameraMessage,
 }: ControlPanelProps) {
   // The seed input keeps its own draft so the field can be emptied while typing
   // without the sanitiser snapping it back mid-keystroke. When the seed changes
@@ -52,6 +82,50 @@ export function ControlPanel({
         event.preventDefault();
       }}
     >
+      <fieldset className={styles.group}>
+        <legend className={styles.legend}>Source</legend>
+
+        <SelectField
+          label="Input"
+          value={settings.source}
+          options={SOURCE_OPTIONS}
+          onChange={(value) => {
+            onChange('source', value);
+          }}
+        />
+
+        {settings.source === 'image' && (
+          <>
+            <FileField
+              label="Photo"
+              accept="image/*"
+              fileName={imageName}
+              buttonLabel={imageName ? 'Replace photo' : 'Choose photo'}
+              onSelect={onSelectImage}
+            />
+            <p className={styles.hint}>
+              Or drop a photo onto the artwork. It stays in this browser — nothing is uploaded.
+            </p>
+            {imageName ? (
+              <button type="button" className={styles.ghost} onClick={onClearImage}>
+                Remove photo
+              </button>
+            ) : null}
+            {imageError ? (
+              <p className={styles.error} role="alert">
+                {imageError}
+              </p>
+            ) : null}
+          </>
+        )}
+
+        {settings.source === 'camera' && (
+          <p className={cameraStatus === 'active' ? styles.hint : styles.error} role="status">
+            {cameraMessage ?? CAMERA_HINTS[cameraStatus]}
+          </p>
+        )}
+      </fieldset>
+
       <fieldset className={styles.group}>
         <legend className={styles.legend}>Mirrors</legend>
 
@@ -82,19 +156,9 @@ export function ControlPanel({
           onChange={(value) => {
             onChange('zoom', value);
           }}
-        />
-      </fieldset>
-
-      <fieldset className={styles.group}>
-        <legend className={styles.legend}>Shards</legend>
-
-        <RangeField
-          label="Count"
-          value={settings.shards}
-          limit={LIMITS.shards}
-          onChange={(value) => {
-            onChange('shards', value);
-          }}
+          {...(settings.source === 'shards'
+            ? {}
+            : { description: 'A photo cannot zoom below 1x without exposing its edges.' })}
         />
         <RangeField
           label="Trails"
@@ -106,37 +170,54 @@ export function ControlPanel({
           }}
           description="How long each frame lingers."
         />
-        <SelectField
-          label="Palette"
-          value={settings.paletteId}
-          options={PALETTE_OPTIONS}
-          onChange={(value) => {
-            onChange('paletteId', value);
-          }}
-        />
-        <ToggleField
-          label="Glow"
-          checked={settings.glow}
-          onChange={(checked) => {
-            onChange('glow', checked);
-          }}
-        />
-        <TextField
-          label="Seed"
-          value={seedDraft}
-          maxLength={32}
-          placeholder="kaleido"
-          onChange={(value) => {
-            setSeedDraft(value);
-            onChange('seed', value);
-          }}
-        />
       </fieldset>
 
+      {settings.source === 'shards' && (
+        <fieldset className={styles.group}>
+          <legend className={styles.legend}>Shards</legend>
+
+          <RangeField
+            label="Count"
+            value={settings.shards}
+            limit={LIMITS.shards}
+            onChange={(value) => {
+              onChange('shards', value);
+            }}
+          />
+          <SelectField
+            label="Palette"
+            value={settings.paletteId}
+            options={PALETTE_OPTIONS}
+            onChange={(value) => {
+              onChange('paletteId', value);
+            }}
+          />
+          <ToggleField
+            label="Glow"
+            checked={settings.glow}
+            onChange={(checked) => {
+              onChange('glow', checked);
+            }}
+          />
+          <TextField
+            label="Seed"
+            value={seedDraft}
+            maxLength={32}
+            placeholder="kaleido"
+            onChange={(value) => {
+              setSeedDraft(value);
+              onChange('seed', value);
+            }}
+          />
+        </fieldset>
+      )}
+
       <div className={styles.actions}>
-        <button type="button" className={styles.primary} onClick={onRandomize}>
-          Randomize
-        </button>
+        {settings.source === 'shards' && (
+          <button type="button" className={styles.primary} onClick={onRandomize}>
+            Randomize
+          </button>
+        )}
         <button type="button" className={styles.secondary} onClick={onSave}>
           Save PNG
         </button>

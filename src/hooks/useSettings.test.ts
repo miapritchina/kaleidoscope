@@ -1,8 +1,21 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { DEFAULT_SETTINGS, LIMITS } from '../lib/settings';
+import { DEFAULT_SETTINGS, LIMITS, type Settings } from '../lib/settings';
 import { settingsReducer, useSettings } from './useSettings';
+
+/** One valid, genuinely different value per setting. */
+const CHANGES = [
+  ['source', 'camera'],
+  ['segments', 20],
+  ['speed', 0.2],
+  ['shards', 40],
+  ['zoom', 2],
+  ['trails', 0.5],
+  ['glow', !DEFAULT_SETTINGS.glow],
+  ['paletteId', 'ember'],
+  ['seed', 'changed'],
+] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];
 
 describe('settingsReducer', () => {
   it('validates values as they are set', () => {
@@ -15,6 +28,21 @@ describe('settingsReducer', () => {
     const action = { type: 'set', key: 'segments', value: DEFAULT_SETTINGS.segments } as const;
 
     expect(settingsReducer(DEFAULT_SETTINGS, action)).toBe(DEFAULT_SETTINGS);
+  });
+
+  // A field left out of the reducer's equality check makes its control dead:
+  // the update is judged a no-op and the previous state is handed back.
+  it.each(CHANGES)('applies a change to %s', (key, value) => {
+    const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key, value });
+
+    expect(next[key]).toBe(value);
+    expect(next).not.toBe(DEFAULT_SETTINGS);
+  });
+
+  it('exercises every setting above', () => {
+    // Fails when a field is added without a case, which is what keeps the
+    // equality check honest as the settings grow.
+    expect(CHANGES.map(([key]) => key).sort()).toEqual(Object.keys(DEFAULT_SETTINGS).sort());
   });
 
   it('randomizes only the seed', () => {
