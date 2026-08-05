@@ -10,6 +10,8 @@ import { vi } from 'vitest';
 export interface FakeContext extends Record<string, unknown> {
   calls: string[];
   countOf: (method: string) => number;
+  /** Arguments of each call to `method`, in order. */
+  argsOf: (method: string) => unknown[][];
 }
 
 const METHODS = [
@@ -35,9 +37,11 @@ const METHODS = [
 
 export function createFakeContext(): FakeContext {
   const calls: string[] = [];
+  const args = new Map<string, unknown[][]>();
   const context = {
     calls,
     countOf: (method: string) => calls.filter((call) => call === method).length,
+    argsOf: (method: string) => args.get(method) ?? [],
     canvas: { width: 0, height: 0 },
     fillStyle: '',
     strokeStyle: '',
@@ -47,8 +51,11 @@ export function createFakeContext(): FakeContext {
   } as unknown as FakeContext;
 
   for (const method of METHODS) {
-    context[method] = vi.fn(() => {
+    context[method] = vi.fn((...called: unknown[]) => {
       calls.push(method);
+      const recorded = args.get(method) ?? [];
+      recorded.push(called);
+      args.set(method, recorded);
     });
   }
 

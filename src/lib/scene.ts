@@ -42,6 +42,14 @@ export interface Scene {
   pan: { x: number; y: number };
   /** Accumulated rotation of the mirror assembly, in radians. */
   rotation: number;
+  /**
+   * Latest pointer offset from the centre, each axis in `[-1, 1]`.
+   *
+   * The shard field integrates this into {@link Scene.pan}, but photo and
+   * camera sources need the raw offset: an image cannot tile, so panning has to
+   * be bounded by how much of it hangs outside the wedge.
+   */
+  pointer: { x: number; y: number };
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -88,7 +96,14 @@ export function createScene(seed: string, shardCount: number): Scene {
   // Guarantee at least one large shard so the centre never looks empty.
   shards[randomInt(rng, 0, shards.length - 1)]!.radius = randomBetween(rng, 0.18, 0.26);
 
-  return { seed, shards, pan: { x: 0, y: 0 }, rotation: 0, elapsed: 0 };
+  return {
+    seed,
+    shards,
+    pan: { x: 0, y: 0 },
+    rotation: 0,
+    pointer: { x: 0, y: 0 },
+    elapsed: 0,
+  };
 }
 
 /**
@@ -102,6 +117,8 @@ export function updateScene(scene: Scene, { dt, speed, pointer }: SceneUpdate): 
 
   scene.elapsed += step;
   scene.rotation += speed * Math.PI * 2 * step;
+  scene.pointer.x = pointer.x;
+  scene.pointer.y = pointer.y;
   scene.pan.x += (pointer.x * POINTER_INFLUENCE + 0.01) * step;
   scene.pan.y += pointer.y * POINTER_INFLUENCE * step;
 

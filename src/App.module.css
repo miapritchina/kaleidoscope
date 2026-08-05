@@ -28,6 +28,28 @@
   background: rgb(26 26 39 / 0.9);
 }
 
+.emptyState {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline: 0;
+  margin: 0;
+  padding-inline: 1.5rem;
+  color: var(--text-muted);
+  text-align: center;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* Kept in the layout (not display:none) so playback is not suspended, but
+   invisible and out of the way. */
+.hiddenVideo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

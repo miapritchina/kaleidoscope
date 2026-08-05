@@ -84,7 +84,12 @@ function readInitialSettings(): Settings {
     const stored = window.localStorage.getItem(STORAGE_KEY);
 
     if (stored) {
-      return sanitizeSettings(JSON.parse(stored));
+      const restored = sanitizeSettings(JSON.parse(stored));
+
+      // A photo and a camera stream cannot be restored: the file is gone and
+      // reopening on `camera` would fire a permission prompt nobody asked for
+      // on page load. Start on the shard field and let them choose again.
+      return restored.source === 'shards' ? restored : { ...restored, source: 'shards' };
     }
   } catch {
     // Corrupt or unreadable storage falls back to the defaults below.
@@ -93,15 +98,15 @@ function readInitialSettings(): Settings {
   return { ...DEFAULT_SETTINGS };
 }
 
+/**
+ * Compares every field, by iterating the keys rather than listing them.
+ *
+ * A hand-written list silently stops covering whatever gets added next, and a
+ * field missing from the comparison makes its control dead: the reducer decides
+ * nothing changed and hands back the previous state.
+ */
 function isEqual(a: Settings, b: Settings): boolean {
-  return (
-    a.segments === b.segments &&
-    a.speed === b.speed &&
-    a.shards === b.shards &&
-    a.zoom === b.zoom &&
-    a.trails === b.trails &&
-    a.glow === b.glow &&
-    a.paletteId === b.paletteId &&
-    a.seed === b.seed
-  );
+  const keys = Object.keys(a) as (keyof Settings)[];
+
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 }

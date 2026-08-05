@@ -1,8 +1,23 @@
 import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
+/** What the mirrors repeat. */
+export const SOURCES = ['shards', 'image', 'camera'] as const;
+
+export type SourceId = (typeof SOURCES)[number];
+
+export function isSourceId(value: unknown): value is SourceId {
+  return typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
+}
+
 /** Everything that describes a kaleidoscope. Serialisable by design. */
 export interface Settings {
+  /**
+   * Where the pattern comes from. `image` and `camera` depend on data this app
+   * never stores — a picked file, a live stream — so a restored `image` or
+   * `camera` only means "reopen that panel", not "reopen that picture".
+   */
+  source: SourceId;
   /** Number of mirrored wedges around the centre. Always even. */
   segments: number;
   /** Rotation speed in turns per second; negative values spin anticlockwise. */
@@ -40,6 +55,7 @@ export const LIMITS = {
 } as const satisfies Record<string, NumericLimit>;
 
 export const DEFAULT_SETTINGS: Settings = {
+  source: 'shards',
   segments: 12,
   speed: 0.05,
   shards: 24,
@@ -76,6 +92,7 @@ export function sanitizeSettings(input: unknown): Settings {
   const raw = input as Partial<Record<keyof Settings, unknown>>;
 
   return {
+    source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
     segments: clampToLimit(toNumber(raw.segments, DEFAULT_SETTINGS.segments), LIMITS.segments),
     speed: clampToLimit(toNumber(raw.speed, DEFAULT_SETTINGS.speed), LIMITS.speed),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
@@ -92,7 +109,12 @@ export function randomizeSeed(settings: Settings): Settings {
   return { ...settings, seed: createSeedString() };
 }
 
-/** Encodes settings into a query string suitable for sharing. */
+/**
+ * Encodes settings into a query string suitable for sharing.
+ *
+ * `source` is deliberately left out: a link cannot carry the recipient's photo
+ * or camera, so it always opens on the shard field.
+ */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     segments: String(settings.segments),
