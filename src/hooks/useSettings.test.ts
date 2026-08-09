@@ -11,7 +11,7 @@ const CHANGES = [
   ['chipSize', 1.5],
   ['zoom', 2],
   ['trails', 0.5],
-  ['glow', !DEFAULT_SETTINGS.glow],
+  ['light', !DEFAULT_SETTINGS.light],
   ['paletteId', 'ember'],
   ['seed', 'changed'],
 ] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];

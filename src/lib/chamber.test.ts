@@ -5,7 +5,8 @@ import { createScene, type Shard } from './scene';
 
 function chips(count: number, radius = 0.1): Shard[] {
   return Array.from({ length: count }, (_, index) => ({
-    kind: 'disc' as const,
+    kind: 'bead' as const,
+    variant: 0,
     x: -0.6 + (index % 5) * 0.3,
     y: -0.6 + Math.floor(index / 5) * 0.3,
     vx: 0,

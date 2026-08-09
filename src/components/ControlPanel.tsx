@@ -190,10 +190,10 @@ export function ControlPanel({
             }}
           />
           <ToggleField
-            label="Glow"
-            checked={settings.glow}
+            label="Bright light"
+            checked={settings.light}
             onChange={(checked) => {
-              onChange('glow', checked);
+              onChange('light', checked);
             }}
           />
           <TextField

@@ -56,6 +56,10 @@ export class KaleidoscopeRenderer {
   #sprites: ChipSprites | null = null;
   #mode: WedgeMode | null = null;
 
+  /** This frame alone, before it is blended into the trail. */
+  readonly #frame: HTMLCanvasElement;
+  readonly #frameCtx: CanvasRenderingContext2D | null;
+
   constructor(
     canvas: HTMLCanvasElement,
     createWedgeCanvas: () => HTMLCanvasElement = defaultCanvas,
@@ -74,6 +78,8 @@ export class KaleidoscopeRenderer {
     this.#wedgeCtx = wedgeCtx;
     this.#hexagon = createWedgeCanvas();
     this.#hexagonCtx = this.#hexagon.getContext('2d');
+    this.#frame = createWedgeCanvas();
+    this.#frameCtx = this.#frame.getContext('2d');
   }
 
   /** Backing-store size in device pixels. */
@@ -112,6 +118,8 @@ export class KaleidoscopeRenderer {
     const surface = Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2;
     this.#wedge.width = surface;
     this.#wedge.height = surface;
+    this.#frame.width = surface;
+    this.#frame.height = surface;
 
     this.#vignette = this.#createVignette();
   }
@@ -171,28 +179,28 @@ export class KaleidoscopeRenderer {
     media: MediaElement | null,
     triangleSide: number,
   ): void {
-    const ctx = this.#wedgeCtx;
+    const ctx = this.#frameCtx;
     // Only the triangle is ever sampled, so the source is painted over its side
     // rather than the whole surface, which is sized for the largest zoom.
     const reach = Math.ceil(triangleSide);
     const size = reach + SEAM_BLEED * 2;
 
-    // Switching sources would otherwise leave the previous one ghosting under
-    // the new frames, since neither path clears unconditionally.
-    if (mode !== this.#mode) {
-      this.#mode = mode;
-      ctx.save();
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = palette.background;
-      ctx.fillRect(0, 0, size, size);
-      ctx.restore();
+    if (!ctx) {
+      return;
     }
 
+    // This frame on its own, painted from scratch over the light. The trail
+    // cannot be made by fading this surface part-way back and painting over it
+    // again, the way it could when the glass was drawn additively: `multiply`
+    // is not idempotent, so the same still pile stamped over its own remains
+    // every frame converges on something far darker than one pass of it.
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.background;
+    ctx.fillRect(0, 0, size, size);
+
     if (mode === 'media' && media) {
-      // Media covers the surface opaquely, so trails come from drawing each
-      // frame semi-transparently over its predecessors rather than from fading
-      // towards the backdrop.
       ctx.save();
       // drawMedia centres on the apex, which sits inside the margin.
       ctx.translate(SEAM_BLEED, SEAM_BLEED);
@@ -201,49 +209,49 @@ export class KaleidoscopeRenderer {
         zoom: settings.zoom,
         rotation: scene.contents - scene.tube,
         pan: scene.drag,
-        alpha: 1 - settings.trails,
+        alpha: 1,
       });
       ctx.restore();
-      return;
+    } else if (mode === 'shards') {
+      ctx.save();
+      ctx.translate(SEAM_BLEED, SEAM_BLEED);
+      // The mirror triangle is inscribed in the object cell, the way a real
+      // tube's mirrors span the round chamber at the end of it. Hanging the cell
+      // off the corner the six triangles are assembled around instead leaves
+      // most of the simulation outside the view, and turning sweeps the pile
+      // clean out of it.
+      ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
+      drawChamber(ctx, scene, {
+        // The triangle's circumradius: the cell reaches all three corners and no
+        // further, so every chip that is simulated has a chance of being seen.
+        scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
+        chipScale: settings.chipSize,
+        // The chamber is bolted to the tube, so it does not turn within it. Only
+        // media, which has no physics of its own, keeps the lag.
+        rotation: 0,
+        pan: {
+          x: scene.drag.x * DRAG_CELLS,
+          y: scene.drag.y * DRAG_CELLS,
+        },
+        sprites,
+        light: settings.light,
+      });
+      ctx.restore();
     }
 
-    // Fading instead of clearing is what produces motion trails; at `trails: 0`
-    // the fill is fully opaque and this is an ordinary clear.
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1 - settings.trails;
-    ctx.fillStyle = palette.background;
-    ctx.fillRect(0, 0, size, size);
-    ctx.restore();
+    // Blend it into the surface the mirrors sample. Each frame keeps a share of
+    // the ones before it, which is the whole of the trail; at `trails: 0` this
+    // is a plain copy. The first frame after a switch of source goes on opaque,
+    // since there is nothing underneath worth keeping — and blending onto a
+    // surface that has never been painted would leave it half transparent.
+    const wedge = this.#wedgeCtx;
+    const fresh = mode !== this.#mode;
+    this.#mode = mode;
 
-    if (mode === 'empty') {
-      return;
-    }
-
-    ctx.save();
-    ctx.translate(SEAM_BLEED, SEAM_BLEED);
-    // The mirror triangle is inscribed in the object cell, the way a real tube's
-    // mirrors span the round chamber at the end of it. Hanging the cell off the
-    // corner the six triangles are assembled around instead leaves most of the
-    // simulation outside the view, and turning sweeps the pile clean out of it.
-    ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
-    drawChamber(ctx, scene, {
-      // The triangle's circumradius: the cell reaches all three corners and no
-      // further, so every chip that is simulated has a chance of being seen.
-      scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
-      // Drawn at their physical size, so what collides is what you see.
-      chipScale: settings.chipSize,
-      // The chamber is bolted to the tube, so it does not turn within it. Only
-      // media, which has no physics of its own, keeps the lag.
-      rotation: 0,
-      pan: {
-        x: scene.drag.x * DRAG_CELLS,
-        y: scene.drag.y * DRAG_CELLS,
-      },
-      sprites,
-      glow: settings.glow,
-    });
-    ctx.restore();
+    wedge.setTransform(1, 0, 0, 1, 0, 0);
+    wedge.globalCompositeOperation = 'source-over';
+    wedge.globalAlpha = fresh ? 1 : 1 - settings.trails;
+    wedge.drawImage(this.#frame, 0, 0);
   }
 
   /**
@@ -360,9 +368,12 @@ export class KaleidoscopeRenderer {
         centerY,
         this.#radius,
       );
+      // Light enough to read as the light falling off towards the rim of the
+      // tube. Tuned for a dark field it reached 60% black, which over a lit one
+      // reads as a grey ring painted round the edge.
       gradient.addColorStop(0, 'rgb(0 0 0 / 0)');
-      gradient.addColorStop(0.65, 'rgb(0 0 0 / 0.18)');
-      gradient.addColorStop(1, 'rgb(0 0 0 / 0.6)');
+      gradient.addColorStop(0.65, 'rgb(0 0 0 / 0.05)');
+      gradient.addColorStop(1, 'rgb(0 0 0 / 0.22)');
 
       return gradient;
     } catch {

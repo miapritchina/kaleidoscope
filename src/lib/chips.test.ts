@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanvas';
-import { createChipSprites } from './chips';
+import { CHIP_VARIANTS, createChipSprites } from './chips';
 import { getPalette } from './palettes';
 import { SHARD_KINDS } from './scene';
 
@@ -42,8 +42,8 @@ describe('createChipSprites', () => {
     const { createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { createCanvas });
 
-    const first = sprites.get('disc', 0.25);
-    const again = sprites.get('disc', 0.25);
+    const first = sprites.get('bead', 0.25);
+    const again = sprites.get('bead', 0.25);
 
     expect(again).toBe(first);
     expect(createCanvas).toHaveBeenCalledOnce();
@@ -53,7 +53,7 @@ describe('createChipSprites', () => {
     const { createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { steps: 8, createCanvas });
 
-    expect(sprites.get('disc', 0.26)).toBe(sprites.get('disc', 0.24));
+    expect(sprites.get('bead', 0.26)).toBe(sprites.get('bead', 0.24));
     expect(createCanvas).toHaveBeenCalledOnce();
   });
 
@@ -61,7 +61,7 @@ describe('createChipSprites', () => {
     const { createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { steps: 8, createCanvas });
 
-    expect(sprites.get('disc', 0.1)).not.toBe(sprites.get('disc', 0.6));
+    expect(sprites.get('bead', 0.1)).not.toBe(sprites.get('bead', 0.6));
     expect(createCanvas).toHaveBeenCalledTimes(2);
   });
 
@@ -69,19 +69,35 @@ describe('createChipSprites', () => {
     const { createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { steps: 8, createCanvas });
 
-    expect(sprites.get('disc', 1.25)).toBe(sprites.get('disc', 0.25));
-    expect(sprites.get('disc', -0.75)).toBe(sprites.get('disc', 0.25));
+    expect(sprites.get('bead', 1.25)).toBe(sprites.get('bead', 0.25));
+    expect(sprites.get('bead', -0.75)).toBe(sprites.get('bead', 0.25));
   });
 
-  it('paints a body and a catch-light, which is what makes it read as glass', () => {
+  // A chip is a solid with flat faces, and each face turns the light a
+  // different way. Airbrushing a single soft gradient over it is what makes
+  // rendered glass read as plastic.
+  it('paints a body, the faces of a bevel, a catch-light and a rim', () => {
     const { contexts, createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { createCanvas });
 
-    sprites.get('disc', 0.5);
+    sprites.get('triangle', 0.5);
 
     const [chip] = contexts;
-    expect(chip!.countOf('fill')).toBe(1);
+    // The body, three bevel faces, and the spark.
+    expect(chip!.countOf('fill')).toBe(5);
+    // The spark is clipped to the chip, so it cannot hang over an edge.
+    expect(chip!.countOf('clip')).toBe(1);
     expect(chip!.countOf('stroke')).toBe(1);
+  });
+
+  // Every chip cut from the same die is what makes a chamber look printed.
+  it('cuts each shape more than one way', () => {
+    const { createCanvas } = recordingCanvases();
+    const sprites = createChipSprites(palette, { createCanvas });
+
+    expect(sprites.get('shard', 0.5, 0)).not.toBe(sprites.get('shard', 0.5, 1));
+    expect(sprites.get('shard', 0.5, CHIP_VARIANTS)).toBe(sprites.get('shard', 0.5, 0));
+    expect(createCanvas).toHaveBeenCalledTimes(2);
   });
 
   it('survives a canvas that cannot give a context', () => {
@@ -89,7 +105,7 @@ describe('createChipSprites', () => {
       createCanvas: () => ({ getContext: () => null }) as unknown as HTMLCanvasElement,
     });
 
-    expect(sprites.get('disc', 0.5)).toBeNull();
+    expect(sprites.get('bead', 0.5)).toBeNull();
   });
 
   it('exposes the palette it was built for, so it can be swapped when that changes', () => {

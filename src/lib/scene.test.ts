@@ -18,7 +18,7 @@ const sprites = createChipSprites(getPalette('aurora'), {
     }) as unknown as HTMLCanvasElement,
 });
 
-const BASE = { rotation: 0, pan: { x: 0, y: 0 }, sprites, glow: false };
+const BASE = { rotation: 0, pan: { x: 0, y: 0 }, sprites, light: false };
 
 describe('createScene', () => {
   it('is deterministic for a given seed', () => {
@@ -43,7 +43,10 @@ describe('createScene', () => {
   });
 
   it('opens on a settled pile rather than glass in mid-air', () => {
-    const scene = createScene('settled', 30);
+    // Well short of a full chamber, so the pile has somewhere to fall to. Pack
+    // it and the glass has nowhere to go, and where its centre of mass lands
+    // says nothing about whether it settled.
+    const scene = createScene('settled', 14);
 
     // Everything has come to rest, and gravity is down, so the pile has
     // gathered in the lower half rather than staying where it was scattered.
@@ -158,7 +161,9 @@ describe('updateScene', () => {
   it('holds the chips still while the tube is at rest', () => {
     const scene = createScene('still', 12);
 
-    for (let i = 0; i < 30; i += 1) {
+    // Left alone for a few seconds first: a pile that is still relaxing has not
+    // finished settling yet, which is a different thing from simmering.
+    for (let i = 0; i < 120; i += 1) {
       updateScene(scene, { dt: 0.05, turn: 0, drag });
     }
 
@@ -254,12 +259,25 @@ describe('drawChamber', () => {
     expect(context.calls).toHaveLength(0);
   });
 
-  it('switches to additive blending when glow is on', () => {
-    const context = createFakeContext();
+  // Glass takes colour out of the light behind it rather than adding its own.
+  it('composites the glass subtractively, whatever the light', () => {
+    for (const light of [false, true]) {
+      const context = createFakeContext();
 
-    drawChamber(asContext(context), createScene('glow', 2), { ...BASE, scale: 50, glow: true });
+      drawChamber(asContext(context), createScene('blend', 2), { ...BASE, scale: 50, light });
 
-    expect(context.globalCompositeOperation).toBe('lighter');
+      expect(context.globalCompositeOperation).toBe('multiply');
+    }
+  });
+
+  it('thins the glass under a strong light, so more of it comes through', () => {
+    const soft = createFakeContext();
+    const bright = createFakeContext();
+
+    drawChamber(asContext(soft), createScene('thin', 6), { ...BASE, scale: 60 });
+    drawChamber(asContext(bright), createScene('thin', 6), { ...BASE, scale: 60, light: true });
+
+    expect(bright.globalAlpha as number).toBeLessThan(soft.globalAlpha as number);
   });
 
   it('scales the glass without moving it', () => {
