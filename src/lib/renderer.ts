@@ -1,7 +1,7 @@
 import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
-import { getPalette, type Palette } from './palettes';
+import { getPalette, rgbToCss, type Palette } from './palettes';
 import { DRAG_CELLS, drawChamber, type Scene } from './scene';
 import { LIMITS, type Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
@@ -18,6 +18,18 @@ type WedgeMode = 'shards' | 'media' | 'empty';
  * neighbour cover it completely.
  */
 const SEAM_BLEED = 2;
+
+/**
+ * What one bounce off a mirror leaves of the light, per channel.
+ *
+ * Silvered behind glass the light crosses twice, so a few percent goes each
+ * time and the red goes fastest — which is why a corridor of mirrors turns
+ * green rather than merely grey.
+ */
+const MIRROR_TINT = { r: 0.958, g: 0.983, b: 0.975 };
+
+/** Stops in the falloff gradient. Enough that the curve reads as smooth. */
+const FALLOFF_STOPS = 8;
 
 /**
  * Side of the mirror triangle, as a fraction of the smaller viewport edge.
@@ -52,7 +64,8 @@ export class KaleidoscopeRenderer {
   readonly #hexagon: HTMLCanvasElement;
   readonly #hexagonCtx: CanvasRenderingContext2D | null;
 
-  #vignette: CanvasGradient | null = null;
+  #falloff: CanvasGradient | null = null;
+  #falloffSide = 0;
   #sprites: ChipSprites | null = null;
   #mode: WedgeMode | null = null;
 
@@ -121,7 +134,7 @@ export class KaleidoscopeRenderer {
     this.#frame.width = surface;
     this.#frame.height = surface;
 
-    this.#vignette = this.#createVignette();
+    this.#falloff = null;
   }
 
   /**
@@ -297,9 +310,15 @@ export class KaleidoscopeRenderer {
 
     ctx.restore();
 
-    if (this.#vignette) {
-      ctx.fillStyle = this.#vignette;
+    // What the mirrors themselves cost, applied last because it applies to the
+    // whole view — the light coming through the gaps as much as the glass.
+    const falloff = this.#mirrorFalloff(side);
+
+    if (falloff) {
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = falloff;
       ctx.fillRect(0, 0, this.#width, this.#height);
+      ctx.globalCompositeOperation = 'source-over';
     }
   }
 
@@ -354,26 +373,59 @@ export class KaleidoscopeRenderer {
     return cell;
   }
 
-  #createVignette(): CanvasGradient | null {
+  /**
+   * What the mirrors take out of the light, as a gradient to multiply the view
+   * by.
+   *
+   * A mirror is not free. Each bounce loses a few percent, and it loses it
+   * unevenly: a household mirror is silvered behind a sheet of glass the light
+   * has to cross twice, and glass absorbs red, which is why the far end of a
+   * corridor of mirrors is green. The cell you are looking straight down has
+   * taken no bounces; every cell further out has taken more, so the view is
+   * brightest and truest on the axis and goes progressively dimmer and greener
+   * towards the rim.
+   *
+   * That count is what sets the shape of this. Neighbouring cells sit one
+   * lattice step apart and a step is two reflections, so a point `r` out from
+   * the middle has been through about `2r / (side * sqrt(3))` of them.
+   *
+   * Cached: the stops only move when the triangle or the viewport does.
+   */
+  #mirrorFalloff(side: number): CanvasGradient | null {
+    if (this.#falloff && this.#falloffSide === side) {
+      return this.#falloff;
+    }
+
     const centerX = this.#width / 2;
     const centerY = this.#height / 2;
-    const inner = Math.min(this.#width, this.#height) * 0.25;
 
     try {
       const gradient = this.#ctx.createRadialGradient(
         centerX,
         centerY,
-        inner,
+        0,
         centerX,
         centerY,
         this.#radius,
       );
-      // Light enough to read as the light falling off towards the rim of the
-      // tube. Tuned for a dark field it reached 60% black, which over a lit one
-      // reads as a grey ring painted round the edge.
-      gradient.addColorStop(0, 'rgb(0 0 0 / 0)');
-      gradient.addColorStop(0.65, 'rgb(0 0 0 / 0.05)');
-      gradient.addColorStop(1, 'rgb(0 0 0 / 0.22)');
+      const step = side * Math.sqrt(3);
+
+      for (let stop = 0; stop <= FALLOFF_STOPS; stop += 1) {
+        const at = stop / FALLOFF_STOPS;
+        const bounces = step > 0 ? (2 * at * this.#radius) / step : 0;
+
+        gradient.addColorStop(
+          at,
+          rgbToCss({
+            r: 255 * MIRROR_TINT.r ** bounces,
+            g: 255 * MIRROR_TINT.g ** bounces,
+            b: 255 * MIRROR_TINT.b ** bounces,
+          }),
+        );
+      }
+
+      this.#falloff = gradient;
+      this.#falloffSide = side;
 
       return gradient;
     } catch {
