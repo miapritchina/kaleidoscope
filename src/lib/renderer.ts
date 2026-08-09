@@ -1,7 +1,8 @@
 import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
+import { CHAMBER_RADIUS } from './chamber';
 import { getPalette, type Palette } from './palettes';
-import { DRAG_CELLS, drawCell, type Scene } from './scene';
+import { DRAG_CELLS, drawChamber, type Scene } from './scene';
 import type { Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
@@ -34,16 +35,6 @@ const SEAM_BLEED = 2;
  * than one enormous one; this puts roughly two and a half across at zoom 1.
  */
 const TRIANGLE_FRACTION = 0.24;
-
-/**
- * How much larger the chips are inside a mirror triangle.
- *
- * One cell per triangle keeps the density right, but at that scale the chips
- * come out small and marooned in the backdrop. Enlarging them alone fills the
- * chamber and lets the mirrors cut them, so each one continues into its own
- * reflection — which is what a packed chamber looks like.
- */
-const CHAMBER_CHIP_SCALE = 2.4;
 
 /**
  * Composites the kaleidoscope.
@@ -236,22 +227,20 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // Match the media path: the apex is the origin the field rotates about.
+    // Match the media path: the apex is the origin the chamber sits on.
     ctx.translate(SEAM_BLEED, SEAM_BLEED);
-    drawCell(ctx, scene, {
-      size: reach,
-      // The rosette's mirrors are long, so the cell repeats several times along
-      // them. A three-mirror tube is the other way round: the chamber is about
-      // as wide as the triangle, so one cell fills it and you see whole chips
-      // rather than a dense repeat.
-      cellSize: triangleSide > 0 ? reach : reach * BASE_CELL_FRACTION * settings.zoom,
-      chipScale: (triangleSide > 0 ? CHAMBER_CHIP_SCALE : 1) * settings.chipSize,
-      // Only the lag: the tube's own angle is applied to the whole assembly
-      // below, so applying it here as well would turn everything twice.
-      rotation: scene.contents - scene.tube,
+    drawChamber(ctx, scene, {
+      // A triangle's chamber spans its side; the rosette's mirrors are longer,
+      // so its chamber is a fraction of the wedge and zoom scales it.
+      scale: triangleSide > 0 ? reach / CHAMBER_RADIUS : reach * BASE_CELL_FRACTION * settings.zoom,
+      // Drawn at their physical size, so what collides is what you see.
+      chipScale: settings.chipSize,
+      // The chamber is bolted to the tube, so it does not turn within it. Only
+      // media, which has no physics of its own, keeps the lag.
+      rotation: 0,
       pan: {
-        x: scene.pan.x + scene.drag.x * DRAG_CELLS,
-        y: scene.pan.y + scene.drag.y * DRAG_CELLS,
+        x: scene.drag.x * DRAG_CELLS,
+        y: scene.drag.y * DRAG_CELLS,
       },
       sprites,
       glow: settings.glow,

@@ -112,31 +112,21 @@ describe('KaleidoscopeRenderer', () => {
     expect(main.countOf('scale')).toBe(4);
   });
 
-  // Turning the tube revolves the assembly; the contents lagging behind it is
-  // what makes the figure evolve at the same time.
-  it('rotates the assembly by the tube angle and the source by the lag', () => {
-    const { renderer, wedge } = createRenderer();
+  // Turning the tube revolves the whole assembly. The chamber is bolted inside
+  // it, so it does not counter-rotate — the glass moves because gravity tips
+  // it, not because the chamber is turned against the mirrors.
+  it('rotates the assembly by the tube angle and leaves the chamber fixed in it', () => {
+    const { renderer, main, wedge } = createRenderer();
     const scene = createScene('seed', 6);
-    // A value that is not a multiple of the wedge step, so the assertion below
-    // cannot pass by coinciding with a wedge's own placement.
-    scene.contents = 0.1234;
+    scene.tube = 0.77;
+    scene.contents = 0.77;
 
     renderer.resize(200, 200, 1);
     renderer.render(scene, ROSETTE);
 
-    // Contents at 0.1234 with the tube at 0: the source carries the full lag.
-    expect(wedge.argsOf('rotate')).toContainEqual([0.1234]);
-
-    const turned = createRenderer();
-    const spun = createScene('seed', 6);
-    spun.tube = 0.77;
-    spun.contents = 0.77;
-    turned.renderer.resize(200, 200, 1);
-    turned.renderer.render(spun, ROSETTE);
-
-    // Fully settled: the assembly carries it all and the source carries none.
-    expect(turned.main.argsOf('rotate')).toContainEqual([0.77]);
-    expect(turned.wedge.argsOf('rotate')).toContainEqual([0]);
+    expect(main.argsOf('rotate')).toContainEqual([0.77]);
+    expect(wedge.argsOf('rotate')).toContainEqual([0]);
+    expect(wedge.argsOf('rotate')).not.toContainEqual([0.77]);
   });
 
   it('balances every save with a restore', () => {

@@ -36,8 +36,8 @@ The dev server prints a local URL (http://localhost:5173 by default).
 A kaleidoscope is a small chamber of loose chips seen through mirrors, and the renderer
 works the same way:
 
-1. **The source.** `lib/scene.ts` keeps a field of shards in a unit cell that tiles
-   infinitely — positions wrap, so the field never runs out however far it pans.
+1. **The source.** `lib/scene.ts` holds the object chamber — loose glass in a bounded cell,
+   simulated in `lib/chamber.ts`.
    `lib/media.ts` substitutes a photo or a camera frame for that cell. Each chip is a
    pre-rendered sprite (`lib/chips.ts`): backlit glass is a gradient and a catch-light, and
    building those per chip per frame would mean hundreds of gradients a frame, so every
@@ -68,7 +68,7 @@ src/
   components/    Canvas surface and the control panel
     controls/    Small labelled form fields
   hooks/         Animation frame, element size, media queries, settings, gestures, photo, camera
-  lib/           Rendering engine, chips, palettes, media, settings — no React
+  lib/           Rendering engine, chamber physics, tiling, chips, palettes, settings — no React
   test/          Vitest setup and a fake 2D context
 ```
 
@@ -115,15 +115,25 @@ spin control: the tube is turned by swiping, as below.
 Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, the swipe's
 speed sets how fast, and the turn stops when the swipe does.
 
-Turning a real kaleidoscope turns the mirrors and the chamber together, so the whole figure
-revolves — but the chips are loose, so they trail the barrel and settle once it stops. That
-lag is modelled (`Scene.contents` against `Scene.tube`) and capped: uncapped, the lag
-settles at `rate / catchup`, so a brisk swipe leaves the chips half a turn behind and they
-go on unwinding for seconds after the finger lifts, which reads as the tube still turning.
+The chamber is bolted inside the tube, so gravity does not point "down" in its
+coordinates — it points down in the **world**, and turning sweeps that direction around the
+chamber. That is the whole mechanism: the pattern does not change because the tube is
+turning, it changes because turning tips the glass, it avalanches, and it settles into a
+new pile. Measured on the built app: essentially still at rest, a burst of change on the
+swipe, then back to rest.
 
-The chips are inert unless something moves them, so their jostle is tied to the turning
-rate. At rest the figure is completely still, which is what a kaleidoscope sitting on a
-table does.
+Contacts are resolved by moving positions and reading the velocity back off how far each
+chip actually travelled. Impulses alone leave a pile creeping forever, because gravity
+keeps feeding in velocity the contacts never quite take out; here a chip held in place
+records no movement, and so comes to rest.
+
+The glass is drawn at its physical size, so what collides is what you see, and it is sized
+to pack the chamber to around two thirds by area — a real cell is full, so tipping it
+rearranges the pile rather than emptying most of the view.
+
+Turning a real kaleidoscope turns the mirrors and the chamber together, so the whole figure
+revolves rigidly. A photo or camera frame has no physics of its own, so it keeps a capped
+lag behind the tube instead, which lets it evolve as it turns.
 
 Hold **Shift**, use a secondary button, or put a second finger down to pan the source
 instead of turning it.
