@@ -42,19 +42,19 @@ works the same way:
    pre-rendered sprite (`lib/chips.ts`): backlit glass is a gradient and a catch-light, and
    building those per chip per frame would mean hundreds of gradients a frame, so every
    shape-and-colour pair is rendered once and stamped from then on.
-2. **The wedge.** Once per frame the source is painted into a single offscreen wedge
+2. **The triangle.** Once per frame the source is painted into a single offscreen triangle
    (`lib/renderer.ts`). Fading that surface instead of clearing it is what produces motion
    trails.
-3. **The mirrors.** For the three-mirror tube (`lib/tiling.ts`), six mirrored triangles are
-   assembled into one hexagon and that hexagon is stamped across the field on its
-   translation lattice. For the two-mirror rosette, the wedge is blitted around the centre,
-   every other copy reflected. Either way neighbours meet mirror to mirror.
+3. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
+   and that hexagon is stamped across the field on its translation lattice, so neighbours
+   meet mirror to mirror.
 
 Drawing the source once and blitting the result keeps the per-frame cost proportional to
-the source rather than to `source x segments`.
+the source rather than to `source x triangles` — and building the hexagon once means the
+field costs one blit per hexagon however many are on screen.
 
-Each wedge's clip is bled a couple of pixels past its seam, onto a surface that carries a
-matching margin. Without both halves of that, two antialiased clip edges each cover the
+Each triangle's clip is bled a couple of pixels past its seam, onto a surface that carries
+a matching margin. Without both halves of that, two antialiased clip edges each cover the
 boundary pixel about halfway and composite to roughly 75%, letting the backdrop show
 through as dark spokes.
 
@@ -74,17 +74,19 @@ src/
 
 ## Settings
 
-| Setting | Range               | Effect                                                  |
-| ------- | ------------------- | ------------------------------------------------------- |
-| Input   | shards/photo/camera | What the mirrors repeat                                 |
-| Mirrors | triangle/rosette    | Three mirrors tiling the field, or two making a rosette |
-| Fold    | 2–18                | Rosette only: mirror lines through the centre           |
-| Zoom    | 0.5x–3x             | Magnification of the object cell                        |
-| Count   | 4–60                | Shards in the cell                                      |
-| Trails  | 0–95%               | How long each frame lingers                             |
-| Palette | 5 presets           | Shard colours and backdrop                              |
-| Glow    | on/off              | Additive blending, so overlaps bloom                    |
-| Seed    | any text            | Seeds the shard generator; same seed, same shards       |
+| Setting   | Range               | Effect                                            |
+| --------- | ------------------- | ------------------------------------------------- |
+| Input     | shards/photo/camera | What the mirrors repeat                           |
+| Zoom      | 0.5x–3x             | Magnification of the object cell                  |
+| Trails    | 0–95%               | How long each frame lingers                       |
+| Count     | 4–60                | Shards in the cell                                |
+| Chip size | 0.4x–2.5x           | How big each piece is, without changing how many  |
+| Palette   | 5 presets           | Shard colours and backdrop                        |
+| Glow      | on/off              | Additive blending, so overlaps bloom              |
+| Seed      | any text            | Seeds the shard generator; same seed, same shards |
+
+The last five apply to the shard field only; the rest apply to every source. There is no
+mirror control — a tube has three, and no spin control: it is turned by swiping, as below.
 
 ## The mirrors
 
@@ -103,12 +105,8 @@ mirrors cut them and each continues into its own reflection — which is what fi
 chamber. Cell size alone would set both the chip size and how many land in view, so
 enlarging it to get bigger chips thins them out instead.
 
-**Two mirrors** hinged at `180 / N` degrees is the other real arrangement, and gives a
-single `N`-fold rosette. It is kept as an option; the **Fold** slider applies only to it.
-Links made when this control counted wedges are still read correctly, at half the number.
-
-The last four apply to the shard field only; the rest apply to every source. There is no
-spin control: the tube is turned by swiping, as below.
+Older links carried a mirror arrangement this app no longer offers. They still open, on
+whichever of their settings still mean something.
 
 ## Turning the tube
 

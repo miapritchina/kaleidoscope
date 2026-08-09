@@ -124,8 +124,10 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
   );
 }
 
-function describe({ mirrors, source, seed }: Settings): string {
-  const assembly = `Kaleidoscope with ${mirrors} mirrors`;
+function describe({ source, seed }: Settings): string {
+  // The mirror count is not a setting: a tube has three, and there is nothing
+  // to announce about it that the word "kaleidoscope" does not already say.
+  const assembly = 'Kaleidoscope';
 
   switch (source) {
     case 'image':

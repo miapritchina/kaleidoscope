@@ -19,9 +19,7 @@ describe('Kaleidoscope', () => {
     const canvas = screen.getByRole('img');
 
     expect(canvas.tagName).toBe('CANVAS');
-    expect(canvas).toHaveAccessibleName(
-      `Kaleidoscope with ${String(DEFAULT_SETTINGS.mirrors)} mirrors, seed ${DEFAULT_SETTINGS.seed}`,
-    );
+    expect(canvas).toHaveAccessibleName(`Kaleidoscope, seed ${DEFAULT_SETTINGS.seed}`);
   });
 
   it('survives a missing canvas context instead of crashing the page', () => {
