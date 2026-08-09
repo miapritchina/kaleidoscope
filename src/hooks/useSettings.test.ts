@@ -7,6 +7,7 @@ import { settingsReducer, useSettings } from './useSettings';
 /** One valid, genuinely different value per setting. */
 const CHANGES = [
   ['source', 'camera'],
+  ['geometry', 'rosette'],
   ['mirrors', 3],
   ['shards', 40],
   ['zoom', 2],

@@ -62,6 +62,7 @@ describe('sanitizeSettings', () => {
 
     expect(result).toEqual({
       source: DEFAULT_SETTINGS.source,
+      geometry: DEFAULT_SETTINGS.geometry,
       mirrors: LIMITS.mirrors.max,
       shards: 30,
       zoom: 1.5,
@@ -135,6 +136,11 @@ describe('search param round trip', () => {
 
   it('reads a legacy wedge count from stored settings too', () => {
     expect(sanitizeSettings({ segments: 12 }).mirrors).toBe(6);
+  });
+
+  it('keeps the three-mirror tiling as the default geometry', () => {
+    expect(DEFAULT_SETTINGS.geometry).toBe('triangle');
+    expect(sanitizeSettings({ geometry: 'nonsense' }).geometry).toBe('triangle');
   });
 
   it('treats a missing glow flag as the default', () => {

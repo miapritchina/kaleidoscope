@@ -1,6 +1,22 @@
 import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
+/**
+ * How the mirrors are arranged.
+ *
+ * A real kaleidoscope is a triangular prism of three mirrors, and reflecting in
+ * its three sides tiles the whole field with repeating hexagons. Two mirrors
+ * hinged at an angle instead give a single rosette about one centre — a real
+ * arrangement too, and the one this app had first.
+ */
+export const GEOMETRIES = ['triangle', 'rosette'] as const;
+
+export type GeometryId = (typeof GEOMETRIES)[number];
+
+export function isGeometryId(value: unknown): value is GeometryId {
+  return typeof value === 'string' && (GEOMETRIES as readonly string[]).includes(value);
+}
+
 /** What the mirrors repeat. */
 export const SOURCES = ['shards', 'image', 'camera'] as const;
 
@@ -18,8 +34,11 @@ export interface Settings {
    * `camera` only means "reopen that panel", not "reopen that picture".
    */
   source: SourceId;
+  /** Three mirrors tiling the field, or two making a rosette. */
+  geometry: GeometryId;
   /**
-   * Number of mirror lines through the centre.
+   * Number of mirror lines through the centre. Rosette only — a three-mirror
+   * tube is always three.
    *
    * Each mirror produces a reflected pair, so the pattern repeats `2 x mirrors`
    * times around the circle — a 3-mirror kaleidoscope gives the familiar
@@ -34,7 +53,12 @@ export interface Settings {
   zoom: number;
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
   trails: number;
-  /** Additive blending, which makes overlaps bloom. */
+  /**
+   * Additive blending, which makes overlaps bloom.
+   *
+   * Off by default: coloured glass layered over glass deepens, it does not
+   * blow out to white, and the chips inside a mirror triangle overlap heavily.
+   */
   glow: boolean;
   paletteId: PaletteId;
   /** Seed for the shard generator. */
@@ -61,11 +85,12 @@ export const LIMITS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
+  geometry: 'triangle',
   mirrors: 6,
   shards: 24,
   zoom: 1.2,
   trails: 0.35,
-  glow: true,
+  glow: false,
   paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
 };
@@ -97,6 +122,7 @@ export function sanitizeSettings(input: unknown): Settings {
 
   return {
     source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
+    geometry: isGeometryId(raw.geometry) ? raw.geometry : DEFAULT_SETTINGS.geometry,
     mirrors: clampToLimit(readMirrors(raw), LIMITS.mirrors),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
@@ -120,6 +146,7 @@ export function randomizeSeed(settings: Settings): Settings {
  */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
+    geometry: settings.geometry,
     mirrors: String(settings.mirrors),
     shards: String(settings.shards),
     zoom: String(settings.zoom),
@@ -154,6 +181,7 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
   const glow = params.get('glow');
 
   return sanitizeSettings({
+    geometry: params.get('geometry'),
     mirrors: params.get('mirrors'),
     // Accepted for links made before this was counted in mirrors.
     segments: params.get('segments'),

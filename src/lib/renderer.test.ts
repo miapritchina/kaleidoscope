@@ -5,6 +5,9 @@ import { KaleidoscopeRenderer } from './renderer';
 import { createScene } from './scene';
 import { DEFAULT_SETTINGS } from './settings';
 
+/** The wedge-and-sector path; the default is now the three-mirror tiling. */
+const ROSETTE = { ...DEFAULT_SETTINGS, geometry: 'rosette' as const };
+
 interface Harness {
   renderer: KaleidoscopeRenderer;
   main: FakeContext;
@@ -73,7 +76,7 @@ describe('KaleidoscopeRenderer', () => {
   it('does nothing when rendering before a resize', () => {
     const { renderer, main } = createRenderer();
 
-    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
+    renderer.render(createScene('seed', 4), ROSETTE);
 
     expect(main.calls).toHaveLength(0);
   });
@@ -82,7 +85,7 @@ describe('KaleidoscopeRenderer', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 4 });
+    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 4 });
 
     expect(main.countOf('drawImage')).toBe(8);
     expect(main.countOf('clip')).toBe(8);
@@ -92,7 +95,7 @@ describe('KaleidoscopeRenderer', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 3 });
+    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 3 });
 
     // Three mirrors give the classic hexagonal figure: six wedges.
     expect(main.countOf('drawImage')).toBe(6);
@@ -103,7 +106,7 @@ describe('KaleidoscopeRenderer', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, mirrors: 4 });
+    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 4 });
 
     // Half of the wedges are reflected copies of the other half.
     expect(main.countOf('scale')).toBe(4);
@@ -119,7 +122,7 @@ describe('KaleidoscopeRenderer', () => {
     scene.contents = 0.1234;
 
     renderer.resize(200, 200, 1);
-    renderer.render(scene, DEFAULT_SETTINGS);
+    renderer.render(scene, ROSETTE);
 
     // Contents at 0.1234 with the tube at 0: the source carries the full lag.
     expect(wedge.argsOf('rotate')).toContainEqual([0.1234]);
@@ -129,7 +132,7 @@ describe('KaleidoscopeRenderer', () => {
     spun.tube = 0.77;
     spun.contents = 0.77;
     turned.renderer.resize(200, 200, 1);
-    turned.renderer.render(spun, DEFAULT_SETTINGS);
+    turned.renderer.render(spun, ROSETTE);
 
     // Fully settled: the assembly carries it all and the source carries none.
     expect(turned.main.argsOf('rotate')).toContainEqual([0.77]);
@@ -140,7 +143,7 @@ describe('KaleidoscopeRenderer', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    renderer.render(createScene('seed', 6), ROSETTE);
 
     expect(main.countOf('save')).toBe(main.countOf('restore'));
   });
@@ -149,7 +152,7 @@ describe('KaleidoscopeRenderer', () => {
     const { renderer, wedge } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0.6 });
+    renderer.render(createScene('seed', 6), { ...ROSETTE, trails: 0.6 });
 
     expect(wedge.countOf('fillRect')).toBeGreaterThan(0);
   });

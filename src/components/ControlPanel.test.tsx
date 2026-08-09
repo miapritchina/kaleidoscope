@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { ControlPanel, type ControlPanelProps } from './ControlPanel';
 
+/** The fold slider only exists on the two-mirror rosette. */
+const ROSETTE = { ...DEFAULT_SETTINGS, geometry: 'rosette' as const };
+
 function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
   const props: ControlPanelProps = {
     settings: DEFAULT_SETTINGS,
@@ -36,7 +39,7 @@ describe('ControlPanel', () => {
   });
 
   it('shows the current values next to their labels', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, mirrors: 9, zoom: 2, trails: 0.5 } });
+    renderPanel({ settings: { ...ROSETTE, mirrors: 9, zoom: 2, trails: 0.5 } });
 
     expect(screen.getByText('9 (18-fold)')).toBeInTheDocument();
     expect(screen.getByText('2.00x')).toBeInTheDocument();
@@ -51,13 +54,48 @@ describe('ControlPanel', () => {
   });
 
   it('reports slider changes', () => {
-    const { props } = renderPanel();
+    const { props } = renderPanel({ settings: ROSETTE });
 
     // jsdom does not implement arrow-key stepping on range inputs, so the
     // change event is dispatched directly.
-    fireEvent.change(screen.getByLabelText('Mirrors'), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText('Fold'), { target: { value: '3' } });
 
     expect(props.onChange).toHaveBeenCalledWith('mirrors', 3);
+  });
+
+  // A real kaleidoscope is a triangular tube of three mirrors, and its pattern
+  // tiles the field rather than forming a single rosette.
+  it('offers the three-mirror tiling and defaults to it', () => {
+    renderPanel();
+
+    const mirrors = screen.getByLabelText('Mirrors');
+
+    expect(mirrors).toHaveValue('triangle');
+    expect([...(mirrors as HTMLSelectElement).options].map((option) => option.value)).toEqual([
+      'triangle',
+      'rosette',
+    ]);
+  });
+
+  it('hides the fold slider for the three-mirror tube, which is always three', () => {
+    renderPanel();
+
+    expect(screen.queryByLabelText('Fold')).not.toBeInTheDocument();
+  });
+
+  it('shows the fold slider for the two-mirror rosette', () => {
+    renderPanel({ settings: ROSETTE });
+
+    expect(screen.getByLabelText('Fold')).toBeInTheDocument();
+  });
+
+  it('reports geometry changes', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.selectOptions(screen.getByLabelText('Mirrors'), 'rosette');
+
+    expect(props.onChange).toHaveBeenCalledWith('geometry', 'rosette');
   });
 
   it('describes slider values to assistive tech', () => {

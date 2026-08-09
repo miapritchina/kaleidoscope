@@ -1,8 +1,9 @@
 # Kaleidoscope
 
-An interactive kaleidoscope, rendered on a 2D canvas. Mirror a generated field of drifting
-shards, a photo of your own, or a live camera feed. Built with React 19, TypeScript and
-Vite.
+An interactive kaleidoscope, rendered on a 2D canvas. A triangular tube of three mirrors
+tiles the field with repeating hexagons, the way a real one does. Feed it a generated field
+of glass chips, a photo of your own, or a live camera feed. Built with React 19, TypeScript
+and Vite.
 
 Swipe across the artwork to turn the tube. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
@@ -44,8 +45,10 @@ works the same way:
 2. **The wedge.** Once per frame the source is painted into a single offscreen wedge
    (`lib/renderer.ts`). Fading that surface instead of clearing it is what produces motion
    trails.
-3. **The mirrors.** The wedge is blitted around the centre, every other copy reflected, so
-   neighbouring wedges always meet edge to edge.
+3. **The mirrors.** For the three-mirror tube (`lib/tiling.ts`), six mirrored triangles are
+   assembled into one hexagon and that hexagon is stamped across the field on its
+   translation lattice. For the two-mirror rosette, the wedge is blitted around the centre,
+   every other copy reflected. Either way neighbours meet mirror to mirror.
 
 Drawing the source once and blitting the result keeps the per-frame cost proportional to
 the source rather than to `source x segments`.
@@ -71,22 +74,38 @@ src/
 
 ## Settings
 
-| Setting | Range               | Effect                                                               |
-| ------- | ------------------- | -------------------------------------------------------------------- |
-| Input   | shards/photo/camera | What the mirrors repeat                                              |
-| Mirrors | 2–18                | Mirror lines through the centre; the figure repeats twice per mirror |
-| Zoom    | 0.5x–3x             | Magnification of the object cell                                     |
-| Count   | 4–60                | Shards in the cell                                                   |
-| Trails  | 0–95%               | How long each frame lingers                                          |
-| Palette | 5 presets           | Shard colours and backdrop                                           |
-| Glow    | on/off              | Additive blending, so overlaps bloom                                 |
-| Seed    | any text            | Seeds the shard generator; same seed, same shards                    |
+| Setting | Range               | Effect                                                  |
+| ------- | ------------------- | ------------------------------------------------------- |
+| Input   | shards/photo/camera | What the mirrors repeat                                 |
+| Mirrors | triangle/rosette    | Three mirrors tiling the field, or two making a rosette |
+| Fold    | 2–18                | Rosette only: mirror lines through the centre           |
+| Zoom    | 0.5x–3x             | Magnification of the object cell                        |
+| Count   | 4–60                | Shards in the cell                                      |
+| Trails  | 0–95%               | How long each frame lingers                             |
+| Palette | 5 presets           | Shard colours and backdrop                              |
+| Glow    | on/off              | Additive blending, so overlaps bloom                    |
+| Seed    | any text            | Seeds the shard generator; same seed, same shards       |
 
-**Mirrors** counts mirror lines, the way the physical instrument does, not wedges. Each
-mirror reflects, so `N` mirrors give `2N` wedges and `N`-fold rotational symmetry — 3 is
-the classic hexagonal kaleidoscope. Counting this way also keeps the wedge count even,
-which the alternating reflections need in order to meet edge to edge. Links made when this
-control counted wedges are still read correctly, at half the number.
+## The mirrors
+
+A real kaleidoscope is a **triangular prism of three mirrors**. Reflecting in its three
+sides generates the (3,3,3) triangle group: six equilateral triangles meet around every
+vertex, alternating mirrored, to form a hexagon — and those hexagons repeat across the
+whole field by translation. What you see fills the view; it is not a single rosette spun
+about the centre.
+
+The repeat is a genuine translation because composing reflections in two parallel mirror
+lines is a translation of twice their spacing. The lines lie `side * sqrt(3) / 2` apart, so
+the lattice steps by `side * sqrt(3)`.
+
+Inside a triangle the chamber holds one object cell, with the chips scaled up so the
+mirrors cut them and each continues into its own reflection — which is what fills a real
+chamber. Cell size alone would set both the chip size and how many land in view, so
+enlarging it to get bigger chips thins them out instead.
+
+**Two mirrors** hinged at `180 / N` degrees is the other real arrangement, and gives a
+single `N`-fold rosette. It is kept as an option; the **Fold** slider applies only to it.
+Links made when this control counted wedges are still read correctly, at half the number.
 
 The last four apply to the shard field only; the rest apply to every source. There is no
 spin control: the tube is turned by swiping, as below.
