@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import styles from './App.module.css';
 import { ControlPanel } from './components/ControlPanel';
@@ -29,18 +29,11 @@ export function App() {
     setPlayOverride(null);
   }
 
-  const { isPlaying, suppressSpin } = resolvePlayback({
+  const { isPlaying } = resolvePlayback({
     source: settings.source,
     prefersReducedMotion,
     override: playOverride,
   });
-
-  // The panel keeps showing the chosen spin; only what is rendered is held
-  // still. Memoised so the canvas does not see a new object every render.
-  const renderedSettings = useMemo(
-    () => (suppressSpin && settings.speed !== 0 ? { ...settings, speed: 0 } : settings),
-    [settings, suppressSpin],
-  );
 
   const image = useImageSource();
   // The video element lives here so it can sit in the document — Safari will
@@ -116,12 +109,7 @@ export function App() {
           announce(`Loaded ${file.name}.`);
         }}
       >
-        <Kaleidoscope
-          ref={kaleidoscopeRef}
-          settings={renderedSettings}
-          paused={!isPlaying}
-          media={media}
-        />
+        <Kaleidoscope ref={kaleidoscopeRef} settings={settings} paused={!isPlaying} media={media} />
 
         {emptyState ? <p className={styles.emptyState}>{emptyState}</p> : null}
 
@@ -145,8 +133,8 @@ export function App() {
         <header className={styles.header}>
           <h1 className={styles.title}>Kaleidoscope</h1>
           <p className={styles.subtitle}>
-            A mirrored canvas toy. Feed it shards, a photo, or your camera, and move the pointer
-            over the artwork to steer it.
+            A mirrored canvas toy. Feed it shards, a photo, or your camera, then swipe across the
+            artwork to turn the tube.
           </p>
         </header>
 
@@ -169,8 +157,8 @@ export function App() {
         {prefersReducedMotion && playOverride === null && (
           <p className={styles.notice}>
             {isPlaying
-              ? 'Your system asks for reduced motion, so the mirrors are held still. The camera feed is live.'
-              : 'Motion is paused because your system asks for reduced motion. Press Play to animate anyway.'}
+              ? 'Your system asks for reduced motion. The camera feed is live; swiping still turns the tube.'
+              : 'Motion is paused because your system asks for reduced motion. Swiping still turns the tube; press Play to animate.'}
           </p>
         )}
       </aside>

@@ -4,9 +4,8 @@ An interactive kaleidoscope, rendered on a 2D canvas. Mirror a generated field o
 shards, a photo of your own, or a live camera feed. Built with React 19, TypeScript and
 Vite.
 
-Drag the artwork to move the source around inside the mirrors. Every look is described by
-a small set of settings, so a generated pattern can be reproduced from its seed or shared
-as a link.
+Swipe across the artwork to turn the tube. Every look is described by a small set of
+settings, so a generated pattern can be reproduced from its seed or shared as a link.
 
 ## Getting started
 
@@ -37,9 +36,11 @@ A kaleidoscope is a small chamber of loose chips seen through mirrors, and the r
 works the same way:
 
 1. **The source.** `lib/scene.ts` keeps a field of shards in a unit cell that tiles
-   infinitely — shards drift, spin, pulse and slide along the palette, and positions wrap,
-   so the field never runs out however far it pans. `lib/media.ts` substitutes a photo or a
-   camera frame for that cell.
+   infinitely — positions wrap, so the field never runs out however far it pans.
+   `lib/media.ts` substitutes a photo or a camera frame for that cell. Each chip is a
+   pre-rendered sprite (`lib/chips.ts`): backlit glass is a gradient and a catch-light, and
+   building those per chip per frame would mean hundreds of gradients a frame, so every
+   shape-and-colour pair is rendered once and stamped from then on.
 2. **The wedge.** Once per frame the source is painted into a single offscreen wedge
    (`lib/renderer.ts`). Fading that surface instead of clearing it is what produces motion
    trails.
@@ -63,8 +64,8 @@ the interesting parts testable without a browser.
 src/
   components/    Canvas surface and the control panel
     controls/    Small labelled form fields
-  hooks/         Animation frame, element size, media queries, settings, photo, camera
-  lib/           Rendering engine, palettes, media, settings — no React
+  hooks/         Animation frame, element size, media queries, settings, gestures, photo, camera
+  lib/           Rendering engine, chips, palettes, media, settings — no React
   test/          Vitest setup and a fake 2D context
 ```
 
@@ -74,7 +75,6 @@ src/
 | ------- | ------------------- | -------------------------------------------------------------------- |
 | Input   | shards/photo/camera | What the mirrors repeat                                              |
 | Mirrors | 2–18                | Mirror lines through the centre; the figure repeats twice per mirror |
-| Spin    | -0.5–0.5 turns/s    | Turns the source inside the mirrors; negative reverses               |
 | Zoom    | 0.5x–3x             | Magnification of the object cell                                     |
 | Count   | 4–60                | Shards in the cell                                                   |
 | Trails  | 0–95%               | How long each frame lingers                                          |
@@ -88,11 +88,26 @@ the classic hexagonal kaleidoscope. Counting this way also keeps the wedge count
 which the alternating reflections need in order to meet edge to edge. Links made when this
 control counted wedges are still read correctly, at half the number.
 
-**Spin** turns the source inside a fixed assembly, so the figure evolves the way a real
-kaleidoscope's does when the tube is turned. Rotating the finished figure instead would
-just revolve the whole picture rigidly.
+The last four apply to the shard field only; the rest apply to every source. There is no
+spin control: the tube is turned by swiping, as below.
 
-The last four apply to the shard field only; the rest apply to every source.
+## Turning the tube
+
+Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, the swipe's
+speed sets how fast, and the turn stops when the swipe does.
+
+Turning a real kaleidoscope turns the mirrors and the chamber together, so the whole figure
+revolves — but the chips are loose, so they trail the barrel and settle once it stops. That
+lag is modelled (`Scene.contents` against `Scene.tube`) and capped: uncapped, the lag
+settles at `rate / catchup`, so a brisk swipe leaves the chips half a turn behind and they
+go on unwinding for seconds after the finger lifts, which reads as the tube still turning.
+
+The chips are inert unless something moves them, so their jostle is tied to the turning
+rate. At rest the figure is completely still, which is what a kaleidoscope sitting on a
+table does.
+
+Hold **Shift**, use a secondary button, or put a second finger down to pan the source
+instead of turning it.
 
 Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
 link wins over stored settings on load. Both are treated as untrusted input and clamped to
@@ -112,9 +127,8 @@ uploaded, and no frame is stored. The camera is requested only while it is the s
 source, and its tracks are stopped the moment you switch away, so the camera light does
 not stay on behind your back.
 
-Drag the artwork to move the source around. It follows the pointer and stays where it is
-let go; a drag across half the stage is a full sweep of the travel. The pointer is only
-tracked while held down, so nothing moves when you are merely passing over the canvas.
+Shift-drag (or two-finger drag) moves the source around. It follows the pointer and stays
+where it is let go.
 
 A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
 its edges would show inside the wedge — and its travel is bounded by however much of the

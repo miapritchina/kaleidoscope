@@ -55,11 +55,15 @@ describe('drawMedia', () => {
 
     const [args] = ctx.argsOf('drawImage');
 
+    const [translated] = ctx.argsOf('translate');
+
     return {
       ctx,
       drawn: args
         ? { x: args[1] as number, y: args[2] as number, w: args[3] as number, h: args[4] as number }
         : null,
+      // The pan is a screen-space translation applied before the rotation.
+      offset: translated ? { x: translated[0] as number, y: translated[1] as number } : null,
     };
   }
 
@@ -100,32 +104,28 @@ describe('drawMedia', () => {
 
   it('pans by the slack the media has outside the covered square', () => {
     // At zoom 2 a square image is 400 wide against a 200 span: 100 of slack.
-    const centred = draw(fakeImage(400, 400), { zoom: 2 }).drawn;
-    const panned = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: -1 } }).drawn;
+    const { offset } = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: -1 } });
 
-    expect(panned!.x - centred!.x).toBe(100);
-    expect(panned!.y - centred!.y).toBe(-100);
+    expect(offset).toEqual({ x: 100, y: -100 });
   });
 
   it('cannot pan when the media exactly covers', () => {
-    const centred = draw(fakeImage(400, 400)).drawn;
-    const panned = draw(fakeImage(400, 400), { pan: { x: 1, y: 1 } }).drawn;
+    const { offset } = draw(fakeImage(400, 400), { pan: { x: 1, y: 1 } });
 
-    expect(panned).toEqual(centred);
+    expect(offset).toEqual({ x: 0, y: 0 });
   });
 
   it('clamps pan beyond the edges', () => {
-    const pinned = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: 1 } }).drawn;
-    const overshot = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 9, y: 9 } }).drawn;
+    const pinned = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: 1 } }).offset;
+    const overshot = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 9, y: 9 } }).offset;
 
     expect(overshot).toEqual(pinned);
   });
 
   it('ignores a non-finite pan', () => {
-    const centred = draw(fakeImage(400, 400), { zoom: 2 }).drawn;
-    const broken = draw(fakeImage(400, 400), { zoom: 2, pan: { x: Number.NaN, y: 0 } }).drawn;
+    const { offset } = draw(fakeImage(400, 400), { zoom: 2, pan: { x: Number.NaN, y: 0 } });
 
-    expect(broken).toEqual(centred);
+    expect(offset).toEqual({ x: 0, y: 0 });
   });
 
   it('applies alpha for trails and composites normally', () => {
@@ -144,6 +144,47 @@ describe('drawMedia', () => {
     const { ctx } = draw(fakeImage(400, 400), { rotation: Math.PI / 3 });
 
     expect(ctx.argsOf('rotate')[0]).toEqual([Math.PI / 3]);
+  });
+
+  // The viewer drags in screen space; the offset must not follow the spin.
+  it('pans in screen space, whatever the rotation', () => {
+    const upright = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: 0 } });
+    const turned = draw(fakeImage(400, 400), {
+      zoom: 2,
+      rotation: Math.PI / 2,
+      pan: { x: 1, y: 0 },
+    });
+
+    // Same screen-space translation before the rotation is applied.
+    expect(upright.offset).toEqual({ x: 100, y: 0 });
+    expect({
+      x: Math.round(turned.offset!.x),
+      y: Math.round(turned.offset!.y),
+    }).toEqual({ x: 100, y: 0 });
+  });
+
+  it('keeps a diagonal drag from pulling an edge in once rotated', () => {
+    // A wide photo has slack on one axis only; a diagonal drag rotated by 45
+    // degrees would otherwise exceed it.
+    const { ctx } = draw(fakeImage(800, 200), {
+      zoom: 1.5,
+      rotation: Math.PI / 4,
+      pan: { x: 1, y: 1 },
+    });
+    const [dx, dy] = (ctx.argsOf('translate')[0] ?? [0, 0]) as [number, number];
+
+    const { drawn } = draw(fakeImage(800, 200), { zoom: 1.5 });
+    const slackX = (drawn!.w - 200) / 2;
+    const slackY = (drawn!.h - 200) / 2;
+
+    // Back in the media's own frame the offset stays within its slack.
+    const cos = Math.cos(-Math.PI / 4);
+    const sin = Math.sin(-Math.PI / 4);
+    const u = Math.abs(dx * cos - dy * sin);
+    const v = Math.abs(dx * sin + dy * cos);
+
+    expect(u).toBeLessThanOrEqual(slackX + 0.001);
+    expect(v).toBeLessThanOrEqual(slackY + 0.001);
   });
 
   it('balances save with restore', () => {

@@ -1,4 +1,4 @@
-import type { ColorRamp } from './colorRamp';
+import type { ChipSprites } from './chips';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 
 /**
@@ -40,8 +40,21 @@ export interface Scene {
   readonly shards: Shard[];
   /** Accumulated pan of the cell, in cells. */
   pan: { x: number; y: number };
-  /** Accumulated rotation of the source within the mirrors, in radians. */
-  rotation: number;
+  /**
+   * Angle of the tube — the mirror assembly — in radians.
+   *
+   * Turning a real kaleidoscope turns the mirrors and the chamber together, so
+   * the whole figure revolves. This is that angle.
+   */
+  tube: number;
+  /**
+   * Angle of the contents inside the tube, in radians.
+   *
+   * The chips are loose, so they lag the tube and then settle. That lag is the
+   * relative angle between this and {@link Scene.tube}, and it is what makes the
+   * figure evolve rather than only revolve.
+   */
+  contents: number;
   /**
    * Where the viewer has dragged the source to, each axis in `[-1, 1]`.
    *
@@ -57,8 +70,8 @@ export interface Scene {
 export interface SceneUpdate {
   /** Seconds since the previous frame. */
   dt: number;
-  /** Rotation speed in turns per second. */
-  speed: number;
+  /** How fast the tube is being turned, in radians per second. */
+  turn: number;
   /** Current drag position, each axis in `[-1, 1]`. */
   drag: { x: number; y: number };
 }
@@ -68,6 +81,35 @@ const MAX_STEP_SECONDS = 1 / 20;
 
 /** How far a full drag moves the shard field, in cells. */
 export const DRAG_CELLS = 1.5;
+
+/**
+ * How quickly the contents catch up with the tube, per second.
+ *
+ * Loose chips are dragged round by friction rather than bolted to the barrel:
+ * they trail while the tube is turning and settle once it stops. Without this
+ * lag the figure would revolve perfectly rigidly, which is the thing that reads
+ * as a picture being rotated rather than an instrument being turned.
+ */
+const CONTENTS_CATCHUP = 4;
+
+/**
+ * Turning rate at which the chips are fully agitated, in radians per second.
+ *
+ * Loose chips only shift when the barrel moves them. Below this they jostle
+ * proportionally; at rest they are still, which is what a kaleidoscope sitting
+ * on a table does.
+ */
+const FULL_AGITATION = Math.PI;
+
+/**
+ * Furthest the contents may trail the tube, in radians.
+ *
+ * Without a cap the lag settles at `rate / catchup`, so a brisk swipe leaves the
+ * chips half a turn behind and they go on unwinding for seconds after the finger
+ * lifts — which reads as the tube still turning. Friction does not work that
+ * way: past a point the chips simply get dragged along.
+ */
+const MAX_LAG = 0.3;
 
 /** Idle drift of the shard field, in cells per second. */
 const DRIFT = 0.01;
@@ -103,7 +145,8 @@ export function createScene(seed: string, shardCount: number): Scene {
     seed,
     shards,
     pan: { x: 0, y: 0 },
-    rotation: 0,
+    tube: 0,
+    contents: 0,
     drag: { x: 0, y: 0 },
     elapsed: 0,
   };
@@ -115,20 +158,35 @@ export function createScene(seed: string, shardCount: number): Scene {
  * Mutation is deliberate: this runs every frame and the scene is owned by the
  * renderer, never by React state, so there is nothing to diff.
  */
-export function updateScene(scene: Scene, { dt, speed, drag }: SceneUpdate): Scene {
+export function updateScene(scene: Scene, { dt, turn, drag }: SceneUpdate): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
-  scene.elapsed += step;
-  scene.rotation += speed * Math.PI * 2 * step;
+  scene.tube += turn * step;
+  // Exponential approach, clamped so a long frame cannot overshoot past the
+  // tube and swing back.
+  scene.contents += (scene.tube - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);
+
+  const lag = scene.tube - scene.contents;
+
+  if (Math.abs(lag) > MAX_LAG) {
+    scene.contents = scene.tube - Math.sign(lag) * MAX_LAG;
+  }
   scene.drag.x = drag.x;
   scene.drag.y = drag.y;
-  scene.pan.x += DRIFT * step;
+
+  // Chips are inert until something moves them. Tying their jostle to the
+  // turning rate is what makes a still kaleidoscope actually still, rather than
+  // simmering away on its own.
+  const agitated = step * Math.min(1, Math.abs(turn) / FULL_AGITATION);
+
+  scene.elapsed += agitated;
+  scene.pan.x += DRIFT * agitated;
 
   for (const shard of scene.shards) {
-    shard.x = wrapUnit(shard.x + shard.vx * step);
-    shard.y = wrapUnit(shard.y + shard.vy * step);
-    shard.rotation += shard.spin * step;
-    shard.colorStop = wrapUnit(shard.colorStop + shard.colorDrift * step);
+    shard.x = wrapUnit(shard.x + shard.vx * agitated);
+    shard.y = wrapUnit(shard.y + shard.vy * agitated);
+    shard.rotation += shard.spin * agitated;
+    shard.colorStop = wrapUnit(shard.colorStop + shard.colorDrift * agitated);
   }
 
   return scene;
@@ -143,7 +201,7 @@ export interface DrawCellOptions {
   rotation: number;
   /** Pan of the field, in cells. */
   pan: { x: number; y: number };
-  ramp: ColorRamp;
+  sprites: ChipSprites;
   /** Additive blending for overlapping shards. */
   glow: boolean;
 }
@@ -156,7 +214,7 @@ export interface DrawCellOptions {
 export function drawCell(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { size, cellSize, rotation, pan, ramp, glow }: DrawCellOptions,
+  { size, cellSize, rotation, pan, sprites, glow }: DrawCellOptions,
 ): void {
   if (size <= 0 || cellSize <= 0) {
     return;
@@ -168,8 +226,13 @@ export function drawCell(
   // Tiling a rotation-agnostic bounding box instead would draw up to twice the
   // shards needed at the shallow angles that dominate.
   const bounds = rotatedBounds(size, -rotation);
-  const offsetX = wrapTo(pan.x * cellSize, cellSize);
-  const offsetY = wrapTo(pan.y * cellSize, cellSize);
+  // `pan` is a screen-space offset — that is the direction the viewer dragged —
+  // so it has to be expressed in the field's own frame before being tiled.
+  // Applying it directly would send the field off at whatever angle the spin
+  // happened to be at, which is not the direction anyone dragged in.
+  const field = rotateVector(pan, -rotation);
+  const offsetX = wrapTo(field.x * cellSize, cellSize);
+  const offsetY = wrapTo(field.y * cellSize, cellSize);
 
   const firstColumn = Math.floor((bounds.minX - offsetX) / cellSize);
   const lastColumn = Math.ceil((bounds.maxX - offsetX) / cellSize);
@@ -192,7 +255,7 @@ export function drawCell(
           scale: cellSize,
           bounds,
           elapsed: scene.elapsed,
-          ramp,
+          sprites,
         });
       }
     }
@@ -206,6 +269,20 @@ interface Bounds {
   maxX: number;
   minY: number;
   maxY: number;
+}
+
+/** Rotates a vector by `angle`. */
+export function rotateVector(
+  vector: { x: number; y: number },
+  angle: number,
+): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos,
+  };
 }
 
 /** Axis-aligned bounds of the square `[0, size]^2` rotated by `angle`. */
@@ -239,13 +316,13 @@ interface DrawShardOptions {
   scale: number;
   bounds: Bounds;
   elapsed: number;
-  ramp: ColorRamp;
+  sprites: ChipSprites;
 }
 
 function drawShard(
   ctx: CanvasRenderingContext2D,
   shard: Shard,
-  { x, y, scale, bounds, elapsed, ramp }: DrawShardOptions,
+  { x, y, scale, bounds, elapsed, sprites }: DrawShardOptions,
 ): void {
   const pulse = 1 + Math.sin(elapsed * 1.3 + shard.phase) * shard.pulse;
   const radius = shard.radius * scale * pulse;
@@ -260,45 +337,17 @@ function drawShard(
     return;
   }
 
+  const sprite = sprites.get(shard.kind, shard.colorStop);
+
+  if (!sprite) {
+    return;
+  }
+
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(shard.rotation);
-  ctx.fillStyle = ramp.css(shard.colorStop, shard.alpha);
-  ctx.strokeStyle = ctx.fillStyle;
-
-  switch (shard.kind) {
-    case 'disc': {
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fill();
-      break;
-    }
-    case 'ring': {
-      ctx.lineWidth = Math.max(1, radius * 0.22);
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.stroke();
-      break;
-    }
-    case 'petal': {
-      ctx.beginPath();
-      ctx.moveTo(0, -radius);
-      ctx.quadraticCurveTo(radius, 0, 0, radius);
-      ctx.quadraticCurveTo(-radius, 0, 0, -radius);
-      ctx.fill();
-      break;
-    }
-    case 'sliver': {
-      ctx.beginPath();
-      ctx.moveTo(0, -radius);
-      ctx.lineTo(radius * 0.42, radius);
-      ctx.lineTo(-radius * 0.42, radius * 0.6);
-      ctx.closePath();
-      ctx.fill();
-      break;
-    }
-  }
-
+  ctx.globalAlpha = shard.alpha;
+  ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);
   ctx.restore();
 }
 

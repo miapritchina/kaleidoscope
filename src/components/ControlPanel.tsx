@@ -131,6 +131,8 @@ export function ControlPanel({
             is ambiguous to read out and to query. */}
         <legend className={styles.legend}>Assembly</legend>
 
+        <p className={styles.hint}>Swipe across the artwork to turn the tube.</p>
+
         <RangeField
           label="Mirrors"
           value={settings.mirrors}
@@ -140,16 +142,6 @@ export function ControlPanel({
             onChange('mirrors', value);
           }}
           description="Mirror lines through the centre. Each one reflects, so the figure repeats twice per mirror — 3 gives the classic hexagonal kaleidoscope."
-        />
-        <RangeField
-          label="Spin"
-          value={settings.speed}
-          limit={LIMITS.speed}
-          format={(value) => `${value > 0 ? '+' : ''}${value.toFixed(2)} rev/s`}
-          onChange={(value) => {
-            onChange('speed', value);
-          }}
-          description="Turns the source inside the mirrors, so the figure evolves. Negative goes anticlockwise."
         />
         <RangeField
           label="Zoom"

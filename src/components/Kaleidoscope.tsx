@@ -2,7 +2,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef, type RefObject } from 
 
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
-import { usePointerDrag } from '../hooks/usePointerDrag';
+import { useStageGesture } from '../hooks/useStageGesture';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
@@ -35,7 +35,7 @@ export interface KaleidoscopeProps {
 export function Kaleidoscope({ settings, paused = false, media = null, ref }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
-  const drag = usePointerDrag();
+  const gesture = useStageGesture();
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
   // A new seed or shard count means a genuinely different scene; anything else
@@ -79,27 +79,40 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
     renderer.render(scene, settings, media);
   }, [size.width, size.height, scene, settings, media]);
 
-  useAnimationFrame((deltaSeconds) => {
-    const renderer = rendererRef.current;
+  useAnimationFrame(
+    (deltaSeconds) => {
+      const renderer = rendererRef.current;
 
-    if (!renderer) {
-      return;
-    }
+      if (!renderer) {
+        return;
+      }
 
-    // `updateScene` clamps the step, so a long frame cannot teleport the field.
-    updateScene(scene, {
-      dt: deltaSeconds,
-      speed: settings.speed,
-      drag: drag.positionRef.current,
-    });
-    renderer.render(scene, settings, media);
-  }, !paused);
+      // Paused freezes the simulation, not the interaction: a zero step still
+      // takes the new drag position and repaints, so the source can be moved
+      // around while the animation is stopped.
+      // `updateScene` clamps the step, so a long frame cannot teleport the field.
+      // A finger held still fires no move events, so the rate has to be expired
+      // here rather than waiting for one.
+      gesture.settle();
+      updateScene(scene, {
+        dt: paused ? 0 : deltaSeconds,
+        turn: gesture.turnRef.current,
+        drag: gesture.panRef.current,
+      });
+      renderer.render(scene, settings, media);
+    },
+    !paused || gesture.mode !== null,
+  );
 
   return (
     <div
       ref={containerRef}
-      className={cx(styles.stage, drag.isDragging && styles.dragging)}
-      {...drag.handlers}
+      className={cx(styles.stage, gesture.mode === 'pan' && styles.panning)}
+      {...gesture.handlers}
+      onContextMenu={(event) => {
+        // A secondary-button drag pans; the menu would interrupt it.
+        event.preventDefault();
+      }}
     >
       <canvas
         ref={canvasRef}

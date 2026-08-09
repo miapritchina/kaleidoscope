@@ -109,20 +109,31 @@ describe('KaleidoscopeRenderer', () => {
     expect(main.countOf('scale')).toBe(4);
   });
 
-  // Spinning the assembly makes the whole figure revolve rigidly; spinning the
-  // source makes the figure evolve, which is what turning a real tube does.
-  it('turns the source, not the assembly', () => {
-    const { renderer, main, wedge } = createRenderer();
+  // Turning the tube revolves the assembly; the contents lagging behind it is
+  // what makes the figure evolve at the same time.
+  it('rotates the assembly by the tube angle and the source by the lag', () => {
+    const { renderer, wedge } = createRenderer();
     const scene = createScene('seed', 6);
     // A value that is not a multiple of the wedge step, so the assertion below
     // cannot pass by coinciding with a wedge's own placement.
-    scene.rotation = 0.1234;
+    scene.contents = 0.1234;
 
     renderer.resize(200, 200, 1);
     renderer.render(scene, DEFAULT_SETTINGS);
 
+    // Contents at 0.1234 with the tube at 0: the source carries the full lag.
     expect(wedge.argsOf('rotate')).toContainEqual([0.1234]);
-    expect(main.argsOf('rotate')).not.toContainEqual([0.1234]);
+
+    const turned = createRenderer();
+    const spun = createScene('seed', 6);
+    spun.tube = 0.77;
+    spun.contents = 0.77;
+    turned.renderer.resize(200, 200, 1);
+    turned.renderer.render(spun, DEFAULT_SETTINGS);
+
+    // Fully settled: the assembly carries it all and the source carries none.
+    expect(turned.main.argsOf('rotate')).toContainEqual([0.77]);
+    expect(turned.wedge.argsOf('rotate')).toContainEqual([0]);
   });
 
   it('balances every save with a restore', () => {

@@ -1,4 +1,4 @@
-import { createColorRamp, type ColorRamp } from './colorRamp';
+import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { getPalette, type Palette } from './palettes';
 import { DRAG_CELLS, drawCell, type Scene } from './scene';
@@ -48,7 +48,7 @@ export class KaleidoscopeRenderer {
   #height = 0;
   #radius = 0;
   #vignette: CanvasGradient | null = null;
-  #ramp: ColorRamp | null = null;
+  #sprites: ChipSprites | null = null;
   #mode: WedgeMode | null = null;
 
   constructor(
@@ -105,7 +105,6 @@ export class KaleidoscopeRenderer {
     this.#wedge.height = this.#radius + SEAM_BLEED * 2;
 
     this.#vignette = this.#createVignette();
-    this.#ramp = null; // The gradient cache is tied to the old geometry.
   }
 
   /**
@@ -121,15 +120,15 @@ export class KaleidoscopeRenderer {
     }
 
     const palette = getPalette(settings.paletteId);
-    const ramp = this.#ramp?.palette === palette ? this.#ramp : createColorRamp(palette);
-    this.#ramp = ramp;
+    const sprites = this.#sprites?.palette === palette ? this.#sprites : createChipSprites(palette);
+    this.#sprites = sprites;
 
     const frame = settings.source === 'shards' ? null : media;
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    this.#paintWedge(scene, settings, palette, ramp, mode, frame ?? null);
-    this.#composite(settings, palette);
+    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null);
+    this.#composite(scene, settings, palette);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
@@ -142,7 +141,7 @@ export class KaleidoscopeRenderer {
     scene: Scene,
     settings: Settings,
     palette: Palette,
-    ramp: ColorRamp,
+    sprites: ChipSprites,
     mode: WedgeMode,
     media: MediaElement | null,
   ): void {
@@ -172,7 +171,7 @@ export class KaleidoscopeRenderer {
       drawMedia(ctx, media, {
         size: this.#radius,
         zoom: settings.zoom,
-        rotation: scene.rotation,
+        rotation: scene.contents - scene.tube,
         pan: scene.drag,
         alpha: 1 - settings.trails,
       });
@@ -199,19 +198,21 @@ export class KaleidoscopeRenderer {
     drawCell(ctx, scene, {
       size: this.#radius,
       cellSize: this.#radius * BASE_CELL_FRACTION * settings.zoom,
-      rotation: scene.rotation,
+      // Only the lag: the tube's own angle is applied to the whole assembly
+      // below, so applying it here as well would turn everything twice.
+      rotation: scene.contents - scene.tube,
       pan: {
         x: scene.pan.x + scene.drag.x * DRAG_CELLS,
         y: scene.pan.y + scene.drag.y * DRAG_CELLS,
       },
-      ramp,
+      sprites,
       glow: settings.glow,
     });
     ctx.restore();
   }
 
   /** Mirrors the wedge around the centre. */
-  #composite(settings: Settings, palette: Palette): void {
+  #composite(scene: Scene, settings: Settings, palette: Palette): void {
     const ctx = this.#ctx;
     // Two wedges per mirror — one reflected — so the count is always even and
     // neighbouring wedges meet edge to edge.
@@ -225,10 +226,11 @@ export class KaleidoscopeRenderer {
     ctx.fillRect(0, 0, this.#width, this.#height);
 
     ctx.save();
-    // The assembly is fixed; spin rotates the source inside the wedge, so the
-    // figure evolves the way a real kaleidoscope's does when you turn the tube,
-    // rather than rigidly revolving on screen.
+    // Turning a real kaleidoscope turns the mirrors with the chamber, so the
+    // whole figure revolves. The contents lag behind that (see Scene.contents),
+    // and it is the lag that makes the pattern evolve as it turns.
     ctx.translate(this.#width / 2, this.#height / 2);
+    ctx.rotate(scene.tube);
 
     for (let i = 0; i < segments; i += 1) {
       ctx.save();
