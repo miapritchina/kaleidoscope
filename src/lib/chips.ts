@@ -1,5 +1,5 @@
 import { pickGlassColor, rgbToCss, type Palette, type Rgb } from './palettes';
-import { hashSeed, mulberry32, randomBetween, type Rng } from './random';
+import { hashSeed, mulberry32, randomBetween, randomInt, type Rng } from './random';
 import type { ShardKind } from './scene';
 
 /**
@@ -39,6 +39,15 @@ export interface ChipSprites {
 /** Distinct cuts rendered per shape, so a chamber is not full of identical glass. */
 export const CHIP_VARIANTS = 3;
 
+/**
+ * Shades rendered per palette colour.
+ *
+ * Two chips out of the same jar are not the same colour. Glass is coloured by
+ * metal oxides stirred into a melt, and the melt is never quite even; a chamber
+ * where every green is the identical green reads as printed rather than filled.
+ */
+const TONES = 3;
+
 export interface ChipSpriteOptions {
   /** Distinct colours rendered per shape. Defaults to the palette's own. */
   steps?: number;
@@ -49,8 +58,10 @@ export interface ChipSpriteOptions {
 
 /** Builds the sprite sheet for a palette. Cheap enough to redo on palette change. */
 export function createChipSprites(palette: Palette, options: ChipSpriteOptions = {}): ChipSprites {
-  const steps = Math.max(1, options.steps ?? palette.colors.length);
-  const size = Math.max(8, options.size ?? 96);
+  const steps = Math.max(1, options.steps ?? palette.colors.length * TONES);
+  // Big enough that the largest a chip is ever drawn — the top of the zoom
+  // range, on a dense display — is still a mild upscale rather than a blur.
+  const size = Math.max(8, options.size ?? 192);
   const create = options.createCanvas ?? (() => document.createElement('canvas'));
   const cache = new Map<string, HTMLCanvasElement | null>();
 
@@ -67,7 +78,7 @@ export function createChipSprites(palette: Palette, options: ChipSpriteOptions =
         return cached;
       }
 
-      const sprite = renderChip(create, kind, cut, pickGlassColor(palette, step / steps), size);
+      const sprite = renderChip(create, kind, cut, temper(palette, step, steps), size);
       cache.set(key, sprite);
 
       return sprite;
@@ -96,12 +107,18 @@ function renderChip(
   // Leave room for the rim to sit inside the sprite.
   const radius = centre * 0.94;
   const cut = CUTS[kind];
+  // The same seed the outline came from, so a given cut always has the same
+  // flaws in the same places — the sprite cache hands the one canvas to every
+  // chip that shares them, and a scene has to look identical between runs.
+  const rng = mulberry32(hashSeed(`flaws:${kind}:${String(variant)}`));
   const outline = outlineFor(kind, variant, radius);
 
   ctx.translate(centre, centre);
 
   // The body: what the light looks like after crossing the middle of the chip.
-  ctx.fillStyle = rgbToCss(color, 0.94);
+  // Graded across the piece, because a broken fragment is a wedge rather than a
+  // slab: thicker one way than the other, and thicker glass passes less light.
+  ctx.fillStyle = bodyGradient(ctx, color, radius, rng) ?? rgbToCss(color, 0.94);
   tracePolygon(ctx, outline);
   ctx.fill();
 
@@ -151,6 +168,14 @@ function renderChip(
   ctx.fill();
   ctx.restore();
 
+  // The flaws, inside the piece and clipped to it.
+  ctx.save();
+  tracePolygon(ctx, outline);
+  ctx.clip();
+  drawCracks(ctx, outline, radius, rng);
+  drawBubbles(ctx, radius, rng);
+  ctx.restore();
+
   // The rim. Light entering here crosses the most glass and meets the edge
   // side-on, so the border of a piece of glass is always its darkest part.
   ctx.lineJoin = 'round';
@@ -160,6 +185,128 @@ function renderChip(
   ctx.stroke();
 
   return canvas;
+}
+
+/**
+ * The body's shading: a gradient across the piece rather than one flat wash.
+ *
+ * A fragment off a broken sheet is a wedge, not a slab — thicker one way than
+ * the other — and thicker glass passes less light. The direction is part of the
+ * cut, so a piece keeps the same wedge whichever way up it lands.
+ */
+function bodyGradient(
+  ctx: CanvasRenderingContext2D,
+  color: Rgb,
+  radius: number,
+  rng: Rng,
+): CanvasGradient | null {
+  const angle = rng() * Math.PI * 2;
+  const thin = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
+
+  try {
+    const gradient = ctx.createLinearGradient(thin.x, thin.y, -thin.x, -thin.y);
+    gradient.addColorStop(0, rgbToCss(lighten(color, 0.16), 0.88));
+    gradient.addColorStop(1, rgbToCss(shade(color, 0.2), 0.97));
+
+    return gradient;
+  } catch {
+    // Canvas implementations without gradients still get a usable chip.
+    return null;
+  }
+}
+
+/**
+ * Internal fractures.
+ *
+ * Glass that was broken to this size is nearly always cracked short of broken
+ * somewhere inside as well, and a fracture is a surface in the middle of a
+ * transparent solid: it reflects, so it reads as a bright hairline rather than
+ * a dark one. Each runs from somewhere on the rim towards the middle and stops,
+ * the way a fracture that ran out of energy does.
+ */
+function drawCracks(
+  ctx: CanvasRenderingContext2D,
+  outline: Point[],
+  radius: number,
+  rng: Rng,
+): void {
+  const count = randomInt(rng, 1, 3);
+
+  ctx.lineCap = 'round';
+
+  for (let crack = 0; crack < count; crack += 1) {
+    // Starting on an edge, since that is where the break happened.
+    const corner = randomInt(rng, 0, outline.length - 1);
+    const from = outline[corner]!;
+    const to = outline[(corner + 1) % outline.length]!;
+    const along = randomBetween(rng, 0.2, 0.8);
+    let x = from.x + (to.x - from.x) * along;
+    let y = from.y + (to.y - from.y) * along;
+    // Inwards, give or take: a fracture wanders rather than running straight.
+    let heading = Math.atan2(-y, -x) + randomBetween(rng, -0.5, 0.5);
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+
+    const segments = randomInt(rng, 2, 3);
+
+    for (let segment = 0; segment < segments; segment += 1) {
+      const reach = radius * randomBetween(rng, 0.16, 0.3);
+      heading += randomBetween(rng, -0.6, 0.6);
+      x += Math.cos(heading) * reach;
+      y += Math.sin(heading) * reach;
+      ctx.lineTo(x, y);
+    }
+
+    ctx.lineWidth = Math.max(1, radius * randomBetween(rng, 0.02, 0.045));
+    ctx.strokeStyle = rgbToCss(WHITE, randomBetween(rng, 0.3, 0.55));
+    ctx.stroke();
+  }
+}
+
+/**
+ * Trapped air.
+ *
+ * Cheap glass is full of seeds — bubbles frozen in as it cooled. A bubble is a
+ * void, so it bends light around its edge and lets it straight through the
+ * middle: a dark ring with a bright centre, which is why one reads as a bubble
+ * and a plain dot reads as a speck of dirt.
+ */
+function drawBubbles(ctx: CanvasRenderingContext2D, radius: number, rng: Rng): void {
+  const count = randomInt(rng, 0, 3);
+
+  for (let bubble = 0; bubble < count; bubble += 1) {
+    const angle = rng() * Math.PI * 2;
+    const distance = Math.sqrt(rng()) * radius * 0.6;
+    const x = Math.cos(angle) * distance;
+    const y = Math.sin(angle) * distance;
+    const size = radius * randomBetween(rng, 0.05, 0.11);
+
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.fillStyle = rgbToCss(WHITE, 0.45);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(x, y, size, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1, size * 0.35);
+    ctx.strokeStyle = 'rgb(0 0 0 / 0.28)';
+    ctx.stroke();
+  }
+}
+
+/**
+ * The colour of one piece: a palette colour, off the melt by a shade.
+ *
+ * The jar is chosen first and the shade within it second, so the palette still
+ * reads as a handful of distinct colours rather than a smear between them.
+ */
+function temper(palette: Palette, step: number, steps: number): Rgb {
+  const base = pickGlassColor(palette, step / steps);
+  // Centred on zero, so the palette colour itself is one of the shades.
+  const off = ((step % TONES) - (TONES - 1) / 2) / Math.max(1, (TONES - 1) / 2);
+
+  return off >= 0 ? lighten(base, off * 0.12) : shade(base, -off * 0.14);
 }
 
 /** How each family of fragment is ground: bevel faces, and the size of its spark. */
@@ -296,4 +443,13 @@ function shade({ r, g, b }: Rgb, amount: number): Rgb {
   const keep = 1 - amount;
 
   return { r: r * keep, g: g * keep, b: b * keep };
+}
+
+/** Lightens towards white, for thinner glass and the faces that catch the light. */
+function lighten({ r, g, b }: Rgb, amount: number): Rgb {
+  return {
+    r: r + (255 - r) * amount,
+    g: g + (255 - g) * amount,
+    b: b + (255 - b) * amount,
+  };
 }

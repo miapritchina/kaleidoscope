@@ -60,6 +60,20 @@ a matching margin. Without both halves of that, two antialiased clip edges each 
 boundary pixel about halfway and composite to roughly 75%, letting the backdrop show
 through as dark spokes.
 
+### The mirrors are not free
+
+Each bounce loses a few percent of the light, and it loses it unevenly: a household mirror
+is silvered behind a sheet of glass the light has to cross twice, and glass absorbs red,
+which is why the far end of a corridor of mirrors is green. The cell you are looking
+straight down has taken no bounces; every cell further out has taken more.
+
+That count is what sets the falloff. Neighbouring cells sit one lattice step apart and a
+step is two reflections, so a point `r` out from the middle has been through about
+`2r / (side * sqrt(3))` of them — and the view is multiplied by a radial gradient whose
+stops are `reflectance ^ bounces` per channel. Brightest and truest on the axis, dimmer and
+greener towards the rim, and it applies to the light coming through the gaps as much as to
+the glass, because the mirrors do not know the difference.
+
 ### The glass
 
 A chip is not a lit object on a dark field — it is a hole in the light with a colour. Each
@@ -75,10 +89,25 @@ one is drawn as absorption rather than paint:
   edge side-on, so the border of a piece of glass is always its darkest part.
 - **The catch-light** is one small hard white spark. Glass is specular, and that spark is
   most of what separates it from a coloured shape.
+- **The cracks** are internal fractures. Glass broken down to this size is nearly always
+  cracked short of broken somewhere inside as well, and a fracture is a reflecting surface
+  in the middle of a transparent solid — so it reads as a bright hairline, not a dark one.
+  Each starts on an edge, wanders inwards, and stops where it ran out of energy.
+- **The bubbles** are trapped air. Cheap glass is full of seeds frozen in as it cooled, and
+  a bubble is a void: it bends light around its edge and lets it straight through the
+  middle, so it comes out as a dark ring with a bright centre. A plain dot would read as a
+  speck of dirt.
+
+The body is graded across the piece rather than laid down as one flat wash, because a
+fragment off a broken sheet is a wedge and not a slab. The bevel faces stay flat — that part
+is a solid with ground faces, and airbrushing them is exactly what makes rendered glass read
+as plastic.
 
 Colours are picked from the palette, never blended between two of its stops: a chamber is
 loaded from a handful of jars of coloured glass, and the halfway house between a green and
-a magenta is mud.
+a magenta is mud. Within a jar, each colour is rendered in a few shades — glass is coloured
+by metal oxides stirred into a melt and the melt is never quite even, so a chamber where
+every green is the identical green reads as printed.
 
 Outlines are irregular polygons generated from a seed fixed by the shape and the cut, so
 every piece looks broken rather than stamped while staying identical between runs — the

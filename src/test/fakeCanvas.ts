@@ -7,11 +7,28 @@ import { vi } from 'vitest';
  * this recorder instead. It answers the question the tests actually care about
  * — *what* was drawn, and how often — without pulling in a native dependency.
  */
+/** The drawing state at the moment of a call. */
+export interface FakeStyle {
+  fillStyle: unknown;
+  strokeStyle: unknown;
+  lineWidth: number;
+  globalAlpha: number;
+  globalCompositeOperation: string;
+}
+
 export interface FakeContext extends Record<string, unknown> {
   calls: string[];
   countOf: (method: string) => number;
   /** Arguments of each call to `method`, in order. */
   argsOf: (method: string) => unknown[][];
+  /**
+   * The state each call to `method` was made under, in order.
+   *
+   * Reading the properties afterwards only ever shows the last value they were
+   * set to, so what a particular fill or stroke was actually painted in is not
+   * otherwise recoverable.
+   */
+  stylesOf: (method: string) => FakeStyle[];
 }
 
 const METHODS = [
@@ -38,10 +55,12 @@ const METHODS = [
 export function createFakeContext(): FakeContext {
   const calls: string[] = [];
   const args = new Map<string, unknown[][]>();
+  const styles = new Map<string, FakeStyle[]>();
   const context = {
     calls,
     countOf: (method: string) => calls.filter((call) => call === method).length,
     argsOf: (method: string) => args.get(method) ?? [],
+    stylesOf: (method: string) => styles.get(method) ?? [],
     canvas: { width: 0, height: 0 },
     fillStyle: '',
     strokeStyle: '',
@@ -56,6 +75,16 @@ export function createFakeContext(): FakeContext {
       const recorded = args.get(method) ?? [];
       recorded.push(called);
       args.set(method, recorded);
+
+      const painted = styles.get(method) ?? [];
+      painted.push({
+        fillStyle: context.fillStyle,
+        strokeStyle: context.strokeStyle,
+        lineWidth: context.lineWidth as number,
+        globalAlpha: context.globalAlpha as number,
+        globalCompositeOperation: context.globalCompositeOperation as string,
+      });
+      styles.set(method, painted);
     });
   }
 
