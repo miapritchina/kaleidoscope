@@ -74,8 +74,16 @@ export function updateChamber(shards: Shard[], { dt, tube }: ChamberUpdate): voi
   }
 
   const step = dt / SUBSTEPS;
-  // World down (+y on canvas) expressed in the chamber's own frame.
-  const gravityX = -Math.sin(tube) * GRAVITY;
+  // World down (+y on screen) expressed in the chamber's own frame.
+  //
+  // The renderer draws the chamber inside a field it has rotated by `tube`, so
+  // the chamber's axes are turned by `+tube` against the screen and world down
+  // has to be turned back by the same amount to land in them. Sign this the
+  // other way — the easy mistake, since it looks like "undo the rotation" — and
+  // gravity sweeps the chamber at twice the turn rate instead of holding still:
+  // a quarter turn puts the pile at the top of the screen, and the whole
+  // mechanism reads as no gravity at all.
+  const gravityX = Math.sin(tube) * GRAVITY;
   const gravityY = Math.cos(tube) * GRAVITY;
   const damping = Math.max(0, 1 - DAMPING * step);
   const angularDamping = Math.max(0, 1 - ANGULAR_DAMPING * step);

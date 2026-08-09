@@ -109,6 +109,31 @@ describe('updateChamber', () => {
     expect(Math.abs(centreX)).toBeGreaterThan(Math.abs(centre(glass)));
   });
 
+  // The one that matters, and the one a test of the chamber alone cannot see:
+  // the renderer draws the chamber inside a field it has rotated by `tube`, so
+  // "down" in the chamber has to come out down on the screen at every angle.
+  // Signed the other way it sweeps round at twice the turn rate — a quarter
+  // turn puts the pile at the top of the screen — and the whole mechanism reads
+  // as no gravity at all.
+  it('leaves the pile at the bottom of the screen however far the tube is turned', () => {
+    for (let step = 0; step < 12; step += 1) {
+      const tube = (step / 12) * Math.PI * 2;
+      const glass = chips(16);
+
+      settleChamber(glass, tube);
+
+      const x = glass.reduce((sum, shard) => sum + shard.x, 0) / glass.length;
+      const y = centre(glass);
+      // Into screen space: the same rotation the renderer applies to the field.
+      const screenY = x * Math.sin(tube) + y * Math.cos(tube);
+      const screenX = x * Math.cos(tube) - y * Math.sin(tube);
+
+      expect(screenY, `tube ${String(Math.round((tube * 180) / Math.PI))} degrees`).toBeGreaterThan(
+        Math.abs(screenX),
+      );
+    }
+  });
+
   // Turning tips the pile and it avalanches: the mechanism behind the pattern
   // changing at all.
   it('avalanches when the tube turns', () => {

@@ -92,8 +92,8 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
       // around while the animation is stopped.
       // `updateScene` clamps the step, so a long frame cannot teleport the field.
       // A finger held still fires no move events, so the rate has to be expired
-      // here rather than waiting for one.
-      gesture.settle();
+      // here rather than waiting for one — and a flick coasts down here too.
+      gesture.settle(deltaSeconds);
       updateScene(scene, {
         dt: paused ? 0 : deltaSeconds,
         turn: gesture.turnRef.current,

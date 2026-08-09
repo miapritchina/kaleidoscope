@@ -153,12 +153,24 @@ whichever of their settings still mean something.
 
 ## Turning the tube
 
-Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, the swipe's
-speed sets how fast, and the turn stops when the swipe does.
+Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, and the
+swipe's speed sets how fast. Let go mid-swipe and it **coasts** to a stop within a second
+or so, the way a real barrel does. That matters more than it sounds: the glass only moves
+while the tube is turning, so a turn that ended with the finger gave the pile a fraction of
+a second to avalanche in — not long enough to see it happen at all. Measured on the built
+app, a thumb-flick now keeps the field changing for two to three seconds before it settles.
+Hold still mid-swipe and it holds still; touch it again and the coast stops dead.
 
 The chamber is bolted inside the tube, so gravity does not point "down" in its
 coordinates — it points down in the **world**, and turning sweeps that direction around the
-chamber. That is the whole mechanism: the pattern does not change because the tube is
+chamber. The renderer draws the chamber inside a field it has rotated by the tube angle, so
+world-down has to be turned back by that same angle to land in the chamber's axes. Signing
+that the other way — the easy mistake, since it reads as "undo the rotation" — sweeps
+gravity round at twice the turn rate instead of holding it still, which puts the pile at the
+top of the screen at a quarter turn and makes the whole mechanism read as no gravity at
+all. There is a test that settles the chamber at twelve angles and checks the pile comes out
+below centre **on screen** each time; a test of the chamber alone cannot see this, because
+in the chamber's own coordinates both signs look equally plausible. That is the whole mechanism: the pattern does not change because the tube is
 turning, it changes because turning tips the glass, it avalanches, and it settles into a
 new pile. Measured on the built app: essentially still at rest, a burst of change on the
 swipe, then back to rest.
