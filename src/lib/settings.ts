@@ -32,12 +32,13 @@ export interface Settings {
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
   trails: number;
   /**
-   * Additive blending, which makes overlaps bloom.
+   * A strong light behind the glass rather than a soft one.
    *
-   * Off by default: coloured glass layered over glass deepens, it does not
-   * blow out to white, and the chips inside a mirror triangle overlap heavily.
+   * You look through a kaleidoscope at a light, so how bright that light is
+   * changes everything: held up to a lamp the glass thins out and goes
+   * brilliant, against a diffuse window it stays deep and saturated.
    */
-  glow: boolean;
+  light: boolean;
   paletteId: PaletteId;
   /** Seed for the shard generator. */
   seed: string;
@@ -63,11 +64,11 @@ export const LIMITS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
-  shards: 24,
+  shards: 30,
   chipSize: 1,
   zoom: 1.2,
   trails: 0.35,
-  glow: false,
+  light: false,
   paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
 };
@@ -103,7 +104,7 @@ export function sanitizeSettings(input: unknown): Settings {
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
-    glow: typeof raw.glow === 'boolean' ? raw.glow : DEFAULT_SETTINGS.glow,
+    light: typeof raw.light === 'boolean' ? raw.light : DEFAULT_SETTINGS.light,
     paletteId: isPaletteId(raw.paletteId) ? raw.paletteId : DEFAULT_SETTINGS.paletteId,
     seed: toSeed(raw.seed),
   };
@@ -126,7 +127,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     chipSize: String(settings.chipSize),
     zoom: String(settings.zoom),
     trails: String(settings.trails),
-    glow: settings.glow ? '1' : '0',
+    light: settings.light ? '1' : '0',
     palette: settings.paletteId,
     seed: settings.seed,
   });
@@ -141,12 +142,14 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
  */
 const KNOWN_PARAMS: readonly string[] = [
   ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
-  // A real tube has three mirrors and always did; these described arrangements
-  // this app once offered, and are tolerated so an old link still opens.
+  // Settings this app once offered, tolerated so an old link still opens: the
+  // mirror arrangement, back when there was a choice of one, and the additive
+  // blending that made sense while the backdrop was a void rather than a light.
   'segments',
   'mirrors',
   'geometry',
   'speed',
+  'glow',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -157,14 +160,16 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 
 /** Decodes a query string produced by {@link settingsToSearchParams}. */
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
-  const glow = params.get('glow');
+  // `glow` is what this flag was called while it meant additive blending. Both
+  // asked for the more brilliant of the two looks, so an old link keeps its.
+  const light = params.get('light') ?? params.get('glow');
 
   return sanitizeSettings({
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),
-    glow: glow === null ? undefined : glow === '1' || glow === 'true',
+    light: light === null ? undefined : light === '1' || light === 'true',
     paletteId: params.get('palette'),
     seed: params.get('seed'),
   });

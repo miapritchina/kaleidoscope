@@ -1,9 +1,9 @@
 # Kaleidoscope
 
 An interactive kaleidoscope, rendered on a 2D canvas. A triangular tube of three mirrors
-tiles the field with repeating hexagons, the way a real one does. Feed it a generated field
-of glass chips, a photo of your own, or a live camera feed. Built with React 19, TypeScript
-and Vite.
+tiles the field with repeating hexagons, the way a real one does, and you look through the
+glass at a light. Feed it a generated chamber of glass chips, a photo of your own, or a
+live camera feed. Built with React 19, TypeScript and Vite.
 
 Swipe across the artwork to turn the tube. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
@@ -36,16 +36,18 @@ The dev server prints a local URL (http://localhost:5173 by default).
 A kaleidoscope is a small chamber of loose chips seen through mirrors, and the renderer
 works the same way:
 
-1. **The source.** `lib/scene.ts` holds the object chamber — loose glass in a bounded cell,
-   simulated in `lib/chamber.ts`.
-   `lib/media.ts` substitutes a photo or a camera frame for that cell. Each chip is a
-   pre-rendered sprite (`lib/chips.ts`): backlit glass is a gradient and a catch-light, and
-   building those per chip per frame would mean hundreds of gradients a frame, so every
-   shape-and-colour pair is rendered once and stamped from then on.
-2. **The triangle.** Once per frame the source is painted into a single offscreen triangle
-   (`lib/renderer.ts`). Fading that surface instead of clearing it is what produces motion
-   trails.
-3. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
+1. **The light.** The far end of a real tube is a frosted window, and everything you see is
+   that light with coloured glass in front of it. So the backdrop is the light source, not
+   a void, and the glass is stamped with `multiply`: it takes its colour out of the light
+   rather than adding light of its own, two chips over each other take out more than
+   either alone, and the gaps stay the colour of the light.
+2. **The source.** `lib/scene.ts` holds the object chamber — loose glass in a bounded cell,
+   simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
+   that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
+3. **The triangle.** Once per frame the source is painted from scratch into an offscreen
+   triangle, then blended into the surface the mirrors sample (`lib/renderer.ts`). Each
+   frame keeping a share of the ones before it is what produces motion trails.
+4. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
    and that hexagon is stamped across the field on its translation lattice, so neighbours
    meet mirror to mirror.
 
@@ -57,6 +59,38 @@ Each triangle's clip is bled a couple of pixels past its seam, onto a surface th
 a matching margin. Without both halves of that, two antialiased clip edges each cover the
 boundary pixel about halfway and composite to roughly 75%, letting the backdrop show
 through as dark spokes.
+
+### The glass
+
+A chip is not a lit object on a dark field — it is a hole in the light with a colour. Each
+one is drawn as absorption rather than paint:
+
+- **The body** takes the glass's transmission colour out of the light. Palette colours are
+  deep and saturated for the same reason stained glass is: a pale tint over a bright light
+  reads as no glass at all.
+- **The bevel** is the ring of ground faces between the flat top and the edge, shaded by
+  how far each face turns from the light. Its edges are hard, because a ground face is
+  flat; a smooth airbrushed falloff is what makes rendered glass read as moulded plastic.
+- **The rim** is darker still. Light entering there crosses the most glass and meets the
+  edge side-on, so the border of a piece of glass is always its darkest part.
+- **The catch-light** is one small hard white spark. Glass is specular, and that spark is
+  most of what separates it from a coloured shape.
+
+Colours are picked from the palette, never blended between two of its stops: a chamber is
+loaded from a handful of jars of coloured glass, and the halfway house between a green and
+a magenta is mud.
+
+Outlines are irregular polygons generated from a seed fixed by the shape and the cut, so
+every piece looks broken rather than stamped while staying identical between runs — the
+sprite cache and the seeded scene both depend on that. Building all of this per chip per
+frame would mean a dozen path fills for every one of hundreds of draws, so each
+shape-colour-cut combination is rendered once into a small canvas and stamped from then on:
+the same trick the mirror triangle uses, one level down.
+
+Chips are drawn a little larger than the footprint they collide with. A real chamber is
+several pieces deep and the simulation is one layer, so at exactly the collision radius
+nothing ever overlaps anything, and the whole point of glass over glass — that it deepens,
+and that a green over a red goes nearly black — never once happens.
 
 Everything under `src/lib/` is plain TypeScript with no React imports, which is what makes
 the interesting parts testable without a browser.
@@ -74,19 +108,24 @@ src/
 
 ## Settings
 
-| Setting   | Range               | Effect                                            |
-| --------- | ------------------- | ------------------------------------------------- |
-| Input     | shards/photo/camera | What the mirrors repeat                           |
-| Zoom      | 0.5x–3x             | Magnification of the object cell                  |
-| Trails    | 0–95%               | How long each frame lingers                       |
-| Count     | 4–60                | Shards in the cell                                |
-| Chip size | 0.4x–2.5x           | How big each piece is, without changing how many  |
-| Palette   | 5 presets           | Shard colours and backdrop                        |
-| Glow      | on/off              | Additive blending, so overlaps bloom              |
-| Seed      | any text            | Seeds the shard generator; same seed, same shards |
+| Setting      | Range               | Effect                                           |
+| ------------ | ------------------- | ------------------------------------------------ |
+| Input        | shards/photo/camera | What the mirrors repeat                          |
+| Zoom         | 0.5x–3x             | Magnification of the object cell                 |
+| Trails       | 0–95%               | How long each frame lingers                      |
+| Count        | 4–60                | Pieces of glass in the chamber                   |
+| Chip size    | 0.4x–2.5x           | How big each piece is, without changing how many |
+| Palette      | 5 presets           | The glass colours, and the light behind them     |
+| Bright light | on/off              | A lamp rather than a diffuse window              |
+| Seed         | any text            | Seeds the glass generator; same seed, same glass |
 
-The last five apply to the shard field only; the rest apply to every source. There is no
-mirror control — a tube has three, and no spin control: it is turned by swiping, as below.
+The last five apply to the glass only; the rest apply to every source. There is no mirror
+control — a tube has three — and no spin control: it is turned by swiping, as below.
+
+**Trails** blend whole frames rather than fading the surface each frame is painted on.
+`multiply` is not idempotent: a still pile stamped over its own remains every frame
+converges on something far darker than a single pass of it, so the surface is repainted
+from scratch and the previous frames are kept as a share of the blend instead.
 
 ## The mirrors
 
@@ -114,12 +153,24 @@ whichever of their settings still mean something.
 
 ## Turning the tube
 
-Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, the swipe's
-speed sets how fast, and the turn stops when the swipe does.
+Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, and the
+swipe's speed sets how fast. Let go mid-swipe and it **coasts** to a stop within a second
+or so, the way a real barrel does. That matters more than it sounds: the glass only moves
+while the tube is turning, so a turn that ended with the finger gave the pile a fraction of
+a second to avalanche in — not long enough to see it happen at all. Measured on the built
+app, a thumb-flick now keeps the field changing for two to three seconds before it settles.
+Hold still mid-swipe and it holds still; touch it again and the coast stops dead.
 
 The chamber is bolted inside the tube, so gravity does not point "down" in its
 coordinates — it points down in the **world**, and turning sweeps that direction around the
-chamber. That is the whole mechanism: the pattern does not change because the tube is
+chamber. The renderer draws the chamber inside a field it has rotated by the tube angle, so
+world-down has to be turned back by that same angle to land in the chamber's axes. Signing
+that the other way — the easy mistake, since it reads as "undo the rotation" — sweeps
+gravity round at twice the turn rate instead of holding it still, which puts the pile at the
+top of the screen at a quarter turn and makes the whole mechanism read as no gravity at
+all. There is a test that settles the chamber at twelve angles and checks the pile comes out
+below centre **on screen** each time; a test of the chamber alone cannot see this, because
+in the chamber's own coordinates both signs look equally plausible. That is the whole mechanism: the pattern does not change because the tube is
 turning, it changes because turning tips the glass, it avalanches, and it settles into a
 new pile. Measured on the built app: essentially still at rest, a burst of change on the
 swipe, then back to rest.

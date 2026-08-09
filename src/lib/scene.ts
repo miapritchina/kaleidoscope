@@ -1,18 +1,20 @@
 import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
-import type { ChipSprites } from './chips';
-import { hashSeed, mulberry32, randomBetween, randomItem } from './random';
+import { CHIP_VARIANTS, type ChipSprites } from './chips';
+import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
  * repeat. Coordinates are in cell units, centred on the chamber.
  */
 
-export const SHARD_KINDS = ['disc', 'ring', 'petal', 'sliver'] as const;
+export const SHARD_KINDS = ['triangle', 'shard', 'bead', 'sliver'] as const;
 
 export type ShardKind = (typeof SHARD_KINDS)[number];
 
 export interface Shard {
   kind: ShardKind;
+  /** Which cut of that shape, so a chamber is not full of identical glass. */
+  variant: number;
   /** Position in the chamber, in cell units from its centre. */
   x: number;
   y: number;
@@ -76,6 +78,20 @@ const MAX_STEP_SECONDS = 1 / 20;
 /** How far a full drag moves the chamber, in cell units. */
 export const DRAG_CELLS = 0.5;
 
+/** How much of the glass a strong light burns through. */
+const LIGHT_THINNING = 0.72;
+
+/**
+ * How much larger a chip is drawn than the footprint it collides with.
+ *
+ * A chamber is several pieces deep, and the simulation is one layer: the radius
+ * is what keeps two pieces from occupying the same place in the pile, not the
+ * size of the glass. Drawn at exactly that radius nothing ever overlaps
+ * anything, and the whole point of glass over glass — that it deepens, and that
+ * a green over a red goes nearly black — never once happens.
+ */
+const DEPTH_OVERLAP = 1.3;
+
 /**
  * How quickly the contents catch up with the tube, per second.
  *
@@ -110,18 +126,22 @@ export function createScene(seed: string, shardCount: number): Scene {
 
     shards.push({
       kind: randomItem(rng, SHARD_KINDS),
+      variant: randomInt(rng, 0, CHIP_VARIANTS - 1),
       x: Math.cos(angle) * distance,
       y: Math.sin(angle) * distance,
       vx: 0,
       vy: 0,
-      // Sized so the glass packs the chamber to around two thirds by area: a
-      // real cell is full, so tipping it rearranges the pile rather than
-      // emptying most of the view.
-      radius: randomBetween(rng, 0.09, 0.26),
+      // Sized so the glass packs the chamber to around three quarters by area:
+      // a real cell is full, so tipping it rearranges the pile rather than
+      // emptying most of the view. The range is wide because a real one holds
+      // everything from a splinter to a bead.
+      radius: randomBetween(rng, 0.08, 0.26),
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
       colorStop: rng(),
-      alpha: randomBetween(rng, 0.55, 0.95),
+      // How much glass the light has to cross. Thin chips wash out against a
+      // bright backdrop, so none of them are very thin.
+      alpha: randomBetween(rng, 0.72, 1),
     });
   }
 
@@ -183,8 +203,11 @@ export interface DrawChamberOptions {
   /** Multiplies chip size without changing how many there are. */
   chipScale?: number;
   sprites: ChipSprites;
-  /** Additive blending for overlapping chips. */
-  glow: boolean;
+  /**
+   * A stronger light behind the glass: thinner-looking, more brilliant, less
+   * saturated — the difference between a window and a lamp.
+   */
+  light: boolean;
 }
 
 /**
@@ -196,30 +219,33 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, rotation, pan, chipScale = 1, sprites, glow }: DrawChamberOptions,
+  { scale, rotation, pan, chipScale = 1, sprites, light }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
   }
 
   ctx.save();
-  ctx.globalCompositeOperation = glow ? 'lighter' : 'source-over';
+  // Glass takes colour out of the light behind it rather than adding its own,
+  // and two chips over each other take out more than either alone. That is
+  // what multiply does, and it is why the gaps stay the colour of the light.
+  ctx.globalCompositeOperation = 'multiply';
   ctx.translate(pan.x * scale, pan.y * scale);
   ctx.rotate(rotation);
 
   for (const shard of scene.shards) {
-    const sprite = sprites.get(shard.kind, shard.colorStop);
+    const sprite = sprites.get(shard.kind, shard.colorStop, shard.variant);
 
     if (!sprite) {
       continue;
     }
 
-    const radius = shard.radius * scale * chipScale;
+    const radius = shard.radius * scale * chipScale * DEPTH_OVERLAP;
 
     ctx.save();
     ctx.translate(shard.x * scale, shard.y * scale);
     ctx.rotate(shard.rotation);
-    ctx.globalAlpha = shard.alpha;
+    ctx.globalAlpha = light ? shard.alpha * LIGHT_THINNING : shard.alpha;
     ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);
     ctx.restore();
   }

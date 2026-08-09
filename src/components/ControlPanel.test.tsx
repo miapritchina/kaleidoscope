@@ -31,7 +31,7 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
     expect(screen.getByLabelText('Palette')).toBeInTheDocument();
-    expect(screen.getByLabelText('Glow')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bright light')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
 
@@ -94,13 +94,13 @@ describe('ControlPanel', () => {
     expect(props.onChange).toHaveBeenCalledWith('paletteId', 'ember');
   });
 
-  it('reports glow toggles', async () => {
+  it('reports light toggles', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.click(screen.getByLabelText('Glow'));
+    await user.click(screen.getByLabelText('Bright light'));
 
-    expect(props.onChange).toHaveBeenCalledWith('glow', !DEFAULT_SETTINGS.glow);
+    expect(props.onChange).toHaveBeenCalledWith('light', !DEFAULT_SETTINGS.light);
   });
 
   it('lets the seed field be cleared while typing', async () => {

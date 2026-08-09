@@ -49,7 +49,7 @@ describe('sanitizeSettings', () => {
       shards: '30',
       zoom: 1.5,
       trails: -4,
-      glow: 'yes',
+      light: 'yes',
       paletteId: 'unknown-palette',
       seed: '  drifting  ',
     });
@@ -60,7 +60,7 @@ describe('sanitizeSettings', () => {
       chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,
       trails: 0,
-      glow: DEFAULT_SETTINGS.glow,
+      light: DEFAULT_SETTINGS.light,
       paletteId: DEFAULT_SETTINGS.paletteId,
       seed: 'drifting',
     });
@@ -106,7 +106,7 @@ describe('hasSettingsParams', () => {
 
 describe('search param round trip', () => {
   it('restores the settings it encoded', () => {
-    const settings = { ...DEFAULT_SETTINGS, zoom: 2, glow: false, seed: 'round-trip' };
+    const settings = { ...DEFAULT_SETTINGS, zoom: 2, light: true, seed: 'round-trip' };
 
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
   });
@@ -128,9 +128,17 @@ describe('search param round trip', () => {
     expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });
 
-  it('treats a missing glow flag as the default', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('seed=abc')).glow).toBe(
-      DEFAULT_SETTINGS.glow,
+  it('treats a missing light flag as the default', () => {
+    expect(settingsFromSearchParams(new URLSearchParams('seed=abc')).light).toBe(
+      DEFAULT_SETTINGS.light,
     );
+  });
+
+  // This flag used to switch on additive blending, back when the backdrop was
+  // a void rather than a light. Both asked for the more brilliant of the two
+  // looks, so a link made then still opens on the one it was shared for.
+  it('reads the old blending flag as the light', () => {
+    expect(settingsFromSearchParams(new URLSearchParams('glow=1')).light).toBe(true);
+    expect(settingsFromSearchParams(new URLSearchParams('light=0&glow=1')).light).toBe(false);
   });
 });

@@ -132,17 +132,58 @@ describe('useStageGesture', () => {
       expect(Math.abs(view.gesture.turnRef.current)).toBeLessThanOrEqual(2 * Math.PI * 2 + 0.001);
     });
 
-    it('stops the turn when the swipe ends', () => {
+    // A real barrel keeps turning after your hand leaves it. It matters more
+    // than it sounds: the glass only moves while the tube turns, and a turn that
+    // ends with the finger gives the pile a fraction of a second to avalanche in.
+    it('coasts on after the swipe ends, and stops within a second or so', () => {
       const view = renderStage();
 
       view.down(50, 100);
       view.move(150, 100);
-      expect(view.gesture.turnRef.current).not.toBe(0);
+      const flick = view.gesture.turnRef.current;
+      expect(flick).not.toBe(0);
 
+      view.up();
+      expect(view.gesture.mode).toBeNull();
+      expect(view.gesture.turnRef.current).toBe(flick);
+
+      // Half a second in it is still turning, the same way, but slower.
+      for (let frame = 0; frame < 30; frame += 1) {
+        view.gesture.settle(1 / 60);
+      }
+      expect(Math.sign(view.gesture.turnRef.current)).toBe(Math.sign(flick));
+      expect(Math.abs(view.gesture.turnRef.current)).toBeLessThan(Math.abs(flick));
+
+      // And it comes to a stop rather than creeping on for ever.
+      for (let frame = 0; frame < 180; frame += 1) {
+        view.gesture.settle(1 / 60);
+      }
+      expect(view.gesture.turnRef.current).toBe(0);
+    });
+
+    // Letting go of something you had already stopped does not set it going.
+    it('stops dead when the finger had come to rest before lifting', () => {
+      const view = renderStage();
+
+      view.down(50, 100);
+      view.move(150, 100);
+      view.wait(500);
       view.up();
 
       expect(view.gesture.turnRef.current).toBe(0);
-      expect(view.gesture.mode).toBeNull();
+    });
+
+    it('stops a coasting tube the moment it is grabbed again', () => {
+      const view = renderStage();
+
+      view.down(50, 100);
+      view.move(150, 100);
+      view.up();
+      expect(view.gesture.turnRef.current).not.toBe(0);
+
+      view.down(50, 100);
+
+      expect(view.gesture.turnRef.current).toBe(0);
     });
 
     // A finger resting mid-swipe fires no move events, so the rate has to expire
@@ -155,7 +196,7 @@ describe('useStageGesture', () => {
       expect(view.gesture.turnRef.current).not.toBe(0);
 
       view.wait(500);
-      view.gesture.settle();
+      view.gesture.settle(1 / 60);
 
       expect(view.gesture.turnRef.current).toBe(0);
     });
@@ -168,7 +209,7 @@ describe('useStageGesture', () => {
       const rate = view.gesture.turnRef.current;
 
       view.wait(10);
-      view.gesture.settle();
+      view.gesture.settle(1 / 60);
 
       expect(view.gesture.turnRef.current).toBe(rate);
     });

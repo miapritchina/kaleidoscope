@@ -21,12 +21,13 @@ export interface StageGesture {
     onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
   };
   /**
-   * Call once a frame.
+   * Call once a frame, with the frame's length in seconds.
    *
-   * A finger held still fires no `pointermove`, so without this the last
-   * velocity would keep the tube turning under a motionless finger.
+   * Does two jobs, both of which need a clock rather than a pointer event: a
+   * finger held still fires no `pointermove`, so the rate has to be expired
+   * here; and once the finger lifts, a flick coasts to a stop here.
    */
-  settle: () => void;
+  settle: (deltaSeconds: number) => void;
   reset: () => void;
 }
 
@@ -55,6 +56,21 @@ const VELOCITY_SMOOTHING = 0.35;
  */
 const STALE_MOVE_MS = 90;
 
+/**
+ * How quickly a flicked tube slows, per second.
+ *
+ * A real barrel keeps turning after your hand leaves it and is stopped by the
+ * friction of its own fittings within a second or so — it is not a bearing, and
+ * it does not stop dead either. The coast matters more than it sounds: the glass
+ * only moves while the tube is turning, so a turn that ends the instant the
+ * finger lifts gives the pile a fraction of a second to avalanche in, which is
+ * not long enough to see it happen at all.
+ */
+const COAST_FRICTION = 1.8;
+
+/** Turning rate below which a coasting tube is simply stopped, in radians/sec. */
+const COAST_MINIMUM = 0.12;
+
 /** How far a drag across half the stage moves the source. */
 const PAN_SENSITIVITY = 2;
 
@@ -75,10 +91,10 @@ interface Sample {
  * The stage's pointer gestures.
  *
  * A plain swipe turns the tube: left-to-right or top-to-bottom goes clockwise,
- * and the swipe's speed sets the turning rate, which drops to nothing the moment
- * the swipe ends. Holding a second finger down — or Shift, or a secondary
- * button — pans the source instead, so both gestures live on the same surface
- * without one stealing the other.
+ * and the swipe's speed sets the turning rate. Let go mid-swipe and it coasts to
+ * a stop the way a real barrel does. Holding a second finger down — or Shift, or
+ * a secondary button — pans the source instead, so both gestures live on the
+ * same surface without one stealing the other.
  */
 export function useStageGesture(now: () => number = defaultNow): StageGesture {
   const panRef = useRef<Vector>({ x: 0, y: 0 });
@@ -181,13 +197,20 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
         return;
       }
 
-      // The turn ends with the swipe; no coasting, for now.
-      turnRef.current = 0;
+      // Whatever it was doing at the moment of release is kept, and `settle`
+      // coasts it down from there — unless the finger had come to a rest first,
+      // in which case there is nothing to carry and letting go stops it.
+      const last = lastSampleRef.current;
+
+      if (modeRef.current !== 'turn' || !last || now() - last.time > STALE_MOVE_MS) {
+        turnRef.current = 0;
+      }
+
       originRef.current = null;
       lastSampleRef.current = null;
       setActiveMode(null);
     },
-    [setActiveMode],
+    [now, setActiveMode],
   );
 
   const reset = useCallback(() => {
@@ -199,13 +222,30 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
     setActiveMode(null);
   }, [setActiveMode]);
 
-  const settle = useCallback(() => {
-    const last = lastSampleRef.current;
+  const settle = useCallback(
+    (deltaSeconds: number) => {
+      const last = lastSampleRef.current;
 
-    if (modeRef.current === 'turn' && last && now() - last.time > STALE_MOVE_MS) {
-      turnRef.current = 0;
-    }
-  }, [now]);
+      if (modeRef.current === 'turn') {
+        // Holding still holds the tube still, which is what a real one does.
+        if (last && now() - last.time > STALE_MOVE_MS) {
+          turnRef.current = 0;
+        }
+
+        return;
+      }
+
+      if (modeRef.current !== null || turnRef.current === 0) {
+        return;
+      }
+
+      const step = Number.isFinite(deltaSeconds) ? Math.max(0, deltaSeconds) : 0;
+      const coasting = turnRef.current * Math.exp(-COAST_FRICTION * step);
+
+      turnRef.current = Math.abs(coasting) < COAST_MINIMUM ? 0 : coasting;
+    },
+    [now],
+  );
 
   return {
     panRef,

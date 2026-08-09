@@ -5,10 +5,9 @@ import {
   getPalette,
   hexToRgb,
   isPaletteId,
-  lerpRgb,
   PALETTES,
+  pickGlassColor,
   rgbToCss,
-  samplePalette,
 } from './palettes';
 
 describe('palette registry', () => {
@@ -58,28 +57,29 @@ describe('rgbToCss', () => {
   });
 });
 
-describe('samplePalette', () => {
+describe('pickGlassColor', () => {
   it('wraps positions outside [0, 1]', () => {
     const palette = getPalette('aurora');
 
-    expect(samplePalette(palette, 1.25)).toEqual(samplePalette(palette, 0.25));
-    expect(samplePalette(palette, -0.75)).toEqual(samplePalette(palette, 0.25));
+    expect(pickGlassColor(palette, 1.25)).toEqual(pickGlassColor(palette, 0.25));
+    expect(pickGlassColor(palette, -0.75)).toEqual(pickGlassColor(palette, 0.25));
   });
 
-  it('returns the first stop at position 0', () => {
+  it('returns the first colour at position 0, and the last at the far end', () => {
     const palette = getPalette('ember');
 
-    expect(samplePalette(palette, 0)).toEqual(hexToRgb(palette.colors[0]!));
+    expect(pickGlassColor(palette, 0)).toEqual(hexToRgb(palette.colors[0]!));
+    expect(pickGlassColor(palette, 0.999)).toEqual(hexToRgb(palette.colors.at(-1)!));
   });
-});
 
-describe('lerpRgb', () => {
-  it('interpolates and clamps the amount', () => {
-    const from = { r: 0, g: 0, b: 0 };
-    const to = { r: 100, g: 200, b: 50 };
+  // A chamber is loaded from a few jars of glass, and the halfway house between
+  // a green and a magenta is mud.
+  it('never mixes two of the colours', () => {
+    const palette = getPalette('aurora');
+    const stops = palette.colors.map((color) => hexToRgb(color));
 
-    expect(lerpRgb(from, to, 0.5)).toEqual({ r: 50, g: 100, b: 25 });
-    expect(lerpRgb(from, to, 2)).toEqual(to);
-    expect(lerpRgb(from, to, -1)).toEqual(from);
+    for (let i = 0; i <= 100; i += 1) {
+      expect(stops).toContainEqual(pickGlassColor(palette, i / 100));
+    }
   });
 });
