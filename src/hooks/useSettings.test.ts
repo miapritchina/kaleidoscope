@@ -7,8 +7,6 @@ import { settingsReducer, useSettings } from './useSettings';
 /** One valid, genuinely different value per setting. */
 const CHANGES = [
   ['source', 'camera'],
-  ['geometry', 'rosette'],
-  ['mirrors', 3],
   ['shards', 40],
   ['chipSize', 1.5],
   ['zoom', 2],
@@ -20,13 +18,13 @@ const CHANGES = [
 
 describe('settingsReducer', () => {
   it('validates values as they are set', () => {
-    const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key: 'mirrors', value: 9999 });
+    const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key: 'shards', value: 9999 });
 
-    expect(next.mirrors).toBe(LIMITS.mirrors.max);
+    expect(next.shards).toBe(LIMITS.shards.max);
   });
 
   it('returns the same object when nothing changes, so renders are skipped', () => {
-    const action = { type: 'set', key: 'mirrors', value: DEFAULT_SETTINGS.mirrors } as const;
+    const action = { type: 'set', key: 'shards', value: DEFAULT_SETTINGS.shards } as const;
 
     expect(settingsReducer(DEFAULT_SETTINGS, action)).toBe(DEFAULT_SETTINGS);
   });
@@ -50,7 +48,7 @@ describe('settingsReducer', () => {
     const next = settingsReducer(DEFAULT_SETTINGS, { type: 'randomize' });
 
     expect(next.seed).not.toBe(DEFAULT_SETTINGS.seed);
-    expect(next.mirrors).toBe(DEFAULT_SETTINGS.mirrors);
+    expect(next.shards).toBe(DEFAULT_SETTINGS.shards);
   });
 
   it('resets to the defaults', () => {
@@ -98,11 +96,11 @@ describe('useSettings', () => {
   });
 
   it('reads a url that carries only one setting', () => {
-    window.history.replaceState(null, '', '/?mirrors=3');
+    window.history.replaceState(null, '', '/?shards=42');
 
     const { result } = renderHook(() => useSettings());
 
-    expect(result.current.settings.mirrors).toBe(3);
+    expect(result.current.settings.shards).toBe(42);
   });
 
   it('prefers the url over stored settings', () => {

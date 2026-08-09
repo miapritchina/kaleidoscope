@@ -5,19 +5,22 @@ import { KaleidoscopeRenderer } from './renderer';
 import { createScene } from './scene';
 import { DEFAULT_SETTINGS } from './settings';
 
-/** The wedge-and-sector path; the default is now the three-mirror tiling. */
-const ROSETTE = { ...DEFAULT_SETTINGS, geometry: 'rosette' as const };
-
 interface Harness {
   renderer: KaleidoscopeRenderer;
   main: FakeContext;
+  /** Where the source is painted, before the mirrors get hold of it. */
   wedge: FakeContext;
+  /** Where the six mirrored triangles are assembled into one stamp. */
+  hexagon: FakeContext;
   canvas: { width: number; height: number };
+  /** Backing store of the hexagon stamp, which the triangle's side sets. */
+  hexagonCanvas: { width: number; height: number };
 }
 
 function createRenderer(): Harness {
   const main = createFakeContext();
-  const wedge = createFakeContext();
+  const offscreen = [createFakeContext(), createFakeContext()];
+  const canvases: { width: number; height: number }[] = [];
 
   const canvas = {
     width: 0,
@@ -26,18 +29,29 @@ function createRenderer(): Harness {
     toDataURL: () => 'data:image/png;base64,stub',
   };
 
-  const wedgeCanvas = {
-    width: 0,
-    height: 0,
-    getContext: () => asContext(wedge),
+  const createOffscreen = () => {
+    const context = offscreen[canvases.length] ?? createFakeContext();
+    const surface = {
+      width: 0,
+      height: 0,
+      getContext: () => asContext(context),
+    };
+
+    canvases.push(surface);
+
+    return surface as unknown as HTMLCanvasElement;
   };
 
-  const renderer = new KaleidoscopeRenderer(
-    canvas as unknown as HTMLCanvasElement,
-    () => wedgeCanvas as unknown as HTMLCanvasElement,
-  );
+  const renderer = new KaleidoscopeRenderer(canvas as unknown as HTMLCanvasElement, createOffscreen);
 
-  return { renderer, main, wedge, canvas };
+  return {
+    renderer,
+    main,
+    wedge: offscreen[0]!,
+    hexagon: offscreen[1]!,
+    canvas,
+    hexagonCanvas: canvases[1]!,
+  };
 }
 
 describe('KaleidoscopeRenderer', () => {
@@ -76,83 +90,108 @@ describe('KaleidoscopeRenderer', () => {
   it('does nothing when rendering before a resize', () => {
     const { renderer, main } = createRenderer();
 
-    renderer.render(createScene('seed', 4), ROSETTE);
+    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
 
     expect(main.calls).toHaveLength(0);
   });
 
-  it('blits two wedges per mirror', () => {
+  // Six triangles meet at every corner to make the hexagon, alternately
+  // mirrored so neighbours always meet mirror to mirror.
+  it('assembles the hexagon from six triangles, every other one reflected', () => {
+    const { renderer, hexagon } = createRenderer();
+
+    renderer.resize(200, 200, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+
+    expect(hexagon.countOf('clip')).toBe(6);
+    expect(hexagon.countOf('drawImage')).toBe(6);
+    expect(hexagon.argsOf('scale')).toEqual([
+      [1, -1],
+      [1, -1],
+      [1, -1],
+    ]);
+  });
+
+  // The point of building the hexagon once: the field costs one blit per
+  // hexagon, not six clipped draws, however many are on screen.
+  it('tiles the field with that one hexagon', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 4 });
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
 
-    expect(main.countOf('drawImage')).toBe(8);
-    expect(main.countOf('clip')).toBe(8);
+    // Enough to fill the view several times over, and each is a plain blit.
+    expect(main.countOf('drawImage')).toBeGreaterThan(6);
+    expect(main.countOf('clip')).toBe(0);
   });
 
-  it('supports an odd mirror count, three included', () => {
-    const { renderer, main } = createRenderer();
+  it('stamps more hexagons as the zoom shrinks them', () => {
+    const wide = createRenderer();
+    const close = createRenderer();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 3 });
+    wide.renderer.resize(200, 200, 1);
+    wide.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, zoom: 0.5 });
 
-    // Three mirrors give the classic hexagonal figure: six wedges.
-    expect(main.countOf('drawImage')).toBe(6);
-    expect(main.countOf('scale')).toBe(3);
+    close.renderer.resize(200, 200, 1);
+    close.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, zoom: 3 });
+
+    expect(wide.main.countOf('drawImage')).toBeGreaterThan(close.main.countOf('drawImage'));
   });
 
-  it('mirrors alternate wedges', () => {
-    const { renderer, main } = createRenderer();
+  // A real tube's mirrors span the round chamber at the end of it. Hung off the
+  // corner the six triangles are assembled around instead, most of the chamber
+  // sits outside the view and turning sweeps the pile clean out of it.
+  it('inscribes the mirror triangle in the object cell', () => {
+    const { renderer, wedge, hexagonCanvas } = createRenderer();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...ROSETTE, mirrors: 4 });
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
 
-    // Half of the wedges are reflected copies of the other half.
-    expect(main.countOf('scale')).toBe(4);
+    // The hexagon stamp spans the triangle's side either way of its centre,
+    // plus the seam bleed, which is what gives the side back.
+    const side = hexagonCanvas.width / 2 - 2;
+    // First the margin, then the cell. Anything after that is per-chip.
+    const [, cell] = wedge.argsOf('translate') as [unknown, [number, number]];
+
+    // The centroid lies along the triangle's 30-degree bisector, one
+    // circumradius out — so the cell reaches all three corners and no further.
+    // Within a pixel, since the two surfaces round their own sizes up.
+    expect(Math.atan2(cell[1], cell[0])).toBeCloseTo(Math.PI / 6, 6);
+    expect(Math.abs(Math.hypot(cell[0], cell[1]) - side / Math.sqrt(3))).toBeLessThan(1);
   });
 
-  // Turning the tube revolves the assembly; the contents lagging behind it is
-  // what makes the figure evolve at the same time.
-  it('rotates the assembly by the tube angle and the source by the lag', () => {
-    const { renderer, wedge } = createRenderer();
+  // Turning the tube revolves the whole assembly. The chamber is bolted inside
+  // it, so it does not counter-rotate — the glass moves because gravity tips
+  // it, not because the chamber is turned against the mirrors.
+  it('rotates the assembly by the tube angle and leaves the chamber fixed in it', () => {
+    const { renderer, main, wedge } = createRenderer();
     const scene = createScene('seed', 6);
-    // A value that is not a multiple of the wedge step, so the assertion below
-    // cannot pass by coinciding with a wedge's own placement.
-    scene.contents = 0.1234;
+    scene.tube = 0.77;
+    scene.contents = 0.77;
 
     renderer.resize(200, 200, 1);
-    renderer.render(scene, ROSETTE);
+    renderer.render(scene, DEFAULT_SETTINGS);
 
-    // Contents at 0.1234 with the tube at 0: the source carries the full lag.
-    expect(wedge.argsOf('rotate')).toContainEqual([0.1234]);
-
-    const turned = createRenderer();
-    const spun = createScene('seed', 6);
-    spun.tube = 0.77;
-    spun.contents = 0.77;
-    turned.renderer.resize(200, 200, 1);
-    turned.renderer.render(spun, ROSETTE);
-
-    // Fully settled: the assembly carries it all and the source carries none.
-    expect(turned.main.argsOf('rotate')).toContainEqual([0.77]);
-    expect(turned.wedge.argsOf('rotate')).toContainEqual([0]);
+    expect(main.argsOf('rotate')).toContainEqual([0.77]);
+    expect(wedge.argsOf('rotate')).toContainEqual([0]);
+    expect(wedge.argsOf('rotate')).not.toContainEqual([0.77]);
   });
 
   it('balances every save with a restore', () => {
-    const { renderer, main } = createRenderer();
+    const { renderer, main, hexagon } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), ROSETTE);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
 
     expect(main.countOf('save')).toBe(main.countOf('restore'));
+    expect(hexagon.countOf('save')).toBe(hexagon.countOf('restore'));
   });
 
   it('fades rather than clears the wedge when trails are on', () => {
     const { renderer, wedge } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...ROSETTE, trails: 0.6 });
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0.6 });
 
     expect(wedge.countOf('fillRect')).toBeGreaterThan(0);
   });

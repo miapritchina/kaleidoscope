@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import { createChipSprites } from './chips';
 import { getPalette } from './palettes';
-import { createScene, drawCell, SHARD_KINDS, updateScene } from './scene';
+import { CHAMBER_RADIUS } from './chamber';
+import { createScene, drawChamber, SHARD_KINDS, updateScene } from './scene';
 
 // jsdom has no canvas backend, so chip sprites are rendered onto recorders
 // instead. They still come back as drawable images, which is all drawCell needs
@@ -34,38 +35,38 @@ describe('createScene', () => {
     expect(createScene('abc', -5).shards).toHaveLength(1);
   });
 
-  it('produces shards inside the unit cell with known kinds', () => {
+  it('produces shards inside the chamber with known kinds', () => {
     for (const shard of createScene('spread', 40).shards) {
-      expect(shard.x).toBeGreaterThanOrEqual(0);
-      expect(shard.x).toBeLessThan(1);
-      expect(shard.y).toBeGreaterThanOrEqual(0);
-      expect(shard.y).toBeLessThan(1);
+      expect(Math.hypot(shard.x, shard.y)).toBeLessThanOrEqual(CHAMBER_RADIUS);
       expect(SHARD_KINDS).toContain(shard.kind);
     }
   });
 
-  it('always includes one large shard', () => {
-    const largest = Math.max(...createScene('big', 20).shards.map((shard) => shard.radius));
+  it('opens on a settled pile rather than glass in mid-air', () => {
+    const scene = createScene('settled', 30);
 
-    expect(largest).toBeGreaterThan(0.17);
+    // Everything has come to rest, and gravity is down, so the pile has
+    // gathered in the lower half rather than staying where it was scattered.
+    expect(scene.shards.every((shard) => Math.hypot(shard.vx, shard.vy) < 0.2)).toBe(true);
+
+    const centreOfMass =
+      scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
+    expect(centreOfMass).toBeGreaterThan(0);
   });
 });
 
 describe('updateScene', () => {
   const drag = { x: 0, y: 0 };
 
-  it('keeps shard positions wrapped into the unit cell', () => {
-    const scene = createScene('wrap', 20);
+  it('keeps every chip inside the chamber wall', () => {
+    const scene = createScene('wall', 30);
 
-    for (let i = 0; i < 400; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0.2, drag });
+    for (let i = 0; i < 200; i += 1) {
+      updateScene(scene, { dt: 0.05, turn: Math.PI, drag });
     }
 
     for (const shard of scene.shards) {
-      expect(shard.x).toBeGreaterThanOrEqual(0);
-      expect(shard.x).toBeLessThan(1);
-      expect(shard.colorStop).toBeGreaterThanOrEqual(0);
-      expect(shard.colorStop).toBeLessThan(1);
+      expect(Math.hypot(shard.x, shard.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-6);
     }
   });
 
@@ -156,38 +157,62 @@ describe('updateScene', () => {
   // A kaleidoscope on a table does not simmer away on its own.
   it('holds the chips still while the tube is at rest', () => {
     const scene = createScene('still', 12);
-    const before = scene.shards.map((shard) => ({ ...shard }));
 
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 30; i += 1) {
       updateScene(scene, { dt: 0.05, turn: 0, drag });
     }
 
-    expect(scene.shards).toEqual(before);
-    expect(scene.elapsed).toBe(0);
-    expect(scene.pan.x).toBe(0);
+    const before = scene.shards.map((shard) => ({ x: shard.x, y: shard.y }));
+
+    for (let i = 0; i < 30; i += 1) {
+      updateScene(scene, { dt: 0.05, turn: 0, drag });
+    }
+
+    for (const [index, shard] of scene.shards.entries()) {
+      expect(Math.hypot(shard.x - before[index]!.x, shard.y - before[index]!.y)).toBeLessThan(0.01);
+    }
   });
 
-  it('jostles the chips while the tube turns', () => {
-    const scene = createScene('jostle', 12);
-    const before = scene.shards.map((shard) => ({ ...shard }));
+  // Turning tips the pile, and it avalanches. That is the whole mechanism.
+  it('avalanches the pile when the tube is turned', () => {
+    const scene = createScene('avalanche', 24);
 
-    updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
+    for (let i = 0; i < 40; i += 1) {
+      updateScene(scene, { dt: 0.05, turn: 0, drag });
+    }
+    const settled = scene.shards.map((shard) => ({ x: shard.x, y: shard.y }));
 
-    expect(scene.shards).not.toEqual(before);
-  });
+    // Half a turn puts the pile where the ceiling used to be.
+    for (let i = 0; i < 40; i += 1) {
+      updateScene(scene, { dt: 0.05, turn: Math.PI / 2, drag });
+    }
 
-  it('jostles them more the faster it is turned', () => {
-    const gentle = createScene('rate', 6);
-    const brisk = createScene('rate', 6);
-    // Shards start at a random angle, so compare how far each one moved.
-    const start = gentle.shards[0]!.rotation;
-
-    updateScene(gentle, { dt: 0.05, turn: Math.PI * 0.1, drag });
-    updateScene(brisk, { dt: 0.05, turn: Math.PI, drag });
-
-    expect(Math.abs(brisk.shards[0]!.rotation - start)).toBeGreaterThan(
-      Math.abs(gentle.shards[0]!.rotation - start),
+    const moved = scene.shards.filter(
+      (shard, index) => Math.hypot(shard.x - settled[index]!.x, shard.y - settled[index]!.y) > 0.1,
     );
+
+    expect(moved.length).toBeGreaterThan(scene.shards.length / 3);
+  });
+
+  it('gathers the pile on whichever side is down', () => {
+    const upright = createScene('down', 24);
+    const inverted = createScene('down', 24);
+
+    for (let i = 0; i < 120; i += 1) {
+      updateScene(upright, { dt: 0.05, turn: 0, drag });
+    }
+
+    // Held upside down, gravity in the chamber's frame reverses.
+    inverted.tube = Math.PI;
+    for (let i = 0; i < 120; i += 1) {
+      updateScene(inverted, { dt: 0.05, turn: 0, drag });
+    }
+
+    const centre = (scene: typeof upright) =>
+      scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
+
+    expect(centre(upright)).toBeGreaterThan(0);
+    expect(centre(inverted)).toBeLessThan(0);
   });
 
   it('ignores negative time steps', () => {
@@ -211,74 +236,52 @@ describe('updateScene', () => {
   });
 });
 
-describe('drawCell', () => {
-  it('tiles the cell to cover the region', () => {
-    const scene = createScene('tiles', 3);
-
-    const zoomedOut = createFakeContext();
-    drawCell(asContext(zoomedOut), scene, { ...BASE, size: 400, cellSize: 200 });
-
-    const zoomedIn = createFakeContext();
-    drawCell(asContext(zoomedIn), scene, { ...BASE, size: 400, cellSize: 400 });
-
-    // A smaller cell needs more tiles, so more shards get drawn.
-    expect(zoomedOut.countOf('translate')).toBeGreaterThan(zoomedIn.countOf('translate'));
-  });
-
-  it('draws nothing for a degenerate region', () => {
-    const scene = createScene('empty', 5);
+describe('drawChamber', () => {
+  it('stamps one sprite per chip', () => {
+    const scene = createScene('draw', 7);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { ...BASE, size: 0, cellSize: 100 });
-    drawCell(asContext(context), scene, { ...BASE, size: 100, cellSize: 0 });
+    drawChamber(asContext(context), scene, { ...BASE, scale: 100 });
+
+    expect(context.countOf('drawImage')).toBe(7);
+  });
+
+  it('draws nothing at a degenerate scale', () => {
+    const context = createFakeContext();
+
+    drawChamber(asContext(context), createScene('empty', 5), { ...BASE, scale: 0 });
 
     expect(context.calls).toHaveLength(0);
   });
 
   it('switches to additive blending when glow is on', () => {
-    const scene = createScene('glow', 2);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { ...BASE, size: 100, cellSize: 100, glow: true });
+    drawChamber(asContext(context), createScene('glow', 2), { ...BASE, scale: 50, glow: true });
 
     expect(context.globalCompositeOperation).toBe('lighter');
   });
 
+  it('scales the glass without moving it', () => {
+    const scene = createScene('scale', 4);
+    const small = createFakeContext();
+    const large = createFakeContext();
+
+    drawChamber(asContext(small), scene, { ...BASE, scale: 100, chipScale: 1 });
+    drawChamber(asContext(large), scene, { ...BASE, scale: 100, chipScale: 2 });
+
+    expect(large.argsOf('translate')).toEqual(small.argsOf('translate'));
+    expect(large.argsOf('drawImage')[0]![3] as number).toBeCloseTo(
+      (small.argsOf('drawImage')[0]![3] as number) * 2,
+      6,
+    );
+  });
+
   it('balances every save with a restore', () => {
-    const scene = createScene('balance', 6);
     const context = createFakeContext();
 
-    drawCell(asContext(context), scene, { ...BASE, size: 200, cellSize: 150 });
+    drawChamber(asContext(context), createScene('balance', 6), { ...BASE, scale: 80 });
 
     expect(context.countOf('save')).toBe(context.countOf('restore'));
-  });
-});
-
-describe('drawCell pan framing', () => {
-  // The viewer drags in screen space; the field must not set off at whatever
-  // angle the spin happened to have reached.
-  it('expresses a screen-space pan in the rotated field frame', () => {
-    const scene = createScene('pan-frame', 4);
-    const upright = createFakeContext();
-    const turned = createFakeContext();
-
-    drawCell(asContext(upright), scene, {
-      ...BASE,
-      size: 200,
-      cellSize: 100,
-      pan: { x: 0.25, y: 0 },
-    });
-    drawCell(asContext(turned), scene, {
-      ...BASE,
-      size: 200,
-      cellSize: 100,
-      rotation: Math.PI / 2,
-      pan: { x: 0.25, y: 0 },
-    });
-
-    // A quarter turn sends a rightward screen drag along the field's -y axis,
-    // so the two runs must not place their tiles identically.
-    expect(turned.argsOf('translate')).not.toEqual(upright.argsOf('translate'));
-    expect(turned.argsOf('rotate')[0]).toEqual([Math.PI / 2]);
   });
 });

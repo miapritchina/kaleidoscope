@@ -13,19 +13,14 @@ import {
 
 describe('clampToLimit', () => {
   it('clamps to the range', () => {
-    expect(clampToLimit(-99, LIMITS.mirrors)).toBe(LIMITS.mirrors.min);
-    expect(clampToLimit(999, LIMITS.mirrors)).toBe(LIMITS.mirrors.max);
+    expect(clampToLimit(-99, LIMITS.shards)).toBe(LIMITS.shards.min);
+    expect(clampToLimit(999, LIMITS.shards)).toBe(LIMITS.shards.max);
   });
 
   it('snaps to the step without overshooting the maximum', () => {
-    expect(clampToLimit(5.4, LIMITS.mirrors)).toBe(5);
-    expect(clampToLimit(17.9, LIMITS.mirrors)).toBe(LIMITS.mirrors.max);
+    expect(clampToLimit(5.4, LIMITS.shards)).toBe(5);
+    expect(clampToLimit(59.9, LIMITS.shards)).toBe(LIMITS.shards.max);
     expect(clampToLimit(0.94, LIMITS.trails)).toBe(0.95);
-  });
-
-  it('allows an odd mirror count, three included', () => {
-    expect(clampToLimit(3, LIMITS.mirrors)).toBe(3);
-    expect(LIMITS.mirrors.min).toBeLessThanOrEqual(3);
   });
 
   it('falls back to the minimum for non-finite input', () => {
@@ -33,11 +28,11 @@ describe('clampToLimit', () => {
     expect(clampToLimit(Number.POSITIVE_INFINITY, LIMITS.zoom)).toBe(LIMITS.zoom.min);
   });
 
-  it('keeps the mirror count a whole number', () => {
-    const max: number = LIMITS.mirrors.max;
+  it('keeps the shard count a whole number', () => {
+    const max: number = LIMITS.shards.max;
 
-    for (let value = LIMITS.mirrors.min; value <= max; value += 0.25) {
-      expect(Number.isInteger(clampToLimit(value, LIMITS.mirrors))).toBe(true);
+    for (let value = LIMITS.shards.min; value <= max; value += 0.25) {
+      expect(Number.isInteger(clampToLimit(value, LIMITS.shards))).toBe(true);
     }
   });
 });
@@ -51,7 +46,6 @@ describe('sanitizeSettings', () => {
 
   it('repairs individual fields without discarding valid ones', () => {
     const result = sanitizeSettings({
-      mirrors: 500,
       shards: '30',
       zoom: 1.5,
       trails: -4,
@@ -62,8 +56,6 @@ describe('sanitizeSettings', () => {
 
     expect(result).toEqual({
       source: DEFAULT_SETTINGS.source,
-      geometry: DEFAULT_SETTINGS.geometry,
-      mirrors: LIMITS.mirrors.max,
       shards: 30,
       chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,
@@ -98,8 +90,12 @@ describe('hasSettingsParams', () => {
     }
   });
 
-  it('recognises the legacy wedge count', () => {
+  // These described arrangements the app once offered. They no longer decide
+  // anything, but a link carrying one still has settings worth reading.
+  it('recognises the parameters older links carried', () => {
     expect(hasSettingsParams(new URLSearchParams('segments=12'))).toBe(true);
+    expect(hasSettingsParams(new URLSearchParams('mirrors=4'))).toBe(true);
+    expect(hasSettingsParams(new URLSearchParams('geometry=rosette'))).toBe(true);
   });
 
   it('ignores unrelated query strings', () => {
@@ -110,38 +106,26 @@ describe('hasSettingsParams', () => {
 
 describe('search param round trip', () => {
   it('restores the settings it encoded', () => {
-    const settings = { ...DEFAULT_SETTINGS, mirrors: 3, glow: false, seed: 'round-trip' };
+    const settings = { ...DEFAULT_SETTINGS, zoom: 2, glow: false, seed: 'round-trip' };
 
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
   });
 
   it('sanitises hand-edited links', () => {
-    const params = new URLSearchParams('mirrors=9999&palette=hax&seed=&trails=abc');
+    const params = new URLSearchParams('shards=9999&palette=hax&seed=&trails=abc');
 
     expect(settingsFromSearchParams(params)).toEqual({
       ...DEFAULT_SETTINGS,
-      mirrors: LIMITS.mirrors.max,
+      shards: LIMITS.shards.max,
     });
   });
 
-  // This control used to count wedges; a link made back then should still show
-  // the figure it was shared for rather than snapping to the default.
-  it('reads the wedge count from older links as half as many mirrors', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('segments=12')).mirrors).toBe(6);
-    expect(settingsFromSearchParams(new URLSearchParams('segments=8')).mirrors).toBe(4);
-  });
+  // An old link named an arrangement this app no longer offers. It should still
+  // open, on the settings it does carry, rather than being ignored wholesale.
+  it('opens an older link on everything still meaningful in it', () => {
+    const params = new URLSearchParams('geometry=rosette&mirrors=9&segments=18&zoom=2');
 
-  it('prefers a mirror count over a legacy wedge count', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('mirrors=3&segments=24')).mirrors).toBe(3);
-  });
-
-  it('reads a legacy wedge count from stored settings too', () => {
-    expect(sanitizeSettings({ segments: 12 }).mirrors).toBe(6);
-  });
-
-  it('keeps the three-mirror tiling as the default geometry', () => {
-    expect(DEFAULT_SETTINGS.geometry).toBe('triangle');
-    expect(sanitizeSettings({ geometry: 'nonsense' }).geometry).toBe('triangle');
+    expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });
 
   it('treats a missing glow flag as the default', () => {

@@ -1,21 +1,13 @@
 import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
+import { CHAMBER_RADIUS } from './chamber';
 import { getPalette, type Palette } from './palettes';
-import { DRAG_CELLS, drawCell, type Scene } from './scene';
-import type { Settings } from './settings';
+import { DRAG_CELLS, drawChamber, type Scene } from './scene';
+import { LIMITS, type Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
 /** Which source last painted the wedge, so a switch can clear it. */
 type WedgeMode = 'shards' | 'media' | 'empty';
-
-/**
- * Size of the object cell relative to the mirror length, at `zoom: 1`.
- *
- * Real kaleidoscopes hold a small chamber of chips against long mirrors, so the
- * wedge shows the cell several times over. A cell as large as the wedge would
- * leave a few oversized shapes floating in empty space instead of a pattern.
- */
-const BASE_CELL_FRACTION = 0.32;
 
 /**
  * How far each wedge's clip is bled outwards, in device pixels.
@@ -36,22 +28,13 @@ const SEAM_BLEED = 2;
 const TRIANGLE_FRACTION = 0.24;
 
 /**
- * How much larger the chips are inside a mirror triangle.
- *
- * One cell per triangle keeps the density right, but at that scale the chips
- * come out small and marooned in the backdrop. Enlarging them alone fills the
- * chamber and lets the mirrors cut them, so each one continues into its own
- * reflection — which is what a packed chamber looks like.
- */
-const CHAMBER_CHIP_SCALE = 2.4;
-
-/**
  * Composites the kaleidoscope.
  *
  * The source — shard field, photo or camera — is painted once per frame into an
- * offscreen wedge, then the wedge is blitted around the centre with alternating
- * mirrors. That keeps the per-frame cost proportional to the source rather than
- * to `source x segments`, and it is what makes the reflections line up exactly.
+ * offscreen triangle, then that triangle is mirrored into a hexagon and the
+ * hexagon stamped across the field. That keeps the per-frame cost proportional
+ * to the source rather than to `source x triangles`, and it is what makes the
+ * reflections line up exactly.
  *
  * All geometry is in device pixels; the canvas backing store is sized by
  * {@link KaleidoscopeRenderer.resize} and never scaled by the DPR, which avoids
@@ -117,16 +100,18 @@ export class KaleidoscopeRenderer {
 
     this.#width = width;
     this.#height = height;
-    // Cover the corners: the wedges have to reach past the circumscribed circle.
+    // Cover the corners: the tiling has to reach past the circumscribed circle.
     this.#radius = Math.ceil(Math.hypot(width, height) / 2);
 
     this.#canvas.width = width;
     this.#canvas.height = height;
-    // The wedge surface carries a margin around its apex so that the bled clip
-    // finds painted pixels there rather than empty canvas, which would defeat
-    // the whole point and leave the seam showing.
-    this.#wedge.width = this.#radius + SEAM_BLEED * 2;
-    this.#wedge.height = this.#radius + SEAM_BLEED * 2;
+    // Sized for the largest triangle the zoom range can ask for, so a zoom
+    // change never has to reallocate — and never overruns the surface either.
+    // The margin around the apex is what lets the bled clip find painted pixels
+    // there rather than empty canvas, which would leave the seam showing.
+    const surface = Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2;
+    this.#wedge.width = surface;
+    this.#wedge.height = surface;
 
     this.#vignette = this.#createVignette();
   }
@@ -154,21 +139,21 @@ export class KaleidoscopeRenderer {
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
     this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, triangle);
-
-    if (settings.geometry === 'triangle') {
-      this.#compositeTiling(scene, palette, triangle);
-    } else {
-      this.#composite(scene, settings, palette);
-    }
+    this.#compositeTiling(scene, palette, triangle);
   }
 
-  /** Side of the mirror triangle in device pixels, or 0 for the rosette. */
+  /** Side of the mirror triangle in device pixels. */
   #triangleSide(settings: Settings): number {
-    if (settings.geometry !== 'triangle') {
-      return 0;
-    }
+    return this.#sideAtZoom(settings.zoom);
+  }
 
-    return Math.max(24, Math.min(this.#width, this.#height) * TRIANGLE_FRACTION * settings.zoom);
+  /** The largest side the zoom slider can reach, for sizing the surfaces. */
+  #maxTriangleSide(): number {
+    return this.#sideAtZoom(LIMITS.zoom.max);
+  }
+
+  #sideAtZoom(zoom: number): number {
+    return Math.max(24, Math.min(this.#width, this.#height) * TRIANGLE_FRACTION * zoom);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
@@ -187,9 +172,9 @@ export class KaleidoscopeRenderer {
     triangleSide: number,
   ): void {
     const ctx = this.#wedgeCtx;
-    // The rosette samples out to the full radius; the triangle only needs its
-    // own side, so the source is painted over the smaller of the two.
-    const reach = triangleSide > 0 ? Math.ceil(triangleSide) : this.#radius;
+    // Only the triangle is ever sampled, so the source is painted over its side
+    // rather than the whole surface, which is sized for the largest zoom.
+    const reach = Math.ceil(triangleSide);
     const size = reach + SEAM_BLEED * 2;
 
     // Switching sources would otherwise leave the previous one ghosting under
@@ -236,22 +221,24 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // Match the media path: the apex is the origin the field rotates about.
     ctx.translate(SEAM_BLEED, SEAM_BLEED);
-    drawCell(ctx, scene, {
-      size: reach,
-      // The rosette's mirrors are long, so the cell repeats several times along
-      // them. A three-mirror tube is the other way round: the chamber is about
-      // as wide as the triangle, so one cell fills it and you see whole chips
-      // rather than a dense repeat.
-      cellSize: triangleSide > 0 ? reach : reach * BASE_CELL_FRACTION * settings.zoom,
-      chipScale: (triangleSide > 0 ? CHAMBER_CHIP_SCALE : 1) * settings.chipSize,
-      // Only the lag: the tube's own angle is applied to the whole assembly
-      // below, so applying it here as well would turn everything twice.
-      rotation: scene.contents - scene.tube,
+    // The mirror triangle is inscribed in the object cell, the way a real tube's
+    // mirrors span the round chamber at the end of it. Hanging the cell off the
+    // corner the six triangles are assembled around instead leaves most of the
+    // simulation outside the view, and turning sweeps the pile clean out of it.
+    ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
+    drawChamber(ctx, scene, {
+      // The triangle's circumradius: the cell reaches all three corners and no
+      // further, so every chip that is simulated has a chance of being seen.
+      scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
+      // Drawn at their physical size, so what collides is what you see.
+      chipScale: settings.chipSize,
+      // The chamber is bolted to the tube, so it does not turn within it. Only
+      // media, which has no physics of its own, keeps the lag.
+      rotation: 0,
       pan: {
-        x: scene.pan.x + scene.drag.x * DRAG_CELLS,
-        y: scene.pan.y + scene.drag.y * DRAG_CELLS,
+        x: scene.drag.x * DRAG_CELLS,
+        y: scene.drag.y * DRAG_CELLS,
       },
       sprites,
       glow: settings.glow,
@@ -357,78 +344,6 @@ export class KaleidoscopeRenderer {
     ctx.restore();
 
     return cell;
-  }
-
-  /** Mirrors the wedge around the centre. */
-  #composite(scene: Scene, settings: Settings, palette: Palette): void {
-    const ctx = this.#ctx;
-    // Two wedges per mirror — one reflected — so the count is always even and
-    // neighbouring wedges meet edge to edge.
-    const segments = Math.max(2, Math.round(settings.mirrors)) * 2;
-    const step = (Math.PI * 2) / segments;
-
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = palette.background;
-    ctx.fillRect(0, 0, this.#width, this.#height);
-
-    ctx.save();
-    // Turning a real kaleidoscope turns the mirrors with the chamber, so the
-    // whole figure revolves. The contents lag behind that (see Scene.contents),
-    // and it is the lag that makes the pattern evolve as it turns.
-    ctx.translate(this.#width / 2, this.#height / 2);
-    ctx.rotate(scene.tube);
-
-    for (let i = 0; i < segments; i += 1) {
-      ctx.save();
-
-      // Even wedges are rotated copies; odd wedges are mirrored across the
-      // shared edge, so neighbouring wedges always meet edge to edge.
-      if (i % 2 === 0) {
-        ctx.rotate(i * step);
-      } else {
-        ctx.rotate((i + 1) * step);
-        ctx.scale(1, -1);
-      }
-
-      this.#clipWedge(step);
-      // Line the surface's apex up with the centre, discounting the margin.
-      ctx.drawImage(this.#wedge, -SEAM_BLEED, -SEAM_BLEED);
-
-      ctx.restore();
-    }
-
-    ctx.restore();
-
-    if (this.#vignette) {
-      ctx.fillStyle = this.#vignette;
-      ctx.fillRect(0, 0, this.#width, this.#height);
-    }
-  }
-
-  /**
-   * Clips to one wedge, bled outwards by {@link SEAM_BLEED} pixels.
-   *
-   * Two antialiased edges meeting at the same angle each cover the boundary
-   * pixel partially, and compositing them one after another leaves a visible
-   * dark spoke. Pulling the apex back along the bisector offsets both straight
-   * edges outwards by a constant pixel amount — unlike widening the angle,
-   * which bleeds generously at the rim and not at all near the centre, where
-   * the seams converge and show most. Neighbouring wedges are mirror images, so
-   * the sliver of overlap matches what it covers.
-   */
-  #clipWedge(step: number): void {
-    const ctx = this.#ctx;
-    const half = step / 2;
-    const apex = SEAM_BLEED / Math.sin(half);
-    const angleBleed = SEAM_BLEED / this.#radius;
-
-    ctx.beginPath();
-    ctx.moveTo(-Math.cos(half) * apex, -Math.sin(half) * apex);
-    ctx.arc(0, 0, this.#radius + SEAM_BLEED, -angleBleed, step + angleBleed);
-    ctx.closePath();
-    ctx.clip();
   }
 
   #createVignette(): CanvasGradient | null {

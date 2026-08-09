@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type GeometryId, type Settings, type SourceId } from '../lib/settings';
+import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -38,11 +38,6 @@ const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'shards', label: 'Shards' },
   { value: 'image', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
-];
-
-const GEOMETRY_OPTIONS: { value: GeometryId; label: string }[] = [
-  { value: 'triangle', label: 'Three mirrors (tiled)' },
-  { value: 'rosette', label: 'Two mirrors (rosette)' },
 ];
 
 const CAMERA_HINTS: Record<CameraStatus, string> = {
@@ -132,38 +127,13 @@ export function ControlPanel({
       </fieldset>
 
       <fieldset className={styles.group}>
-        {/* Not "Mirrors": a legend sharing its name with a control inside it
-            is ambiguous to read out and to query. */}
         <legend className={styles.legend}>Assembly</legend>
 
-        <p className={styles.hint}>Swipe across the artwork to turn the tube.</p>
-
-        <SelectField
-          label="Mirrors"
-          value={settings.geometry}
-          options={GEOMETRY_OPTIONS}
-          onChange={(value) => {
-            onChange('geometry', value);
-          }}
-        />
-
-        {settings.geometry === 'triangle' ? (
-          <p className={styles.hint}>
-            A triangular tube of three mirrors. Six triangles meet at every corner to make a
-            hexagon, and those hexagons repeat across the field — which is what a real one does.
-          </p>
-        ) : (
-          <RangeField
-            label="Fold"
-            value={settings.mirrors}
-            limit={LIMITS.mirrors}
-            format={(value) => `${value} (${value * 2}-fold)`}
-            onChange={(value) => {
-              onChange('mirrors', value);
-            }}
-            description="Two mirrors hinged at 180/N degrees, giving one rosette about the centre."
-          />
-        )}
+        <p className={styles.hint}>
+          A triangular tube of three mirrors. Six triangles meet at every corner to make a hexagon,
+          and those hexagons repeat across the field — which is what a real one does. Swipe across
+          the artwork to turn it.
+        </p>
 
         <RangeField
           label="Zoom"

@@ -1,22 +1,6 @@
 import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
-/**
- * How the mirrors are arranged.
- *
- * A real kaleidoscope is a triangular prism of three mirrors, and reflecting in
- * its three sides tiles the whole field with repeating hexagons. Two mirrors
- * hinged at an angle instead give a single rosette about one centre — a real
- * arrangement too, and the one this app had first.
- */
-export const GEOMETRIES = ['triangle', 'rosette'] as const;
-
-export type GeometryId = (typeof GEOMETRIES)[number];
-
-export function isGeometryId(value: unknown): value is GeometryId {
-  return typeof value === 'string' && (GEOMETRIES as readonly string[]).includes(value);
-}
-
 /** What the mirrors repeat. */
 export const SOURCES = ['shards', 'image', 'camera'] as const;
 
@@ -34,19 +18,6 @@ export interface Settings {
    * `camera` only means "reopen that panel", not "reopen that picture".
    */
   source: SourceId;
-  /** Three mirrors tiling the field, or two making a rosette. */
-  geometry: GeometryId;
-  /**
-   * Number of mirror lines through the centre. Rosette only — a three-mirror
-   * tube is always three.
-   *
-   * Each mirror produces a reflected pair, so the pattern repeats `2 x mirrors`
-   * times around the circle — a 3-mirror kaleidoscope gives the familiar
-   * hexagonal figure. Counting mirrors rather than wedges is both what the
-   * physical instrument has and what keeps the wedge count even, which the
-   * alternating reflections require in order to meet edge to edge.
-   */
-  mirrors: number;
   /** How many shards live in the source cell. */
   shards: number;
   /**
@@ -84,7 +55,6 @@ export interface NumericLimit {
  * value can never reach the renderer.
  */
 export const LIMITS = {
-  mirrors: { min: 2, max: 18, step: 1 },
   shards: { min: 4, max: 60, step: 1 },
   chipSize: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
@@ -93,8 +63,6 @@ export const LIMITS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
-  geometry: 'triangle',
-  mirrors: 6,
   shards: 24,
   chipSize: 1,
   zoom: 1.2,
@@ -131,8 +99,6 @@ export function sanitizeSettings(input: unknown): Settings {
 
   return {
     source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
-    geometry: isGeometryId(raw.geometry) ? raw.geometry : DEFAULT_SETTINGS.geometry,
-    mirrors: clampToLimit(readMirrors(raw), LIMITS.mirrors),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
@@ -156,8 +122,6 @@ export function randomizeSeed(settings: Settings): Settings {
  */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
-    geometry: settings.geometry,
-    mirrors: String(settings.mirrors),
     shards: String(settings.shards),
     chipSize: String(settings.chipSize),
     zoom: String(settings.zoom),
@@ -177,8 +141,12 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
  */
 const KNOWN_PARAMS: readonly string[] = [
   ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
-  'segments', // Superseded by `mirrors`.
-  'speed', // The tube is turned by swiping now; tolerated in an old link.
+  // A real tube has three mirrors and always did; these described arrangements
+  // this app once offered, and are tolerated so an old link still opens.
+  'segments',
+  'mirrors',
+  'geometry',
+  'speed',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -192,10 +160,6 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
   const glow = params.get('glow');
 
   return sanitizeSettings({
-    geometry: params.get('geometry'),
-    mirrors: params.get('mirrors'),
-    // Accepted for links made before this was counted in mirrors.
-    segments: params.get('segments'),
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
     zoom: params.get('zoom'),
@@ -204,25 +168,6 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     paletteId: params.get('palette'),
     seed: params.get('seed'),
   });
-}
-
-/**
- * Reads the mirror count, accepting the wedge count this setting used to be.
- *
- * Links and stored settings from before the change carry `segments`, which was
- * twice the mirror count. Halving it reproduces the same figure rather than
- * silently snapping an old link to the default.
- */
-function readMirrors(raw: Partial<Record<string, unknown>>): number {
-  if (raw.mirrors !== undefined && raw.mirrors !== null) {
-    return toNumber(raw.mirrors, DEFAULT_SETTINGS.mirrors);
-  }
-
-  if (raw.segments !== undefined && raw.segments !== null) {
-    return toNumber(raw.segments, DEFAULT_SETTINGS.mirrors * 2) / 2;
-  }
-
-  return DEFAULT_SETTINGS.mirrors;
 }
 
 function toNumber(value: unknown, fallback: number): number {
