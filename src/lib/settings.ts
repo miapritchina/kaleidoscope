@@ -49,6 +49,13 @@ export interface Settings {
   mirrors: number;
   /** How many shards live in the source cell. */
   shards: number;
+  /**
+   * Size of the glass pieces, as a multiplier.
+   *
+   * Separate from the cell size, which sets how many chips land in view as well
+   * as how big they are — so growing that to enlarge them thins them out.
+   */
+  chipSize: number;
   /** Magnification of the source cell. */
   zoom: number;
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
@@ -79,6 +86,7 @@ export interface NumericLimit {
 export const LIMITS = {
   mirrors: { min: 2, max: 18, step: 1 },
   shards: { min: 4, max: 60, step: 1 },
+  chipSize: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
   trails: { min: 0, max: 0.95, step: 0.05 },
 } as const satisfies Record<string, NumericLimit>;
@@ -88,6 +96,7 @@ export const DEFAULT_SETTINGS: Settings = {
   geometry: 'triangle',
   mirrors: 6,
   shards: 24,
+  chipSize: 1,
   zoom: 1.2,
   trails: 0.35,
   glow: false,
@@ -125,6 +134,7 @@ export function sanitizeSettings(input: unknown): Settings {
     geometry: isGeometryId(raw.geometry) ? raw.geometry : DEFAULT_SETTINGS.geometry,
     mirrors: clampToLimit(readMirrors(raw), LIMITS.mirrors),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
+    chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
     glow: typeof raw.glow === 'boolean' ? raw.glow : DEFAULT_SETTINGS.glow,
@@ -149,6 +159,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     geometry: settings.geometry,
     mirrors: String(settings.mirrors),
     shards: String(settings.shards),
+    chipSize: String(settings.chipSize),
     zoom: String(settings.zoom),
     trails: String(settings.trails),
     glow: settings.glow ? '1' : '0',
@@ -186,6 +197,7 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     // Accepted for links made before this was counted in mirrors.
     segments: params.get('segments'),
     shards: params.get('shards'),
+    chipSize: params.get('chipSize'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),
     glow: glow === null ? undefined : glow === '1' || glow === 'true',

@@ -32,6 +32,7 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Mirrors')).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
     expect(screen.getByLabelText('Palette')).toBeInTheDocument();
     expect(screen.getByLabelText('Glow')).toBeInTheDocument();
@@ -96,6 +97,16 @@ describe('ControlPanel', () => {
     await user.selectOptions(screen.getByLabelText('Mirrors'), 'rosette');
 
     expect(props.onChange).toHaveBeenCalledWith('geometry', 'rosette');
+  });
+
+  it('sizes the glass without changing how much of it there is', () => {
+    const { props } = renderPanel();
+
+    fireEvent.change(screen.getByLabelText('Chip size'), { target: { value: '1.5' } });
+
+    expect(props.onChange).toHaveBeenCalledWith('chipSize', 1.5);
+    // Count is what sets the amount; the two are separate controls.
+    expect(props.onChange).not.toHaveBeenCalledWith('shards', expect.anything());
   });
 
   it('describes slider values to assistive tech', () => {

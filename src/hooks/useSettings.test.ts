@@ -10,6 +10,7 @@ const CHANGES = [
   ['geometry', 'rosette'],
   ['mirrors', 3],
   ['shards', 40],
+  ['chipSize', 1.5],
   ['zoom', 2],
   ['trails', 0.5],
   ['glow', !DEFAULT_SETTINGS.glow],

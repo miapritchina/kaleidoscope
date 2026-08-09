@@ -65,6 +65,7 @@ describe('sanitizeSettings', () => {
       geometry: DEFAULT_SETTINGS.geometry,
       mirrors: LIMITS.mirrors.max,
       shards: 30,
+      chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,
       trails: 0,
       glow: DEFAULT_SETTINGS.glow,

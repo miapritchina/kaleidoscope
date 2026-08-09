@@ -201,6 +201,16 @@ export function ControlPanel({
               onChange('shards', value);
             }}
           />
+          <RangeField
+            label="Chip size"
+            value={settings.chipSize}
+            limit={LIMITS.chipSize}
+            format={(value) => `${value.toFixed(2)}x`}
+            onChange={(value) => {
+              onChange('chipSize', value);
+            }}
+            description="How big each piece of glass is, without changing how many there are."
+          />
           <SelectField
             label="Palette"
             value={settings.paletteId}

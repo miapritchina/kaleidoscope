@@ -245,7 +245,7 @@ export class KaleidoscopeRenderer {
       // as wide as the triangle, so one cell fills it and you see whole chips
       // rather than a dense repeat.
       cellSize: triangleSide > 0 ? reach : reach * BASE_CELL_FRACTION * settings.zoom,
-      ...(triangleSide > 0 ? { chipScale: CHAMBER_CHIP_SCALE } : {}),
+      chipScale: (triangleSide > 0 ? CHAMBER_CHIP_SCALE : 1) * settings.chipSize,
       // Only the lag: the tube's own angle is applied to the whole assembly
       // below, so applying it here as well would turn everything twice.
       rotation: scene.contents - scene.tube,
