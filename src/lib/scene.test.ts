@@ -146,3 +146,32 @@ describe('drawCell', () => {
     expect(context.countOf('save')).toBe(context.countOf('restore'));
   });
 });
+
+describe('drawCell pan framing', () => {
+  // The viewer drags in screen space; the field must not set off at whatever
+  // angle the spin happened to have reached.
+  it('expresses a screen-space pan in the rotated field frame', () => {
+    const scene = createScene('pan-frame', 4);
+    const upright = createFakeContext();
+    const turned = createFakeContext();
+
+    drawCell(asContext(upright), scene, {
+      ...BASE,
+      size: 200,
+      cellSize: 100,
+      pan: { x: 0.25, y: 0 },
+    });
+    drawCell(asContext(turned), scene, {
+      ...BASE,
+      size: 200,
+      cellSize: 100,
+      rotation: Math.PI / 2,
+      pan: { x: 0.25, y: 0 },
+    });
+
+    // A quarter turn sends a rightward screen drag along the field's -y axis,
+    // so the two runs must not place their tiles identically.
+    expect(turned.argsOf('translate')).not.toEqual(upright.argsOf('translate'));
+    expect(turned.argsOf('rotate')[0]).toEqual([Math.PI / 2]);
+  });
+});

@@ -88,19 +88,29 @@ export function drawMedia(
   const slackX = Math.max(0, (drawWidth - span) / 2);
   const slackY = Math.max(0, (drawHeight - span) / 2);
 
+  // The viewer drags in screen space, so the offset is applied there — before
+  // the rotation — rather than along the media's own axes, which would send it
+  // off at whatever angle the spin had reached.
+  //
+  // The slack, though, is defined along those axes, so the offset is clamped in
+  // the media's frame and brought back. Clamping in screen space instead would
+  // let a diagonal drag pull an edge into the wedge once rotated.
+  const wanted = { x: clampUnit(pan.x) * slackX, y: clampUnit(pan.y) * slackY };
+  const inMediaFrame = rotate(wanted, -rotation);
+  const allowed = {
+    x: clamp(inMediaFrame.x, slackX),
+    y: clamp(inMediaFrame.y, slackY),
+  };
+  const offset = rotate(allowed, rotation);
+
   ctx.save();
   ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
   ctx.globalCompositeOperation = 'source-over';
+  ctx.translate(offset.x, offset.y);
   // Rotating about the apex still covers the wedge: the covered square's
   // inscribed circle has radius `size`, which is the sector's reach.
   ctx.rotate(rotation);
-  ctx.drawImage(
-    media,
-    -drawWidth / 2 + clampUnit(pan.x) * slackX,
-    -drawHeight / 2 + clampUnit(pan.y) * slackY,
-    drawWidth,
-    drawHeight,
-  );
+  ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
   ctx.restore();
 }
 
@@ -110,4 +120,15 @@ function isVideo(media: MediaElement): media is HTMLVideoElement {
 
 function clampUnit(value: number): number {
   return Number.isFinite(value) ? Math.min(1, Math.max(-1, value)) : 0;
+}
+
+function clamp(value: number, limit: number): number {
+  return Math.min(limit, Math.max(-limit, value));
+}
+
+function rotate(vector: { x: number; y: number }, angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return { x: vector.x * cos - vector.y * sin, y: vector.x * sin + vector.y * cos };
 }

@@ -168,8 +168,13 @@ export function drawCell(
   // Tiling a rotation-agnostic bounding box instead would draw up to twice the
   // shards needed at the shallow angles that dominate.
   const bounds = rotatedBounds(size, -rotation);
-  const offsetX = wrapTo(pan.x * cellSize, cellSize);
-  const offsetY = wrapTo(pan.y * cellSize, cellSize);
+  // `pan` is a screen-space offset — that is the direction the viewer dragged —
+  // so it has to be expressed in the field's own frame before being tiled.
+  // Applying it directly would send the field off at whatever angle the spin
+  // happened to be at, which is not the direction anyone dragged in.
+  const field = rotateVector(pan, -rotation);
+  const offsetX = wrapTo(field.x * cellSize, cellSize);
+  const offsetY = wrapTo(field.y * cellSize, cellSize);
 
   const firstColumn = Math.floor((bounds.minX - offsetX) / cellSize);
   const lastColumn = Math.ceil((bounds.maxX - offsetX) / cellSize);
@@ -206,6 +211,20 @@ interface Bounds {
   maxX: number;
   minY: number;
   maxY: number;
+}
+
+/** Rotates a vector by `angle`. */
+export function rotateVector(
+  vector: { x: number; y: number },
+  angle: number,
+): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return {
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos,
+  };
 }
 
 /** Axis-aligned bounds of the square `[0, size]^2` rotated by `angle`. */

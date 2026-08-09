@@ -86,14 +86,17 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
       return;
     }
 
+    // Paused freezes the simulation, not the interaction: a zero step still
+    // takes the new drag position and repaints, so the source can be moved
+    // around while the animation is stopped.
     // `updateScene` clamps the step, so a long frame cannot teleport the field.
     updateScene(scene, {
-      dt: deltaSeconds,
+      dt: paused ? 0 : deltaSeconds,
       speed: settings.speed,
       drag: drag.positionRef.current,
     });
     renderer.render(scene, settings, media);
-  }, !paused);
+  }, !paused || drag.isDragging);
 
   return (
     <div
