@@ -52,7 +52,6 @@ describe('sanitizeSettings', () => {
   it('repairs individual fields without discarding valid ones', () => {
     const result = sanitizeSettings({
       mirrors: 500,
-      speed: 'not a number',
       shards: '30',
       zoom: 1.5,
       trails: -4,
@@ -64,7 +63,6 @@ describe('sanitizeSettings', () => {
     expect(result).toEqual({
       source: DEFAULT_SETTINGS.source,
       mirrors: LIMITS.mirrors.max,
-      speed: DEFAULT_SETTINGS.speed,
       shards: 30,
       zoom: 1.5,
       trails: 0,

@@ -10,8 +10,6 @@ export interface PlaybackInput {
 export interface Playback {
   /** Whether frames are drawn at all. */
   isPlaying: boolean;
-  /** Whether the mirrors are held still while frames keep being drawn. */
-  suppressSpin: boolean;
 }
 
 /** Sources whose content is itself moving, rather than animated by this app. */
@@ -24,9 +22,12 @@ function isLive(source: SourceId): boolean {
  *
  * A reduced-motion preference is about animation this app invents, not about
  * content the viewer explicitly asked for. Pausing a generated shard field is
- * respectful; freezing a live camera on its first frame just breaks it. So a
- * live source keeps drawing, and the reduced-motion preference is honoured by
- * holding the mirrors still instead.
+ * respectful; freezing a live camera on its first frame just breaks it, so a
+ * live source keeps drawing.
+ *
+ * Turning the tube is not covered either way: it only happens while a swipe is
+ * in progress, and motion the viewer is producing with their own finger is not
+ * the kind a reduced-motion preference is asking to remove.
  *
  * An explicit Play or Pause always wins — a deliberate Pause on the camera is a
  * freeze-frame, which is a reasonable thing to want.
@@ -37,11 +38,8 @@ export function resolvePlayback({
   override,
 }: PlaybackInput): Playback {
   if (override !== null) {
-    return { isPlaying: override, suppressSpin: false };
+    return { isPlaying: override };
   }
 
-  return {
-    isPlaying: isLive(source) || !prefersReducedMotion,
-    suppressSpin: prefersReducedMotion,
-  };
+  return { isPlaying: isLive(source) || !prefersReducedMotion };
 }

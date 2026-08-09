@@ -28,8 +28,6 @@ export interface Settings {
    * alternating reflections require in order to meet edge to edge.
    */
   mirrors: number;
-  /** Rotation speed in turns per second; negative values spin anticlockwise. */
-  speed: number;
   /** How many shards live in the source cell. */
   shards: number;
   /** Magnification of the source cell. */
@@ -56,7 +54,6 @@ export interface NumericLimit {
  */
 export const LIMITS = {
   mirrors: { min: 2, max: 18, step: 1 },
-  speed: { min: -0.5, max: 0.5, step: 0.01 },
   shards: { min: 4, max: 60, step: 1 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
   trails: { min: 0, max: 0.95, step: 0.05 },
@@ -65,7 +62,6 @@ export const LIMITS = {
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
   mirrors: 6,
-  speed: 0.05,
   shards: 24,
   zoom: 1.2,
   trails: 0.35,
@@ -102,7 +98,6 @@ export function sanitizeSettings(input: unknown): Settings {
   return {
     source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
     mirrors: clampToLimit(readMirrors(raw), LIMITS.mirrors),
-    speed: clampToLimit(toNumber(raw.speed, DEFAULT_SETTINGS.speed), LIMITS.speed),
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
@@ -126,7 +121,6 @@ export function randomizeSeed(settings: Settings): Settings {
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     mirrors: String(settings.mirrors),
-    speed: String(settings.speed),
     shards: String(settings.shards),
     zoom: String(settings.zoom),
     trails: String(settings.trails),
@@ -146,6 +140,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
 const KNOWN_PARAMS: readonly string[] = [
   ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
   'segments', // Superseded by `mirrors`.
+  'speed', // The tube is turned by swiping now; tolerated in an old link.
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -162,7 +157,6 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     mirrors: params.get('mirrors'),
     // Accepted for links made before this was counted in mirrors.
     segments: params.get('segments'),
-    speed: params.get('speed'),
     shards: params.get('shards'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),

@@ -27,7 +27,6 @@ describe('ControlPanel', () => {
     renderPanel();
 
     expect(screen.getByLabelText('Mirrors')).toBeInTheDocument();
-    expect(screen.getByLabelText('Spin')).toBeInTheDocument();
     expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
@@ -44,13 +43,11 @@ describe('ControlPanel', () => {
     expect(screen.getByText('50%')).toBeInTheDocument();
   });
 
-  it('signs the spin readout so the direction is obvious', () => {
-    const { unmount } = renderPanel({ settings: { ...DEFAULT_SETTINGS, speed: 0.25 } });
-    expect(screen.getByText('+0.25 rev/s')).toBeInTheDocument();
-    unmount();
+  it('tells the viewer how to turn the tube, now that no slider does', () => {
+    renderPanel();
 
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, speed: -0.25 } });
-    expect(screen.getByText('-0.25 rev/s')).toBeInTheDocument();
+    expect(screen.getByText(/swipe across the artwork/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Spin')).not.toBeInTheDocument();
   });
 
   it('reports slider changes', () => {

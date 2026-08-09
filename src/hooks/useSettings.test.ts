@@ -8,7 +8,6 @@ import { settingsReducer, useSettings } from './useSettings';
 const CHANGES = [
   ['source', 'camera'],
   ['mirrors', 3],
-  ['speed', 0.2],
   ['shards', 40],
   ['zoom', 2],
   ['trails', 0.5],
