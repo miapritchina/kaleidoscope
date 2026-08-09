@@ -2,7 +2,7 @@ import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type Settings, type SourceId } from '../lib/settings';
+import { LIMITS, type GeometryId, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -38,6 +38,11 @@ const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'shards', label: 'Shards' },
   { value: 'image', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
+];
+
+const GEOMETRY_OPTIONS: { value: GeometryId; label: string }[] = [
+  { value: 'triangle', label: 'Three mirrors (tiled)' },
+  { value: 'rosette', label: 'Two mirrors (rosette)' },
 ];
 
 const CAMERA_HINTS: Record<CameraStatus, string> = {
@@ -133,16 +138,33 @@ export function ControlPanel({
 
         <p className={styles.hint}>Swipe across the artwork to turn the tube.</p>
 
-        <RangeField
+        <SelectField
           label="Mirrors"
-          value={settings.mirrors}
-          limit={LIMITS.mirrors}
-          format={(value) => `${value} (${value * 2}-fold)`}
+          value={settings.geometry}
+          options={GEOMETRY_OPTIONS}
           onChange={(value) => {
-            onChange('mirrors', value);
+            onChange('geometry', value);
           }}
-          description="Mirror lines through the centre. Each one reflects, so the figure repeats twice per mirror — 3 gives the classic hexagonal kaleidoscope."
         />
+
+        {settings.geometry === 'triangle' ? (
+          <p className={styles.hint}>
+            A triangular tube of three mirrors. Six triangles meet at every corner to make a
+            hexagon, and those hexagons repeat across the field — which is what a real one does.
+          </p>
+        ) : (
+          <RangeField
+            label="Fold"
+            value={settings.mirrors}
+            limit={LIMITS.mirrors}
+            format={(value) => `${value} (${value * 2}-fold)`}
+            onChange={(value) => {
+              onChange('mirrors', value);
+            }}
+            description="Two mirrors hinged at 180/N degrees, giving one rosette about the centre."
+          />
+        )}
+
         <RangeField
           label="Zoom"
           value={settings.zoom}
@@ -178,6 +200,16 @@ export function ControlPanel({
             onChange={(value) => {
               onChange('shards', value);
             }}
+          />
+          <RangeField
+            label="Chip size"
+            value={settings.chipSize}
+            limit={LIMITS.chipSize}
+            format={(value) => `${value.toFixed(2)}x`}
+            onChange={(value) => {
+              onChange('chipSize', value);
+            }}
+            description="How big each piece of glass is, without changing how many there are."
           />
           <SelectField
             label="Palette"

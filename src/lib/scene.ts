@@ -201,6 +201,14 @@ export interface DrawCellOptions {
   rotation: number;
   /** Pan of the field, in cells. */
   pan: { x: number; y: number };
+  /**
+   * Multiplies chip size without moving them.
+   *
+   * Cell size alone sets both how big the chips are and how many land in view,
+   * so growing it to enlarge them thins them out instead. This scales the glass
+   * while the count per cell — and so the density — stays put.
+   */
+  chipScale?: number;
   sprites: ChipSprites;
   /** Additive blending for overlapping shards. */
   glow: boolean;
@@ -214,7 +222,7 @@ export interface DrawCellOptions {
 export function drawCell(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { size, cellSize, rotation, pan, sprites, glow }: DrawCellOptions,
+  { size, cellSize, rotation, pan, chipScale = 1, sprites, glow }: DrawCellOptions,
 ): void {
   if (size <= 0 || cellSize <= 0) {
     return;
@@ -253,6 +261,7 @@ export function drawCell(
           x: originX + shard.x * cellSize,
           y: originY + shard.y * cellSize,
           scale: cellSize,
+          chipScale,
           bounds,
           elapsed: scene.elapsed,
           sprites,
@@ -314,6 +323,7 @@ interface DrawShardOptions {
   x: number;
   y: number;
   scale: number;
+  chipScale: number;
   bounds: Bounds;
   elapsed: number;
   sprites: ChipSprites;
@@ -322,10 +332,10 @@ interface DrawShardOptions {
 function drawShard(
   ctx: CanvasRenderingContext2D,
   shard: Shard,
-  { x, y, scale, bounds, elapsed, sprites }: DrawShardOptions,
+  { x, y, scale, chipScale, bounds, elapsed, sprites }: DrawShardOptions,
 ): void {
   const pulse = 1 + Math.sin(elapsed * 1.3 + shard.phase) * shard.pulse;
-  const radius = shard.radius * scale * pulse;
+  const radius = shard.radius * scale * pulse * chipScale;
 
   // Cheap cull: tiles are laid beyond the visible region on every side.
   if (

@@ -3,6 +3,7 @@ import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { getPalette, type Palette } from './palettes';
 import { DRAG_CELLS, drawCell, type Scene } from './scene';
 import type { Settings } from './settings';
+import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
 /** Which source last painted the wedge, so a switch can clear it. */
 type WedgeMode = 'shards' | 'media' | 'empty';
@@ -27,6 +28,24 @@ const BASE_CELL_FRACTION = 0.32;
 const SEAM_BLEED = 2;
 
 /**
+ * Side of the mirror triangle, as a fraction of the smaller viewport edge.
+ *
+ * A real three-mirror tube shows a handful of hexagons across the view rather
+ * than one enormous one; this puts roughly two and a half across at zoom 1.
+ */
+const TRIANGLE_FRACTION = 0.24;
+
+/**
+ * How much larger the chips are inside a mirror triangle.
+ *
+ * One cell per triangle keeps the density right, but at that scale the chips
+ * come out small and marooned in the backdrop. Enlarging them alone fills the
+ * chamber and lets the mirrors cut them, so each one continues into its own
+ * reflection — which is what a packed chamber looks like.
+ */
+const CHAMBER_CHIP_SCALE = 2.4;
+
+/**
  * Composites the kaleidoscope.
  *
  * The source — shard field, photo or camera — is painted once per frame into an
@@ -47,6 +66,9 @@ export class KaleidoscopeRenderer {
   #width = 0;
   #height = 0;
   #radius = 0;
+  readonly #hexagon: HTMLCanvasElement;
+  readonly #hexagonCtx: CanvasRenderingContext2D | null;
+
   #vignette: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
   #mode: WedgeMode | null = null;
@@ -67,6 +89,8 @@ export class KaleidoscopeRenderer {
     this.#ctx = ctx;
     this.#wedge = wedge;
     this.#wedgeCtx = wedgeCtx;
+    this.#hexagon = createWedgeCanvas();
+    this.#hexagonCtx = this.#hexagon.getContext('2d');
   }
 
   /** Backing-store size in device pixels. */
@@ -119,6 +143,8 @@ export class KaleidoscopeRenderer {
       return;
     }
 
+    const triangle = this.#triangleSide(settings);
+
     const palette = getPalette(settings.paletteId);
     const sprites = this.#sprites?.palette === palette ? this.#sprites : createChipSprites(palette);
     this.#sprites = sprites;
@@ -127,8 +153,22 @@ export class KaleidoscopeRenderer {
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null);
-    this.#composite(scene, settings, palette);
+    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, triangle);
+
+    if (settings.geometry === 'triangle') {
+      this.#compositeTiling(scene, palette, triangle);
+    } else {
+      this.#composite(scene, settings, palette);
+    }
+  }
+
+  /** Side of the mirror triangle in device pixels, or 0 for the rosette. */
+  #triangleSide(settings: Settings): number {
+    if (settings.geometry !== 'triangle') {
+      return 0;
+    }
+
+    return Math.max(24, Math.min(this.#width, this.#height) * TRIANGLE_FRACTION * settings.zoom);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
@@ -144,10 +184,13 @@ export class KaleidoscopeRenderer {
     sprites: ChipSprites,
     mode: WedgeMode,
     media: MediaElement | null,
+    triangleSide: number,
   ): void {
     const ctx = this.#wedgeCtx;
-    // Paint the whole surface, margin included.
-    const size = this.#radius + SEAM_BLEED * 2;
+    // The rosette samples out to the full radius; the triangle only needs its
+    // own side, so the source is painted over the smaller of the two.
+    const reach = triangleSide > 0 ? Math.ceil(triangleSide) : this.#radius;
+    const size = reach + SEAM_BLEED * 2;
 
     // Switching sources would otherwise leave the previous one ghosting under
     // the new frames, since neither path clears unconditionally.
@@ -169,7 +212,7 @@ export class KaleidoscopeRenderer {
       // drawMedia centres on the apex, which sits inside the margin.
       ctx.translate(SEAM_BLEED, SEAM_BLEED);
       drawMedia(ctx, media, {
-        size: this.#radius,
+        size: reach,
         zoom: settings.zoom,
         rotation: scene.contents - scene.tube,
         pan: scene.drag,
@@ -196,8 +239,13 @@ export class KaleidoscopeRenderer {
     // Match the media path: the apex is the origin the field rotates about.
     ctx.translate(SEAM_BLEED, SEAM_BLEED);
     drawCell(ctx, scene, {
-      size: this.#radius,
-      cellSize: this.#radius * BASE_CELL_FRACTION * settings.zoom,
+      size: reach,
+      // The rosette's mirrors are long, so the cell repeats several times along
+      // them. A three-mirror tube is the other way round: the chamber is about
+      // as wide as the triangle, so one cell fills it and you see whole chips
+      // rather than a dense repeat.
+      cellSize: triangleSide > 0 ? reach : reach * BASE_CELL_FRACTION * settings.zoom,
+      chipScale: (triangleSide > 0 ? CHAMBER_CHIP_SCALE : 1) * settings.chipSize,
       // Only the lag: the tube's own angle is applied to the whole assembly
       // below, so applying it here as well would turn everything twice.
       rotation: scene.contents - scene.tube,
@@ -209,6 +257,106 @@ export class KaleidoscopeRenderer {
       glow: settings.glow,
     });
     ctx.restore();
+  }
+
+  /**
+   * Tiles the field the way a three-mirror tube does.
+   *
+   * Six mirrored triangles are assembled into one hexagon, and that hexagon is
+   * then stamped across the view on the translation lattice. Building the
+   * hexagon once and stamping it keeps the per-frame cost at six clipped draws
+   * plus one cheap blit per hexagon, however much of the field is on screen.
+   */
+  #compositeTiling(scene: Scene, palette: Palette, side: number): void {
+    const ctx = this.#ctx;
+    const hexagon = this.#buildHexagon(palette, side);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.background;
+    ctx.fillRect(0, 0, this.#width, this.#height);
+
+    if (!hexagon) {
+      return;
+    }
+
+    ctx.save();
+    // Turning the tube turns the whole tiling with it.
+    ctx.translate(this.#width / 2, this.#height / 2);
+    ctx.rotate(scene.tube);
+
+    const lattice = hexLattice(side);
+    // A rotated rectangle fits inside the circle through its corners, so cover
+    // that: cheaper than re-deriving the bounds for every angle.
+    const reach = Math.hypot(this.#width, this.#height) / 2;
+    const centres = coverWithHexagons(
+      { minX: -reach, maxX: reach, minY: -reach, maxY: reach },
+      lattice,
+    );
+    const offset = hexagon.width / 2;
+
+    for (const centre of centres) {
+      ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
+    }
+
+    ctx.restore();
+
+    if (this.#vignette) {
+      ctx.fillStyle = this.#vignette;
+      ctx.fillRect(0, 0, this.#width, this.#height);
+    }
+  }
+
+  /**
+   * Assembles the six mirrored triangles into one hexagon.
+   *
+   * Kept transparent outside the hexagon so the stamps tile without their
+   * rectangular corners painting over their neighbours.
+   */
+  #buildHexagon(palette: Palette, side: number): HTMLCanvasElement | null {
+    const span = Math.ceil((side + SEAM_BLEED) * 2);
+    const cell = this.#hexagon;
+
+    if (cell.width !== span) {
+      cell.width = span;
+      cell.height = span;
+    }
+
+    const ctx = this.#hexagonCtx;
+
+    if (!ctx) {
+      return null;
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, span, span);
+    ctx.save();
+    ctx.translate(span / 2, span / 2);
+
+    for (let index = 0; index < 6; index += 1) {
+      ctx.save();
+      traceTriangle(ctx, side, index, SEAM_BLEED);
+      ctx.clip();
+      // The wedge surface holds the source with its apex inside the margin.
+      ctx.drawImage(this.#wedge, -SEAM_BLEED, -SEAM_BLEED);
+      ctx.restore();
+    }
+
+    ctx.restore();
+
+    // Trim the bleed back to the true hexagon, so neighbouring stamps meet
+    // exactly rather than overlapping by a couple of pixels all round.
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.translate(span / 2, span / 2);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.fillStyle = palette.background;
+    traceHexagon(ctx, side + SEAM_BLEED / 2);
+    ctx.fill();
+    ctx.restore();
+
+    return cell;
   }
 
   /** Mirrors the wedge around the centre. */
