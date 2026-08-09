@@ -100,10 +100,14 @@ The repeat is a genuine translation because composing reflections in two paralle
 lines is a translation of twice their spacing. The lines lie `side * sqrt(3) / 2` apart, so
 the lattice steps by `side * sqrt(3)`.
 
-Inside a triangle the chamber holds one object cell, with the chips scaled up so the
-mirrors cut them and each continues into its own reflection — which is what fills a real
-chamber. Cell size alone would set both the chip size and how many land in view, so
-enlarging it to get bigger chips thins them out instead.
+The mirror triangle is **inscribed in the object cell**, the way a real tube's mirrors span
+the round chamber at the end of it: the cell is centred on the triangle's centroid and
+reaches all three corners. Hung off the corner the six triangles are assembled around
+instead, most of the chamber sits outside the view and turning sweeps the pile clean out of
+it, emptying the field. The mirrors cut the chips at the triangle's edges and each one
+continues into its own reflection, which is what fills a real chamber. Cell size alone
+would set both the chip size and how many land in view, so **Chip size** scales the glass
+on its own.
 
 Older links carried a mirror arrangement this app no longer offers. They still open, on
 whichever of their settings still mean something.
@@ -124,6 +128,17 @@ Contacts are resolved by moving positions and reading the velocity back off how 
 chip actually travelled. Impulses alone leave a pile creeping forever, because gravity
 keeps feeding in velocity the contacts never quite take out; here a chip held in place
 records no movement, and so comes to rest.
+
+The glass **tumbles** rather than sliding about flat. A chip is a disc, not a point, so an
+impulse landing off its centre turns it: each contact removes part of the tangential slip —
+the relative speed of the two surfaces where they touch — with an impulse along the
+tangent, which sets a chip sliding down the wall rolling, spins both pieces on a glancing
+blow, and stops a piece pinned in the pile turning because its contacts have nothing left
+to slide against. A uniform disc has `I = m r^2 / 2`, so once the spin that impulse produces
+is counted back in it changes the slip by `3 J / m`. Measured on a settled chamber given a
+quarter-turn-a-second swipe: peak spin around 8 rad/s, the median chip turning some 50
+degrees over two seconds, and every chip back to exactly zero spin within six seconds of
+release.
 
 The glass is drawn at its physical size, so what collides is what you see, and it is sized
 to pack the chamber to around two thirds by area — a real cell is full, so tipping it

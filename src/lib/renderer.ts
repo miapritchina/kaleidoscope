@@ -221,12 +221,16 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // Match the media path: the apex is the origin the chamber sits on.
     ctx.translate(SEAM_BLEED, SEAM_BLEED);
+    // The mirror triangle is inscribed in the object cell, the way a real tube's
+    // mirrors span the round chamber at the end of it. Hanging the cell off the
+    // corner the six triangles are assembled around instead leaves most of the
+    // simulation outside the view, and turning sweeps the pile clean out of it.
+    ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
     drawChamber(ctx, scene, {
-      // The chamber spans the triangle's side, so the mirrors cut the chips and
-      // each one continues into its own reflection.
-      scale: reach / CHAMBER_RADIUS,
+      // The triangle's circumradius: the cell reaches all three corners and no
+      // further, so every chip that is simulated has a chance of being seen.
+      scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
       // Drawn at their physical size, so what collides is what you see.
       chipScale: settings.chipSize,
       // The chamber is bolted to the tube, so it does not turn within it. Only

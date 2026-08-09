@@ -129,12 +129,108 @@ describe('updateChamber', () => {
     expect(moved.length).toBeGreaterThan(glass.length / 3);
   });
 
-  it('turns the glass as it slides', () => {
-    const glass = chips(12);
+  // A chip sliding along the wall rolls, the way a wheel does: travelling one
+  // way turns it one way. Sliding flat instead is what gave the old pile its
+  // lifeless look.
+  it('sets a chip sliding along the wall rolling the way it travels', () => {
+    const rightwards = chips(1);
+    const leftwards = chips(1);
 
-    settleChamber(glass, Math.PI / 3);
+    for (const [glass, direction] of [
+      [rightwards, 1],
+      [leftwards, -1],
+    ] as const) {
+      const chip = glass[0]!;
+      chip.x = 0;
+      // Resting on the floor of the chamber, moving along it.
+      chip.y = CHAMBER_RADIUS - chip.radius;
+      chip.vx = direction;
 
-    expect(glass.some((shard) => shard.rotation !== 0)).toBe(true);
+      for (let i = 0; i < 10; i += 1) {
+        updateChamber(glass, { dt: 1 / 60, tube: 0 });
+      }
+    }
+
+    expect(rightwards[0]!.spin).toBeGreaterThan(1);
+    expect(leftwards[0]!.spin).toBeLessThan(-1);
+  });
+
+  // Both the same way, not opposite ways: one chip dragged across another is a
+  // conveyor, not a pair of meshed gears.
+  it('spins both pieces when one slides across the other', () => {
+    const glass = chips(2);
+    const [a, b] = glass as [Shard, Shard];
+
+    a.x = 0;
+    a.y = 0;
+    b.x = 0;
+    b.y = a.radius + b.radius;
+    b.vx = 1;
+
+    updateChamber(glass, { dt: 1 / 60, tube: 0 });
+
+    expect(a.spin).toBeLessThan(0);
+    expect(b.spin).toBeLessThan(0);
+  });
+
+  it('drags the piece underneath along rather than sliding over it', () => {
+    const glass = chips(2);
+    const [a, b] = glass as [Shard, Shard];
+
+    a.x = 0;
+    a.y = 0;
+    b.x = 0;
+    b.y = a.radius + b.radius;
+    b.vx = 1;
+
+    updateChamber(glass, { dt: 1 / 60, tube: 0 });
+
+    expect(a.vx).toBeGreaterThan(0);
+    expect(b.vx).toBeLessThan(1);
+  });
+
+  it('tumbles the glass as the pile avalanches', () => {
+    const glass = chips(20);
+
+    settleChamber(glass);
+    const before = glass.map((shard) => shard.rotation);
+
+    let tube = 0;
+    for (let i = 0; i < 120; i += 1) {
+      tube += Math.PI / 2 / 60;
+      updateChamber(glass, { dt: 1 / 60, tube });
+    }
+
+    const turned = glass.filter((shard, index) => Math.abs(shard.rotation - before[index]!) > 0.2);
+
+    expect(turned.length).toBeGreaterThan(glass.length / 2);
+  });
+
+  it('damps a chip spinning on its own, so nothing twirls forever', () => {
+    const glass = chips(1);
+    const chip = glass[0]!;
+
+    // In the air, clear of the wall, so only the damping acts on it.
+    chip.x = 0;
+    chip.y = -0.5;
+    chip.spin = 8;
+
+    for (let i = 0; i < 30; i += 1) {
+      updateChamber(glass, { dt: 1 / 60, tube: 0 });
+    }
+
+    expect(chip.spin).toBeGreaterThan(0);
+    expect(chip.spin).toBeLessThan(3);
+  });
+
+  it('stops the glass turning once the pile has settled', () => {
+    const glass = chips(16);
+
+    settleChamber(glass);
+
+    for (const shard of glass) {
+      expect(shard.spin).toBe(0);
+    }
   });
 
   it('copes with a chip larger than the chamber', () => {

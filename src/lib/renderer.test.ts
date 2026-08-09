@@ -13,12 +13,14 @@ interface Harness {
   /** Where the six mirrored triangles are assembled into one stamp. */
   hexagon: FakeContext;
   canvas: { width: number; height: number };
+  /** Backing store of the hexagon stamp, which the triangle's side sets. */
+  hexagonCanvas: { width: number; height: number };
 }
 
 function createRenderer(): Harness {
   const main = createFakeContext();
   const offscreen = [createFakeContext(), createFakeContext()];
-  let created = 0;
+  const canvases: { width: number; height: number }[] = [];
 
   const canvas = {
     width: 0,
@@ -28,18 +30,28 @@ function createRenderer(): Harness {
   };
 
   const createOffscreen = () => {
-    const context = offscreen[created++] ?? createFakeContext();
-
-    return {
+    const context = offscreen[canvases.length] ?? createFakeContext();
+    const surface = {
       width: 0,
       height: 0,
       getContext: () => asContext(context),
-    } as unknown as HTMLCanvasElement;
+    };
+
+    canvases.push(surface);
+
+    return surface as unknown as HTMLCanvasElement;
   };
 
   const renderer = new KaleidoscopeRenderer(canvas as unknown as HTMLCanvasElement, createOffscreen);
 
-  return { renderer, main, wedge: offscreen[0]!, hexagon: offscreen[1]!, canvas };
+  return {
+    renderer,
+    main,
+    wedge: offscreen[0]!,
+    hexagon: offscreen[1]!,
+    canvas,
+    hexagonCanvas: canvases[1]!,
+  };
 }
 
 describe('KaleidoscopeRenderer', () => {
@@ -124,6 +136,28 @@ describe('KaleidoscopeRenderer', () => {
     close.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, zoom: 3 });
 
     expect(wide.main.countOf('drawImage')).toBeGreaterThan(close.main.countOf('drawImage'));
+  });
+
+  // A real tube's mirrors span the round chamber at the end of it. Hung off the
+  // corner the six triangles are assembled around instead, most of the chamber
+  // sits outside the view and turning sweeps the pile clean out of it.
+  it('inscribes the mirror triangle in the object cell', () => {
+    const { renderer, wedge, hexagonCanvas } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
+
+    // The hexagon stamp spans the triangle's side either way of its centre,
+    // plus the seam bleed, which is what gives the side back.
+    const side = hexagonCanvas.width / 2 - 2;
+    // First the margin, then the cell. Anything after that is per-chip.
+    const [, cell] = wedge.argsOf('translate') as [unknown, [number, number]];
+
+    // The centroid lies along the triangle's 30-degree bisector, one
+    // circumradius out — so the cell reaches all three corners and no further.
+    // Within a pixel, since the two surfaces round their own sizes up.
+    expect(Math.atan2(cell[1], cell[0])).toBeCloseTo(Math.PI / 6, 6);
+    expect(Math.abs(Math.hypot(cell[0], cell[1]) - side / Math.sqrt(3))).toBeLessThan(1);
   });
 
   // Turning the tube revolves the whole assembly. The chamber is bolted inside

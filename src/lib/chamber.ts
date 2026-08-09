@@ -25,11 +25,25 @@ const DAMPING = 2.2;
 /** Constraint passes per substep. More passes make a deep pile firmer. */
 const ITERATIONS = 3;
 
-/** How much a chip turns as it slides. */
-const ROLL = 6;
+/**
+ * How much of the sliding at a contact is turned into spin, per pass.
+ *
+ * Glass on glass is not slippery: a chip dragged down the wall or across the
+ * pile rolls rather than skids, and it is the rolling that reads as tumbling.
+ */
+const FRICTION = 0.55;
+
+/** Spin lost per second. A chip wedged in a full chamber does not twirl on. */
+const ANGULAR_DAMPING = 2.6;
 
 /** Speed below which a chip is treated as at rest, so piles stop jittering. */
 const SLEEP_SPEED = 0.012;
+
+/** Spin below which a chip that has stopped moving is treated as still. */
+const SLEEP_SPIN = 0.08;
+
+/** Gap at which two surfaces still count as touching, in cell units. */
+const CONTACT_SLOP = 0.01;
 
 /** Fraction of an overlap resolved per pass. Below 1 the pile settles softly. */
 const SEPARATION = 0.8;
@@ -64,6 +78,7 @@ export function updateChamber(shards: Shard[], { dt, tube }: ChamberUpdate): voi
   const gravityX = -Math.sin(tube) * GRAVITY;
   const gravityY = Math.cos(tube) * GRAVITY;
   const damping = Math.max(0, 1 - DAMPING * step);
+  const angularDamping = Math.max(0, 1 - ANGULAR_DAMPING * step);
 
   for (let pass = 0; pass < SUBSTEPS; pass += 1) {
     for (const shard of shards) {
@@ -85,22 +100,106 @@ export function updateChamber(shards: Shard[], { dt, tube }: ChamberUpdate): voi
     }
 
     for (const shard of shards) {
-      const movedX = shard.x - (previousX.get(shard) ?? shard.x);
-      const movedY = shard.y - (previousY.get(shard) ?? shard.y);
+      shard.vx = (shard.x - (previousX.get(shard) ?? shard.x)) / step;
+      shard.vy = (shard.y - (previousY.get(shard) ?? shard.y)) / step;
+    }
 
-      shard.vx = movedX / step;
-      shard.vy = movedY / step;
+    tumble(shards);
 
-      // Rolling, and the drag that stops a chip spinning on the spot forever.
-      shard.rotation += shard.spin * step;
-      shard.spin = (shard.spin + movedX * ROLL) * damping;
-
+    for (const shard of shards) {
+      // Sleep before the rotation is advanced, not after: a settled pile still
+      // creeps by a hair each frame, and letting the contacts turn that into
+      // spin first leaves the whole field slowly rotating on a table.
       if (Math.hypot(shard.vx, shard.vy) < SLEEP_SPEED) {
         shard.vx = 0;
         shard.vy = 0;
+
+        if (Math.abs(shard.spin) < SLEEP_SPIN) {
+          shard.spin = 0;
+        }
       }
+
+      shard.rotation += shard.spin * step;
+      shard.spin *= angularDamping;
     }
   }
+}
+
+/**
+ * Turns sliding at the contacts into spin.
+ *
+ * A chip is a disc, not a point, so an impulse that lands off its centre turns
+ * it — which is the whole of tumbling. Sliding down the wall sets a chip
+ * rolling, a glancing blow spins both pieces the opposite way, and a piece
+ * pinned in the pile stops turning because its contacts have nothing left to
+ * slide against.
+ *
+ * Each contact removes a fraction of the tangential slip — the relative speed of
+ * the two surfaces where they touch — with an impulse along the tangent. A
+ * uniform disc has `I = m r^2 / 2`, so once the spin that impulse produces is
+ * counted back in, it changes the slip by `3 J / m`. That is where the thirds
+ * come from, and why the radius cancels out against the wall.
+ */
+function tumble(shards: Shard[]): void {
+  for (let i = 0; i < shards.length; i += 1) {
+    const a = shards[i]!;
+
+    for (let j = i + 1; j < shards.length; j += 1) {
+      const b = shards[j]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance === 0 || distance > a.radius + b.radius + CONTACT_SLOP) {
+        continue;
+      }
+
+      // Tangent at the contact: perpendicular to the line of centres.
+      const tangentX = -dy / distance;
+      const tangentY = dx / distance;
+      // Each surface point carries its body's spin, so both radii count.
+      const slip =
+        (b.vx - a.vx) * tangentX + (b.vy - a.vy) * tangentY - b.spin * b.radius - a.spin * a.radius;
+
+      if (slip === 0) {
+        continue;
+      }
+
+      const inverseA = 1 / mass(a);
+      const inverseB = 1 / mass(b);
+      const impulse = (-FRICTION * slip) / (3 * (inverseA + inverseB));
+
+      a.vx -= impulse * inverseA * tangentX;
+      a.vy -= impulse * inverseA * tangentY;
+      b.vx += impulse * inverseB * tangentX;
+      b.vy += impulse * inverseB * tangentY;
+      a.spin -= (2 * impulse * inverseA) / a.radius;
+      b.spin -= (2 * impulse * inverseB) / b.radius;
+    }
+  }
+
+  for (const shard of shards) {
+    const distance = Math.hypot(shard.x, shard.y);
+
+    if (distance === 0 || distance < CHAMBER_RADIUS - shard.radius - CONTACT_SLOP) {
+      continue;
+    }
+
+    // The wall is fixed, so its surface contributes nothing to the slip.
+    const tangentX = -shard.y / distance;
+    const tangentY = shard.x / distance;
+    const slip = shard.vx * tangentX + shard.vy * tangentY + shard.spin * shard.radius;
+    const change = (-FRICTION * slip) / 3;
+
+    shard.vx += change * tangentX;
+    shard.vy += change * tangentY;
+    shard.spin += (2 * change) / shard.radius;
+  }
+}
+
+/** Chips are glass all the way through, so mass goes with area. */
+function mass(shard: Shard): number {
+  return shard.radius * shard.radius;
 }
 
 /** Scratch space for the previous positions, so no allocation happens per frame. */
@@ -175,7 +274,9 @@ export function settleChamber(shards: Shard[], tube = 0, maxSeconds = 12): void 
   }
 }
 
-/** True once nothing is moving faster than the sleep threshold. */
+/** True once nothing is sliding or turning faster than the sleep thresholds. */
 function atRest(shards: Shard[]): boolean {
-  return shards.every((shard) => Math.hypot(shard.vx, shard.vy) <= SLEEP_SPEED);
+  return shards.every(
+    (shard) => Math.hypot(shard.vx, shard.vy) <= SLEEP_SPEED && Math.abs(shard.spin) <= SLEEP_SPIN,
+  );
 }
