@@ -166,21 +166,40 @@ describe('KaleidoscopeRenderer', () => {
     expect(Math.abs(Math.hypot(cell[0], cell[1]) - side / Math.sqrt(3))).toBeLessThan(1);
   });
 
-  // Turning the tube revolves the whole assembly. The chamber is bolted inside
-  // it, so it does not counter-rotate — the glass moves because gravity tips
-  // it, not because the chamber is turned against the mirrors.
-  it('rotates the assembly by the tube angle and leaves the chamber fixed in it', () => {
+  // The mirrors are fixed in the barrel and the cell of glass turns against
+  // them, which is how plenty of real ones are built. Turning the whole
+  // framework instead sweeps the figure around the screen, which reads as a
+  // picture being spun rather than an instrument being worked.
+  it('turns the cell and leaves the mirror framework where it is', () => {
     const { renderer, main, source } = createRenderer();
     const scene = createScene('seed', 6);
-    scene.tube = 0.77;
+    scene.cell = 0.77;
     scene.contents = 0.77;
 
     renderer.resize(200, 200, 1);
     renderer.render(scene, DEFAULT_SETTINGS);
 
-    expect(main.argsOf('rotate')).toContainEqual([0.77]);
-    expect(source.argsOf('rotate')).toContainEqual([0]);
-    expect(source.argsOf('rotate')).not.toContainEqual([0.77]);
+    expect(source.argsOf('rotate')).toContainEqual([0.77]);
+    expect(main.argsOf('rotate')).not.toContainEqual([0.77]);
+  });
+
+  // The joins are part of the framework, so they hold still with it. Drawn
+  // inside the turning cell they would sweep across the glass like a fan.
+  it('holds the mirror joins still as the cell turns', () => {
+    const still = createRenderer();
+    const turned = createRenderer();
+    const scene = createScene('seed', 6);
+    const spun = createScene('seed', 6);
+    spun.cell = 0.9;
+
+    still.renderer.resize(240, 240, 1);
+    still.renderer.render(scene, DEFAULT_SETTINGS);
+
+    turned.renderer.resize(240, 240, 1);
+    turned.renderer.render(spun, DEFAULT_SETTINGS);
+
+    expect(turned.main.argsOf('moveTo')).toEqual(still.main.argsOf('moveTo'));
+    expect(turned.main.argsOf('lineTo')).toEqual(still.main.argsOf('lineTo'));
   });
 
   // Three mirrors meeting in a tube have edges, and you can see them. Every

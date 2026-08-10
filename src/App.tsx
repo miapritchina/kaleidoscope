@@ -41,7 +41,7 @@ export function App() {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
   // Requesting the camera is a permission prompt, so it only happens while the
   // camera is actually the selected source.
-  const camera = useCamera(settings.source === 'camera', video);
+  const camera = useCamera(settings.source === 'camera', video, settings.cameraFacing);
 
   const media = settings.source === 'image' ? image.image : video;
 

@@ -7,6 +7,7 @@ import { settingsReducer, useSettings } from './useSettings';
 /** One valid, genuinely different value per setting. */
 const CHANGES = [
   ['source', 'camera'],
+  ['cameraFacing', 'user'],
   ['shards', 40],
   ['chipSize', 1.5],
   ['zoom', 2],

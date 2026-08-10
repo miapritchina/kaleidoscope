@@ -3,11 +3,11 @@ import type { Shard } from './scene';
 /**
  * The object chamber: loose glass in a bounded cell, under gravity.
  *
- * The chamber is fixed to the tube, so gravity does not point "down" in its
- * coordinates — it points down in the world, and turning the tube sweeps that
- * direction around the chamber. That is the whole mechanism behind the way a
- * real kaleidoscope behaves: the pattern does not change because the tube is
- * turning, it changes because turning tips the chips and they avalanche, then
+ * The cell turns and gravity does not, so gravity does not point "down" in the
+ * cell's coordinates — it points down in the world, and turning the cell sweeps
+ * that direction around it. That is the whole mechanism behind the way a real
+ * kaleidoscope behaves: the pattern does not change because something is
+ * rotating, it changes because turning tips the chips and they avalanche, then
  * settle into a new pile.
  *
  * Coordinates are in cell units, with the chamber centred on the origin.
@@ -54,8 +54,8 @@ const SUBSTEPS = 2;
 export interface ChamberUpdate {
   /** Seconds to advance. */
   dt: number;
-  /** Angle of the tube, radians. Gravity is world-down, so this tips the pile. */
-  tube: number;
+  /** Angle the cell has been turned to, radians. This is what tips the pile. */
+  angle: number;
 }
 
 /**
@@ -68,23 +68,22 @@ export interface ChamberUpdate {
  * feeding in velocity that the contacts never fully take out; here a chip that
  * is held in place simply records no movement, and so comes to rest.
  */
-export function updateChamber(shards: Shard[], { dt, tube }: ChamberUpdate): void {
+export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): void {
   if (dt <= 0 || shards.length === 0) {
     return;
   }
 
   const step = dt / SUBSTEPS;
-  // World down (+y on screen) expressed in the chamber's own frame.
+  // World down (+y on screen) expressed in the cell's own frame.
   //
-  // The renderer draws the chamber inside a field it has rotated by `tube`, so
-  // the chamber's axes are turned by `+tube` against the screen and world down
-  // has to be turned back by the same amount to land in them. Sign this the
-  // other way — the easy mistake, since it looks like "undo the rotation" — and
-  // gravity sweeps the chamber at twice the turn rate instead of holding still:
-  // a quarter turn puts the pile at the top of the screen, and the whole
-  // mechanism reads as no gravity at all.
-  const gravityX = Math.sin(tube) * GRAVITY;
-  const gravityY = Math.cos(tube) * GRAVITY;
+  // The renderer draws the cell rotated by `angle`, so its axes are turned by
+  // `+angle` against the screen and world down has to be turned back by the same
+  // amount to land in them. Sign this the other way — the easy mistake, since it
+  // looks like "undo the rotation" — and gravity sweeps the cell at twice the
+  // turn rate instead of holding still: a quarter turn puts the pile at the top
+  // of the screen, and the whole mechanism reads as no gravity at all.
+  const gravityX = Math.sin(angle) * GRAVITY;
+  const gravityY = Math.cos(angle) * GRAVITY;
   const damping = Math.max(0, 1 - DAMPING * step);
   const angularDamping = Math.max(0, 1 - ANGULAR_DAMPING * step);
 
@@ -269,12 +268,12 @@ function confine(shard: Shard): void {
  * on load. The cap is a backstop for a chamber packed too tightly to ever fully
  * settle.
  */
-export function settleChamber(shards: Shard[], tube = 0, maxSeconds = 12): void {
+export function settleChamber(shards: Shard[], angle = 0, maxSeconds = 12): void {
   const step = 1 / 60;
   const checkEvery = 15;
 
   for (let frame = 0; frame < maxSeconds / step; frame += 1) {
-    updateChamber(shards, { dt: step, tube });
+    updateChamber(shards, { dt: step, angle });
 
     if (frame % checkEvery === checkEvery - 1 && atRest(shards)) {
       return;

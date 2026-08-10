@@ -2,6 +2,7 @@ import { render, waitFor } from '@testing-library/react';
 import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { CameraFacing } from '../lib/camera';
 import { useCamera, type Camera } from './useCamera';
 
 /**
@@ -9,17 +10,27 @@ import { useCamera, type Camera } from './useCamera';
  * component. Calling `ref` from a bare `renderHook` callback would fire a
  * render-phase state update on every pass.
  */
-function Harness({ active, expose }: { active: boolean; expose: (camera: Camera) => void }) {
+function Harness({
+  active,
+  facing,
+  expose,
+}: {
+  active: boolean;
+  facing?: CameraFacing | undefined;
+  expose: (camera: Camera) => void;
+}) {
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  const camera = useCamera(active, video);
+  const camera = useCamera(active, video, facing);
   expose(camera);
 
   return <video ref={setVideo} />;
 }
 
-function renderCamera(active: boolean) {
+function renderCamera(active: boolean, facing?: CameraFacing) {
   let camera!: Camera;
-  const view = render(<Harness active={active} expose={(value) => (camera = value)} />);
+  const view = render(
+    <Harness active={active} facing={facing} expose={(value) => (camera = value)} />,
+  );
   const video = view.container.querySelector('video')!;
 
   return {
@@ -29,7 +40,10 @@ function renderCamera(active: boolean) {
       return camera;
     },
     setActive(next: boolean) {
-      view.rerender(<Harness active={next} expose={(value) => (camera = value)} />);
+      view.rerender(<Harness active={next} facing={facing} expose={(value) => (camera = value)} />);
+    },
+    setFacing(next: CameraFacing) {
+      view.rerender(<Harness active={active} facing={next} expose={(value) => (camera = value)} />);
     },
   };
 }
@@ -75,8 +89,44 @@ describe('useCamera', () => {
       expect(view.camera.status).toBe('active');
     });
     expect(mockGetUserMedia()).toHaveBeenCalledWith({
+      video: { facingMode: 'environment' },
+      audio: false,
+    });
+  });
+
+  // The default above is the back one: a kaleidoscope is something you point at
+  // the world, and a phone's front camera points at your face.
+  it('honours an explicit choice of the front camera', async () => {
+    mockGetUserMedia().mockResolvedValue(fakeStream().stream);
+
+    const view = renderCamera(true, 'user');
+
+    await waitFor(() => {
+      expect(view.camera.status).toBe('active');
+    });
+    expect(mockGetUserMedia()).toHaveBeenCalledWith({
       video: { facingMode: 'user' },
       audio: false,
+    });
+  });
+
+  it('restarts on the other camera when the choice changes', async () => {
+    mockGetUserMedia().mockResolvedValue(fakeStream().stream);
+
+    const view = renderCamera(true);
+    await waitFor(() => {
+      expect(view.camera.status).toBe('active');
+    });
+
+    act(() => {
+      view.setFacing('user');
+    });
+
+    await waitFor(() => {
+      expect(mockGetUserMedia()).toHaveBeenCalledWith({
+        video: { facingMode: 'user' },
+        audio: false,
+      });
     });
   });
 

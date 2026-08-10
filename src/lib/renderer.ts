@@ -31,6 +31,17 @@ const MIRROR_TINT = { r: 0.958, g: 0.983, b: 0.975 };
 /** Stops in the falloff gradient. Enough that the curve reads as smooth. */
 const FALLOFF_STOPS = 8;
 
+/**
+ * How far each of the six cells in a hexagon strays from the average exposure.
+ *
+ * Signed: some cells come back brighter than the mean and some dimmer. Fixed
+ * rather than random per frame — the mirrors do not move.
+ */
+const FACET_EXPOSURE = [0.045, -0.03, 0.02, -0.05, 0.035, -0.015];
+
+/** How much a whole hexagon may be lightened relative to its neighbours. */
+const CELL_EXPOSURE = 0.06;
+
 /** Width of a mirror join, as a fraction of the triangle's side. */
 const SEAM_WIDTH = 0.004;
 
@@ -174,7 +185,7 @@ export class KaleidoscopeRenderer {
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
     this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, triangle);
-    this.#compositeTiling(scene, palette, triangle);
+    this.#compositeTiling(palette, triangle);
   }
 
   /** Side of the mirror triangle in device pixels. */
@@ -234,7 +245,9 @@ export class KaleidoscopeRenderer {
       drawMedia(ctx, media, {
         size: reach,
         zoom: settings.zoom,
-        rotation: scene.contents - scene.tube,
+        // A photo has no physics of its own, so it simply turns with the cell,
+        // a little behind it.
+        rotation: scene.contents,
         pan: scene.drag,
         alpha: 1,
       });
@@ -253,9 +266,9 @@ export class KaleidoscopeRenderer {
         // further, so every chip that is simulated has a chance of being seen.
         scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
         chipScale: settings.chipSize,
-        // The chamber is bolted to the tube, so it does not turn within it. Only
-        // media, which has no physics of its own, keeps the lag.
-        rotation: 0,
+        // The cell turns inside the fixed mirrors. What the glass does within it
+        // is the physics' business, not this rotation's.
+        rotation: scene.cell,
         pan: {
           x: scene.drag.x * DRAG_CELLS,
           y: scene.drag.y * DRAG_CELLS,
@@ -289,7 +302,7 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(scene: Scene, palette: Palette, side: number): void {
+  #compositeTiling(palette: Palette, side: number): void {
     const ctx = this.#ctx;
     const hexagon = this.#buildHexagon(palette, side);
 
@@ -304,9 +317,12 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // Turning the tube turns the whole tiling with it.
+    // The mirror framework does not move. Plenty of real kaleidoscopes are built
+    // this way: the mirrors are fixed in the barrel and the chamber of glass
+    // turns against them on its own bearing. Rotating the whole tiling instead
+    // sweeps the figure around the screen, which reads as a picture being spun
+    // and drowns the thing actually worth watching — the glass falling.
     ctx.translate(this.#width / 2, this.#height / 2);
-    ctx.rotate(scene.tube);
 
     const lattice = hexLattice(side);
     // A rotated rectangle fits inside the circle through its corners, so cover
@@ -319,8 +335,15 @@ export class KaleidoscopeRenderer {
     const offset = hexagon.width / 2;
 
     for (const centre of centres) {
+      // And each hexagon differs from its neighbours as well, or the field
+      // would be exactly periodic — six distinct cells, repeated verbatim
+      // forever, which is the same tell one step up. Laid down a little
+      // transparent lets that cell's share of the light behind it through.
+      ctx.globalAlpha = 1 - cellNoise(centre.i, centre.j) * CELL_EXPOSURE;
       ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
     }
+
+    ctx.globalAlpha = 1;
 
     this.#drawSeams(side);
     ctx.restore();
@@ -473,6 +496,21 @@ export class KaleidoscopeRenderer {
       ctx.clip();
       // The wedge surface holds the source with its apex inside the margin.
       ctx.drawImage(this.#wedge, -SEAM_BLEED, -SEAM_BLEED);
+
+      // Each cell gets its own exposure. Three mirrors cut and glued by hand
+      // are never at exactly sixty degrees to one another and never equally
+      // silvered, and the light behind the chamber is not even either — so no
+      // two reflections come back at quite the same brightness. Photographs
+      // down a real tube show this plainly: the tessellation reads as the
+      // facets of a shallow dome, and it is visible in the empty ground
+      // between the glass, not only on the glass. Identical cells are most of
+      // what makes a rendered one read as a printed pattern.
+      const exposure = FACET_EXPOSURE[index]!;
+
+      ctx.fillStyle = exposure > 0 ? 'rgb(255 255 255)' : 'rgb(0 0 0)';
+      ctx.globalAlpha = Math.abs(exposure);
+      ctx.fillRect(-span, -span, span * 2, span * 2);
+      ctx.globalAlpha = 1;
       ctx.restore();
     }
 
@@ -552,6 +590,21 @@ export class KaleidoscopeRenderer {
       return null;
     }
   }
+}
+
+/**
+ * A fixed, evenly spread value in `[0, 1)` for the hexagon at `(i, j)`.
+ *
+ * An integer hash rather than a seeded generator: this is wanted per hexagon
+ * per frame, in any order, and it has to give the same answer for the same cell
+ * every time or the field would shimmer as it is panned across.
+ */
+function cellNoise(i: number, j: number): number {
+  let hash = Math.imul(i, 0x27d4eb2d) ^ Math.imul(j, 0x165667b1);
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2545f491);
+  hash ^= hash >>> 13;
+
+  return (hash >>> 0) / 4294967296;
 }
 
 function defaultCanvas(): HTMLCanvasElement {
