@@ -182,7 +182,7 @@ whichever of their settings still mean something.
 
 ## Turning the tube
 
-Swipe across the artwork. Left-to-right or top-to-bottom turns it clockwise, and the
+Swipe across the artwork. Left-to-right or top-to-bottom turns it anticlockwise, and the
 swipe's speed sets how fast. Let go mid-swipe and it **coasts** to a stop within a second
 or so, the way a real barrel does. That matters more than it sounds: the glass only moves
 while the tube is turning, so a turn that ended with the finger gave the pile a fraction of

@@ -75,35 +75,52 @@ describe('useStageGesture', () => {
       expect(view.gesture.mode).toBe('turn');
     });
 
-    it('turns clockwise for a left-to-right swipe', () => {
+    it('turns anticlockwise for a left-to-right swipe', () => {
       const view = renderStage();
 
       view.down(50, 100);
       view.move(150, 100);
 
-      // Canvas angles grow clockwise on screen, so clockwise is positive.
-      expect(view.gesture.turnRef.current).toBeGreaterThan(0);
+      // Canvas angles grow clockwise on screen, so anticlockwise is negative.
+      expect(view.gesture.turnRef.current).toBeLessThan(0);
     });
 
-    it('turns clockwise for a top-to-bottom swipe', () => {
+    // The two axes have to agree, or a diagonal swipe cancels itself out.
+    it('turns anticlockwise for a top-to-bottom swipe too', () => {
       const view = renderStage();
 
       view.down(100, 50);
       view.move(100, 150);
 
-      expect(view.gesture.turnRef.current).toBeGreaterThan(0);
+      expect(view.gesture.turnRef.current).toBeLessThan(0);
     });
 
-    it('turns anticlockwise for the opposite swipes', () => {
+    it('turns clockwise for the opposite swipes', () => {
       const rightToLeft = renderStage();
       rightToLeft.down(150, 100);
       rightToLeft.move(50, 100);
-      expect(rightToLeft.gesture.turnRef.current).toBeLessThan(0);
+      expect(rightToLeft.gesture.turnRef.current).toBeGreaterThan(0);
 
       const bottomToTop = renderStage();
       bottomToTop.down(100, 150);
       bottomToTop.move(100, 50);
-      expect(bottomToTop.gesture.turnRef.current).toBeLessThan(0);
+      expect(bottomToTop.gesture.turnRef.current).toBeGreaterThan(0);
+    });
+
+    // Down-and-right together should turn it more than either alone, not less.
+    // Small, slow steps, so neither saturates the rate cap and hides the point.
+    it('adds the two axes rather than letting them fight', () => {
+      const straight = renderStage();
+      straight.down(50, 50);
+      straight.move(60, 50, 200);
+
+      const diagonal = renderStage();
+      diagonal.down(50, 50);
+      diagonal.move(60, 60, 200);
+
+      expect(Math.abs(diagonal.gesture.turnRef.current)).toBeGreaterThan(
+        Math.abs(straight.gesture.turnRef.current),
+      );
     });
 
     it('turns faster for a faster swipe', () => {
