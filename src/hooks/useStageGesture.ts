@@ -90,11 +90,11 @@ interface Sample {
 /**
  * The stage's pointer gestures.
  *
- * A plain swipe turns the tube: left-to-right or top-to-bottom goes clockwise,
- * and the swipe's speed sets the turning rate. Let go mid-swipe and it coasts to
- * a stop the way a real barrel does. Holding a second finger down — or Shift, or
- * a secondary button — pans the source instead, so both gestures live on the
- * same surface without one stealing the other.
+ * A plain swipe turns the tube: left-to-right or top-to-bottom goes
+ * anticlockwise, and the swipe's speed sets the turning rate. Let go mid-swipe
+ * and it coasts to a stop the way a real barrel does. Holding a second finger
+ * down — or Shift, or a secondary button — pans the source instead, so both
+ * gestures live on the same surface without one stealing the other.
  */
 export function useStageGesture(now: () => number = defaultNow): StageGesture {
   const panRef = useRef<Vector>({ x: 0, y: 0 });
@@ -175,9 +175,14 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
       // Guard against a zero or absurd interval: coalesced events can share an
       // instant, and a tab that was backgrounded can report a huge one.
       const seconds = Math.min(0.1, Math.max(0.008, (time - previous.time) / 1000));
-      // Rightwards and downwards both read as clockwise, so the two axes add.
-      const sweeps =
-        (event.clientX - previous.x) / bounds.width + (event.clientY - previous.y) / bounds.height;
+      // Rightwards and downwards both read as anticlockwise, so the two axes
+      // add. They have to agree: pushing the rim of a wheel from below sends it
+      // anticlockwise whether you push right or push down, and splitting them
+      // would leave a diagonal swipe cancelling itself out.
+      const sweeps = -(
+        (event.clientX - previous.x) / bounds.width +
+        (event.clientY - previous.y) / bounds.height
+      );
       const target = clampTurn((sweeps / seconds) * TURNS_PER_SWEEP * Math.PI * 2);
 
       turnRef.current += (target - turnRef.current) * VELOCITY_SMOOTHING;
