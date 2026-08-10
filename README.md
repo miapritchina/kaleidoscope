@@ -74,6 +74,24 @@ stops are `reflectance ^ bounces` per channel. Brightest and truest on the axis,
 greener towards the rim, and it applies to the light coming through the gaps as much as to
 the glass, because the mirrors do not know the difference.
 
+### The joins, and the barrel
+
+Three mirrors meeting in a tube have edges, and you can see them: a hairline at every
+triangle boundary, where the silvering stops and the glass is cut. Without them the
+reflections run into each other so cleanly that the figure reads as a printed pattern
+rather than something assembled out of parts.
+
+Every triangle edge lies on one of three families of parallel lines, sixty degrees apart
+and spaced `side * sqrt(3) / 2` — the height of the triangle. Drawing the three families
+straight is both exact and cheaper than outlining the triangles, which would stroke every
+edge twice, once from each side, and leave the joins twice as dark as the rest.
+
+Over the top of all of it is the **barrel**. A kaleidoscope is a tube with an eyehole at one
+end, so the field of view is a circle and it does not end abruptly — the further off the
+axis you look, the more of the barrel is in the way. That is a separate thing from what the
+mirrors cost: those dim the light on its way through and are multiplied into it, while the
+barrel is in front of them and simply lies over the top.
+
 ### The glass
 
 A chip is not a lit object on a dark field — it is a hole in the light with a colour. Each

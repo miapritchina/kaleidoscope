@@ -183,6 +183,51 @@ describe('KaleidoscopeRenderer', () => {
     expect(source.argsOf('rotate')).not.toContainEqual([0.77]);
   });
 
+  // Three mirrors meeting in a tube have edges, and you can see them. Every
+  // triangle boundary lies on one of three families of parallel lines, sixty
+  // degrees apart; outlining the triangles instead would stroke every edge
+  // twice, once from each side, and leave the joins twice as dark as the rest.
+  it('draws the mirror joins as three families of parallel lines', () => {
+    const { renderer, main } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+
+    // One batched path, so no edge is painted over itself.
+    expect(main.countOf('stroke')).toBe(1);
+
+    const starts = main.argsOf('moveTo') as [number, number][];
+    const ends = main.argsOf('lineTo') as [number, number][];
+    expect(starts).toHaveLength(ends.length);
+    expect(starts.length).toBeGreaterThan(3);
+
+    // Directions, folded onto a half turn: a line has no arrowhead.
+    const directions = starts.map(([x, y], line) => {
+      const [toX, toY] = ends[line]!;
+      const angle = Math.atan2(toY - y, toX - x);
+
+      return Math.round((((angle % Math.PI) + Math.PI) % Math.PI) * (180 / Math.PI));
+    });
+
+    expect([...new Set(directions)].sort((a, b) => a - b)).toEqual([0, 60, 120]);
+  });
+
+  // The mirrors dim the light on its way through; the barrel is in front of
+  // them. Two separate things, and they composite differently.
+  it('multiplies the view by the mirror falloff, then lays the barrel over it', () => {
+    const { renderer, main } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+
+    const fills = main.stylesOf('fillRect');
+    // The backdrop, the falloff, the barrel.
+    expect(fills).toHaveLength(3);
+    expect(fills[0]!.globalCompositeOperation).toBe('source-over');
+    expect(fills[1]!.globalCompositeOperation).toBe('multiply');
+    expect(fills[2]!.globalCompositeOperation).toBe('source-over');
+  });
+
   it('balances every save with a restore', () => {
     const { renderer, main, hexagon } = createRenderer();
 
