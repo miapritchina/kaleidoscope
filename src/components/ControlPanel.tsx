@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
+import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { PALETTES } from '../lib/palettes';
 import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
@@ -39,6 +40,16 @@ const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'image', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
 ];
+
+const CAMERA_LABELS: Record<CameraFacing, string> = {
+  environment: 'Back',
+  user: 'Front',
+};
+
+const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
+  value: facing,
+  label: CAMERA_LABELS[facing],
+}));
 
 const CAMERA_HINTS: Record<CameraStatus, string> = {
   idle: 'The camera is off.',
@@ -120,9 +131,19 @@ export function ControlPanel({
         )}
 
         {settings.source === 'camera' && (
-          <p className={cameraStatus === 'active' ? styles.hint : styles.error} role="status">
-            {cameraMessage ?? CAMERA_HINTS[cameraStatus]}
-          </p>
+          <>
+            <SelectField
+              label="Camera"
+              value={settings.cameraFacing}
+              options={CAMERA_OPTIONS}
+              onChange={(value) => {
+                onChange('cameraFacing', value);
+              }}
+            />
+            <p className={cameraStatus === 'active' ? styles.hint : styles.error} role="status">
+              {cameraMessage ?? CAMERA_HINTS[cameraStatus]}
+            </p>
+          </>
         )}
       </fieldset>
 

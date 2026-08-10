@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import type { CameraFacing } from '../lib/camera';
+
 export type CameraStatus = 'idle' | 'starting' | 'active' | 'denied' | 'unavailable' | 'error';
 
 export interface Camera {
@@ -21,20 +23,30 @@ const UNSUPPORTED_MESSAGE =
  * The element is passed in rather than created here: Safari will not play a
  * detached video, so it has to be in the document (visually hidden is fine),
  * which makes it the caller's to own.
+ *
+ * @param facing Which camera to ask for. A preference, not a requirement: a
+ *   laptop with only a front camera still gets that one when the rear is asked
+ *   for, whereas `{ exact: ... }` would fail outright.
  */
-export function useCamera(active: boolean, video: HTMLVideoElement | null): Camera {
+export function useCamera(
+  active: boolean,
+  video: HTMLVideoElement | null,
+  facing: CameraFacing = 'environment',
+): Camera {
   // Only the outcome of a request lives in state. `idle`, `starting` and the
   // unsupported case are derived below, which keeps this hook from having to
   // write state during the effect that starts the stream.
   const [outcome, setOutcome] = useState<Camera | null>(null);
   const [lastVideo, setLastVideo] = useState(video);
   const [lastActive, setLastActive] = useState(active);
+  const [lastFacing, setLastFacing] = useState(facing);
 
   // A restart discards the previous attempt's verdict, so a denial does not
   // linger over the next try.
-  if (lastVideo !== video || lastActive !== active) {
+  if (lastVideo !== video || lastActive !== active || lastFacing !== facing) {
     setLastVideo(video);
     setLastActive(active);
+    setLastFacing(facing);
     setOutcome(null);
   }
 
@@ -52,7 +64,7 @@ export function useCamera(active: boolean, video: HTMLVideoElement | null): Came
     const isCancelled = () => cancelled;
 
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .getUserMedia({ video: { facingMode: facing }, audio: false })
       .then(async (result) => {
         // Toggled off, or swapped elements, while the prompt was open.
         if (isCancelled()) {
@@ -85,7 +97,7 @@ export function useCamera(active: boolean, video: HTMLVideoElement | null): Came
       stopStream(stream);
       video.srcObject = null;
     };
-  }, [active, video, supported]);
+  }, [active, video, supported, facing]);
 
   if (!active || !video) {
     return { status: 'idle', message: null };

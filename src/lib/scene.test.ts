@@ -73,12 +73,12 @@ describe('updateScene', () => {
     }
   });
 
-  it('turns the tube at the given rate', () => {
+  it('turns the cell at the given rate', () => {
     const scene = createScene('spin', 4);
 
     updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
 
-    expect(scene.tube).toBeCloseTo(Math.PI * 2 * 0.05, 6);
+    expect(scene.cell).toBeCloseTo(Math.PI * 2 * 0.05, 6);
   });
 
   it('turns the other way for a negative rate', () => {
@@ -86,17 +86,17 @@ describe('updateScene', () => {
 
     updateScene(scene, { dt: 0.05, turn: -Math.PI * 2, drag });
 
-    expect(scene.tube).toBeLessThan(0);
+    expect(scene.cell).toBeLessThan(0);
   });
 
-  // The chips are loose, so they trail the barrel and then settle. That lag is
+  // The chips are loose, so they trail the cell and then settle. That lag is
   // what makes the figure evolve rather than only revolve.
-  it('lets the contents lag the tube while it turns', () => {
+  it('lets the contents lag the cell while it turns', () => {
     const scene = createScene('lag', 4);
 
     updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
 
-    expect(scene.contents).toBeLessThan(scene.tube);
+    expect(scene.contents).toBeLessThan(scene.cell);
     expect(scene.contents).toBeGreaterThan(0);
   });
 
@@ -104,14 +104,14 @@ describe('updateScene', () => {
     const scene = createScene('settle', 4);
 
     updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
-    const lagWhileTurning = scene.tube - scene.contents;
+    const lagWhileTurning = scene.cell - scene.contents;
 
     for (let i = 0; i < 60; i += 1) {
       updateScene(scene, { dt: 0.05, turn: 0, drag });
     }
 
-    expect(scene.tube - scene.contents).toBeLessThan(lagWhileTurning);
-    expect(scene.contents).toBeCloseTo(scene.tube, 3);
+    expect(scene.cell - scene.contents).toBeLessThan(lagWhileTurning);
+    expect(scene.contents).toBeCloseTo(scene.cell, 3);
   });
 
   // Left uncapped, a brisk swipe leaves the chips so far behind that they go on
@@ -123,7 +123,7 @@ describe('updateScene', () => {
       updateScene(scene, { dt: 0.05, turn: Math.PI * 4, drag });
     }
 
-    expect(Math.abs(scene.tube - scene.contents)).toBeLessThanOrEqual(0.3 + 1e-9);
+    expect(Math.abs(scene.cell - scene.contents)).toBeLessThanOrEqual(0.3 + 1e-9);
   });
 
   it('settles quickly once the turn stops, even after a fast one', () => {
@@ -137,15 +137,15 @@ describe('updateScene', () => {
     }
 
     // Half a second after release the contents are all but caught up.
-    expect(Math.abs(scene.tube - scene.contents)).toBeLessThan(0.05);
+    expect(Math.abs(scene.cell - scene.contents)).toBeLessThan(0.05);
   });
 
-  it('never overshoots the tube on a long frame', () => {
+  it('never overshoots the cell on a long frame', () => {
     const scene = createScene('overshoot', 4);
 
     updateScene(scene, { dt: 5, turn: Math.PI * 2, drag });
 
-    expect(scene.contents).toBeLessThanOrEqual(scene.tube);
+    expect(scene.contents).toBeLessThanOrEqual(scene.cell);
   });
 
   it('clamps an oversized frame so a backgrounded tab cannot jump', () => {
@@ -158,7 +158,7 @@ describe('updateScene', () => {
   });
 
   // A kaleidoscope on a table does not simmer away on its own.
-  it('holds the chips still while the tube is at rest', () => {
+  it('holds the chips still while the cell is at rest', () => {
     const scene = createScene('still', 12);
 
     // Left alone for a few seconds first: a pile that is still relaxing has not
@@ -179,7 +179,7 @@ describe('updateScene', () => {
   });
 
   // Turning tips the pile, and it avalanches. That is the whole mechanism.
-  it('avalanches the pile when the tube is turned', () => {
+  it('avalanches the pile when the cell is turned', () => {
     const scene = createScene('avalanche', 24);
 
     for (let i = 0; i < 40; i += 1) {
@@ -207,8 +207,8 @@ describe('updateScene', () => {
       updateScene(upright, { dt: 0.05, turn: 0, drag });
     }
 
-    // Held upside down, gravity in the chamber's frame reverses.
-    inverted.tube = Math.PI;
+    // Held upside down, gravity in the cell's frame reverses.
+    inverted.cell = Math.PI;
     for (let i = 0; i < 120; i += 1) {
       updateScene(inverted, { dt: 0.05, turn: 0, drag });
     }
@@ -226,7 +226,7 @@ describe('updateScene', () => {
     updateScene(scene, { dt: -5, turn: Math.PI * 2, drag });
 
     expect(scene.elapsed).toBe(0);
-    expect(scene.tube).toBe(0);
+    expect(scene.cell).toBe(0);
   });
 
   it('records the drag as a position, so the source stays where it is let go', () => {

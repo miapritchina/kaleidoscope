@@ -5,7 +5,7 @@ tiles the field with repeating hexagons, the way a real one does, and you look t
 glass at a light. Feed it a generated chamber of glass chips, a photo of your own, or a
 live camera feed. Built with React 19, TypeScript and Vite.
 
-Swipe across the artwork to turn the tube. Every look is described by a small set of
+Swipe across the artwork to turn the cell of glass. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
 
 ## Getting started
@@ -84,7 +84,9 @@ rather than something assembled out of parts.
 Every triangle edge lies on one of three families of parallel lines, sixty degrees apart
 and spaced `side * sqrt(3) / 2` — the height of the triangle. Drawing the three families
 straight is both exact and cheaper than outlining the triangles, which would stroke every
-edge twice, once from each side, and leave the joins twice as dark as the rest.
+edge twice, once from each side, and leave the joins twice as dark as the rest. They are
+part of the framework, so they hold still as the cell turns; drawn inside the turning cell
+they would sweep across the glass like a fan.
 
 Over the top of all of it is the **barrel**. A kaleidoscope is a tube with an eyehole at one
 end, so the field of view is a circle and it does not end abruptly — the further off the
@@ -198,7 +200,13 @@ on its own.
 Older links carried a mirror arrangement this app no longer offers. They still open, on
 whichever of their settings still mean something.
 
-## Turning the tube
+## Turning the cell
+
+The **mirror framework does not move**. Plenty of real kaleidoscopes are built this way:
+the mirrors are fixed in the barrel and the chamber of glass turns against them on its own
+bearing. Rotating the whole tiling instead sweeps the figure around the screen, which reads
+as a picture being spun — and it drowns the thing actually worth watching, which is the
+glass falling.
 
 Swipe across the artwork. Left-to-right or top-to-bottom turns it anticlockwise, and the
 swipe's speed sets how fast. Let go mid-swipe and it **coasts** to a stop within a second
@@ -208,18 +216,19 @@ a second to avalanche in — not long enough to see it happen at all. Measured o
 app, a thumb-flick now keeps the field changing for two to three seconds before it settles.
 Hold still mid-swipe and it holds still; touch it again and the coast stops dead.
 
-The chamber is bolted inside the tube, so gravity does not point "down" in its
-coordinates — it points down in the **world**, and turning sweeps that direction around the
-chamber. The renderer draws the chamber inside a field it has rotated by the tube angle, so
-world-down has to be turned back by that same angle to land in the chamber's axes. Signing
-that the other way — the easy mistake, since it reads as "undo the rotation" — sweeps
-gravity round at twice the turn rate instead of holding it still, which puts the pile at the
-top of the screen at a quarter turn and makes the whole mechanism read as no gravity at
-all. There is a test that settles the chamber at twelve angles and checks the pile comes out
-below centre **on screen** each time; a test of the chamber alone cannot see this, because
-in the chamber's own coordinates both signs look equally plausible. That is the whole mechanism: the pattern does not change because the tube is
-turning, it changes because turning tips the glass, it avalanches, and it settles into a
-new pile. Measured on the built app: essentially still at rest, a burst of change on the
+The cell turns and gravity does not, so gravity does not point "down" in the cell's
+coordinates — it points down in the **world**, and turning sweeps that direction around it.
+That is the whole mechanism: the pattern does not change because something is rotating, it
+changes because turning tips the glass, it avalanches, and it settles into a new pile.
+
+The renderer draws the cell rotated by its own angle, so world-down has to be turned back
+by that same angle to land in the cell's axes. Signing that the other way — the easy
+mistake, since it reads as "undo the rotation" — sweeps gravity round at twice the turn
+rate instead of holding it still, which puts the pile at the top of the screen at a quarter
+turn and makes the whole mechanism read as no gravity at all. There is a test that settles
+the chamber at twelve angles and checks the pile comes out below centre **on screen** each
+time; a test of the chamber alone cannot see this, because in the cell's own coordinates
+both signs look equally plausible. Measured on the built app: essentially still at rest, a burst of change on the
 swipe, then back to rest.
 
 Contacts are resolved by moving positions and reading the velocity back off how far each
@@ -242,9 +251,9 @@ The glass is drawn at its physical size, so what collides is what you see, and i
 to pack the chamber to around two thirds by area — a real cell is full, so tipping it
 rearranges the pile rather than emptying most of the view.
 
-Turning a real kaleidoscope turns the mirrors and the chamber together, so the whole figure
-revolves rigidly. A photo or camera frame has no physics of its own, so it keeps a capped
-lag behind the tube instead, which lets it evolve as it turns.
+A photo or camera frame has no physics of its own, so it simply turns with the cell, a
+little behind it — a capped lag, which lets it evolve as it turns rather than revolving
+rigidly.
 
 Hold **Shift**, use a secondary button, or put a second finger down to pan the source
 instead of turning it.
@@ -259,7 +268,14 @@ nobody asked for.
 ## Photo and camera
 
 Choose **Photo** and pick a file, or drop one anywhere on the artwork. Choose **Camera** to
-mirror a live feed.
+mirror a live feed. The camera defaults to the **back** one: a kaleidoscope is something you
+point at the world, and a phone's front camera points at your face. It is asked for as a
+preference rather than a requirement, so a laptop with only a front camera still gets that
+one instead of failing outright.
+
+Pointing either at real glass is worth doing. The mirrors do not care where their pixels
+came from, so a photograph of coloured glass beads gives you genuinely photographic glass —
+which no amount of drawing chips will match.
 
 Both stay on the device. The photo is read through an object URL, drawn to a canvas, and
 the URL revoked; the camera is a `getUserMedia` stream drawn frame by frame. Nothing is

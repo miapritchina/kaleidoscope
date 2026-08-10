@@ -43,6 +43,13 @@ export function hexLattice(radius: number): HexLattice {
   };
 }
 
+/** A hexagon in the tiling: where it sits, and which cell of the lattice it is. */
+export interface HexagonCell extends Vector {
+  /** Steps along the lattice's two primitive translations. */
+  i: number;
+  j: number;
+}
+
 export interface Bounds {
   minX: number;
   maxX: number;
@@ -51,7 +58,7 @@ export interface Bounds {
 }
 
 /**
- * Centres of every hexagon needed to cover `bounds`.
+ * Every hexagon needed to cover `bounds`, with its lattice coordinates.
  *
  * Solves the corners of the region in lattice coordinates rather than walking a
  * square grid, so a rotated or off-centre region does not drag in a ring of
@@ -59,7 +66,7 @@ export interface Bounds {
  *
  * @param margin Extra rings beyond the region, to cover partial hexagons.
  */
-export function coverWithHexagons(bounds: Bounds, lattice: HexLattice, margin = 1): Vector[] {
+export function coverWithHexagons(bounds: Bounds, lattice: HexLattice, margin = 1): HexagonCell[] {
   const { a, b } = lattice;
   const determinant = a.x * b.y - a.y * b.x;
 
@@ -90,11 +97,11 @@ export function coverWithHexagons(bounds: Bounds, lattice: HexLattice, margin = 
     maxJ = Math.max(maxJ, j);
   }
 
-  const centres: Vector[] = [];
+  const centres: HexagonCell[] = [];
 
   for (let j = Math.floor(minJ) - margin; j <= Math.ceil(maxJ) + margin; j += 1) {
     for (let i = Math.floor(minI) - margin; i <= Math.ceil(maxI) + margin; i += 1) {
-      centres.push({ x: a.x * i + b.x * j, y: a.y * i + b.y * j });
+      centres.push({ x: a.x * i + b.x * j, y: a.y * i + b.y * j, i, j });
     }
   }
 

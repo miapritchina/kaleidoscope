@@ -37,17 +37,19 @@ export interface Scene {
   /** Accumulated pan of the cell, in cells. */
   pan: { x: number; y: number };
   /**
-   * Angle of the tube — the mirror assembly — in radians.
+   * Angle the object cell has been turned to, in radians.
    *
-   * Turning a real kaleidoscope turns the mirrors and the chamber together, so
-   * the whole figure revolves. This is that angle.
+   * Plenty of real kaleidoscopes turn the cell and not the barrel: the mirrors
+   * are fixed in the tube and the chamber of glass rotates against them on its
+   * own bearing. That is this, and it is why the figure's framework holds still
+   * on screen while what is inside it moves.
    */
-  tube: number;
+  cell: number;
   /**
    * Angle of the contents inside the tube, in radians.
    *
-   * The chips are loose, so they lag the tube and then settle. That lag is the
-   * relative angle between this and {@link Scene.tube}, and it is what makes the
+   * The chips are loose, so they lag the cell and then settle. That lag is the
+   * relative angle between this and {@link Scene.cell}, and it is what makes the
    * figure evolve rather than only revolve.
    */
   contents: number;
@@ -66,7 +68,7 @@ export interface Scene {
 export interface SceneUpdate {
   /** Seconds since the previous frame. */
   dt: number;
-  /** How fast the tube is being turned, in radians per second. */
+  /** How fast the cell is being turned, in radians per second. */
   turn: number;
   /** Current drag position, each axis in `[-1, 1]`. */
   drag: { x: number; y: number };
@@ -93,17 +95,17 @@ const LIGHT_THINNING = 0.72;
 const DEPTH_OVERLAP = 1.3;
 
 /**
- * How quickly the contents catch up with the tube, per second.
+ * How quickly the contents catch up with the cell, per second.
  *
- * Loose chips are dragged round by friction rather than bolted to the barrel:
- * they trail while the tube is turning and settle once it stops. Without this
+ * Loose chips are dragged round by friction rather than bolted to the wall:
+ * they trail while the cell is turning and settle once it stops. Without this
  * lag the figure would revolve perfectly rigidly, which is the thing that reads
  * as a picture being rotated rather than an instrument being turned.
  */
 const CONTENTS_CATCHUP = 4;
 
 /**
- * Furthest the contents may trail the tube, in radians.
+ * Furthest the contents may trail the cell, in radians.
  *
  * Without a cap the lag settles at `rate / catchup`, so a brisk swipe leaves the
  * chips half a turn behind and they go on unwinding for seconds after the finger
@@ -149,7 +151,7 @@ export function createScene(seed: string, shardCount: number): Scene {
     seed,
     shards,
     pan: { x: 0, y: 0 },
-    tube: 0,
+    cell: 0,
     contents: 0,
     drag: { x: 0, y: 0 },
     elapsed: 0,
@@ -171,24 +173,25 @@ export function updateScene(scene: Scene, { dt, turn, drag }: SceneUpdate): Scen
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
   scene.elapsed += step;
-  scene.tube += turn * step;
+  scene.cell += turn * step;
   // Exponential approach, clamped so a long frame cannot overshoot past the
   // tube and swing back.
-  scene.contents += (scene.tube - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);
+  scene.contents += (scene.cell - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);
 
-  const lag = scene.tube - scene.contents;
+  const lag = scene.cell - scene.contents;
 
   if (Math.abs(lag) > MAX_LAG) {
-    scene.contents = scene.tube - Math.sign(lag) * MAX_LAG;
+    scene.contents = scene.cell - Math.sign(lag) * MAX_LAG;
   }
 
   scene.drag.x = drag.x;
   scene.drag.y = drag.y;
 
-  // The chamber is fixed to the tube, so gravity sweeps around it as the tube
-  // turns. Nothing else moves the glass: it tips, avalanches and settles, which
-  // is what a real one does and why it never repeats.
-  updateChamber(scene.shards, { dt: step, tube: scene.tube });
+  // Turning the cell sweeps gravity around it, since gravity keeps pointing at
+  // the floor whatever the cell does. Nothing else moves the glass: it tips,
+  // avalanches and settles, which is what a real one does and why it never
+  // repeats.
+  updateChamber(scene.shards, { dt: step, angle: scene.cell });
 
   return scene;
 }
@@ -196,7 +199,7 @@ export function updateScene(scene: Scene, { dt, turn, drag }: SceneUpdate): Scen
 export interface DrawChamberOptions {
   /** Cell units to device pixels. */
   scale: number;
-  /** Rotation of the chamber about the wedge apex, in radians. */
+  /** Rotation of the chamber about its own centre, in radians. */
   rotation: number;
   /** Offset of the chamber from the apex, in cell units. */
   pan: { x: number; y: number };

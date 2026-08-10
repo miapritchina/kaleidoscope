@@ -56,6 +56,7 @@ describe('sanitizeSettings', () => {
 
     expect(result).toEqual({
       source: DEFAULT_SETTINGS.source,
+      cameraFacing: DEFAULT_SETTINGS.cameraFacing,
       shards: 30,
       chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,

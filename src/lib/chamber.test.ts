@@ -26,8 +26,8 @@ describe('updateChamber', () => {
     const glass = chips(3);
     const before = glass.map((shard) => ({ ...shard }));
 
-    updateChamber(glass, { dt: 0, tube: 0 });
-    updateChamber([], { dt: 1, tube: 0 });
+    updateChamber(glass, { dt: 0, angle: 0 });
+    updateChamber([], { dt: 1, angle: 0 });
 
     expect(glass).toEqual(before);
   });
@@ -36,7 +36,7 @@ describe('updateChamber', () => {
     const glass = chips(1);
     const start = glass[0]!.y;
 
-    updateChamber(glass, { dt: 0.1, tube: 0 });
+    updateChamber(glass, { dt: 0.1, angle: 0 });
 
     expect(glass[0]!.y).toBeGreaterThan(start);
   });
@@ -45,7 +45,7 @@ describe('updateChamber', () => {
     const glass = chips(20);
 
     for (let i = 0; i < 400; i += 1) {
-      updateChamber(glass, { dt: 1 / 60, tube: i * 0.05 });
+      updateChamber(glass, { dt: 1 / 60, angle: i * 0.05 });
     }
 
     for (const shard of glass) {
@@ -79,7 +79,7 @@ describe('updateChamber', () => {
     const settled = glass.map((shard) => ({ x: shard.x, y: shard.y }));
 
     for (let i = 0; i < 120; i += 1) {
-      updateChamber(glass, { dt: 1 / 60, tube: 0 });
+      updateChamber(glass, { dt: 1 / 60, angle: 0 });
     }
 
     for (const [index, shard] of glass.entries()) {
@@ -100,7 +100,7 @@ describe('updateChamber', () => {
     expect(centre(inverted)).toBeLessThan(0);
   });
 
-  it('piles sideways when the tube is a quarter turn over', () => {
+  it('piles sideways when the cell is a quarter turn over', () => {
     const glass = chips(16);
 
     settleChamber(glass, Math.PI / 2);
@@ -110,42 +110,43 @@ describe('updateChamber', () => {
   });
 
   // The one that matters, and the one a test of the chamber alone cannot see:
-  // the renderer draws the chamber inside a field it has rotated by `tube`, so
-  // "down" in the chamber has to come out down on the screen at every angle.
+  // the renderer draws the cell rotated by its own angle, so "down" in the cell
+  // has to come out down on the screen whatever that angle is.
   // Signed the other way it sweeps round at twice the turn rate — a quarter
   // turn puts the pile at the top of the screen — and the whole mechanism reads
   // as no gravity at all.
-  it('leaves the pile at the bottom of the screen however far the tube is turned', () => {
+  it('leaves the pile at the bottom of the screen however far the cell is turned', () => {
     for (let step = 0; step < 12; step += 1) {
-      const tube = (step / 12) * Math.PI * 2;
+      const angle = (step / 12) * Math.PI * 2;
       const glass = chips(16);
 
-      settleChamber(glass, tube);
+      settleChamber(glass, angle);
 
       const x = glass.reduce((sum, shard) => sum + shard.x, 0) / glass.length;
       const y = centre(glass);
       // Into screen space: the same rotation the renderer applies to the field.
-      const screenY = x * Math.sin(tube) + y * Math.cos(tube);
-      const screenX = x * Math.cos(tube) - y * Math.sin(tube);
+      const screenY = x * Math.sin(angle) + y * Math.cos(angle);
+      const screenX = x * Math.cos(angle) - y * Math.sin(angle);
 
-      expect(screenY, `tube ${String(Math.round((tube * 180) / Math.PI))} degrees`).toBeGreaterThan(
-        Math.abs(screenX),
-      );
+      expect(
+        screenY,
+        `cell at ${String(Math.round((angle * 180) / Math.PI))} degrees`,
+      ).toBeGreaterThan(Math.abs(screenX));
     }
   });
 
   // Turning tips the pile and it avalanches: the mechanism behind the pattern
   // changing at all.
-  it('avalanches when the tube turns', () => {
+  it('avalanches when the cell turns', () => {
     const glass = chips(20);
 
     settleChamber(glass);
     const settled = glass.map((shard) => ({ x: shard.x, y: shard.y }));
 
-    let tube = 0;
+    let angle = 0;
     for (let i = 0; i < 120; i += 1) {
-      tube += (Math.PI / 2) * (1 / 60);
-      updateChamber(glass, { dt: 1 / 60, tube });
+      angle += (Math.PI / 2) * (1 / 60);
+      updateChamber(glass, { dt: 1 / 60, angle: angle });
     }
 
     const moved = glass.filter(
@@ -173,7 +174,7 @@ describe('updateChamber', () => {
       chip.vx = direction;
 
       for (let i = 0; i < 10; i += 1) {
-        updateChamber(glass, { dt: 1 / 60, tube: 0 });
+        updateChamber(glass, { dt: 1 / 60, angle: 0 });
       }
     }
 
@@ -193,7 +194,7 @@ describe('updateChamber', () => {
     b.y = a.radius + b.radius;
     b.vx = 1;
 
-    updateChamber(glass, { dt: 1 / 60, tube: 0 });
+    updateChamber(glass, { dt: 1 / 60, angle: 0 });
 
     expect(a.spin).toBeLessThan(0);
     expect(b.spin).toBeLessThan(0);
@@ -209,7 +210,7 @@ describe('updateChamber', () => {
     b.y = a.radius + b.radius;
     b.vx = 1;
 
-    updateChamber(glass, { dt: 1 / 60, tube: 0 });
+    updateChamber(glass, { dt: 1 / 60, angle: 0 });
 
     expect(a.vx).toBeGreaterThan(0);
     expect(b.vx).toBeLessThan(1);
@@ -221,10 +222,10 @@ describe('updateChamber', () => {
     settleChamber(glass);
     const before = glass.map((shard) => shard.rotation);
 
-    let tube = 0;
+    let angle = 0;
     for (let i = 0; i < 120; i += 1) {
-      tube += Math.PI / 2 / 60;
-      updateChamber(glass, { dt: 1 / 60, tube });
+      angle += Math.PI / 2 / 60;
+      updateChamber(glass, { dt: 1 / 60, angle: angle });
     }
 
     const turned = glass.filter((shard, index) => Math.abs(shard.rotation - before[index]!) > 0.2);
@@ -242,7 +243,7 @@ describe('updateChamber', () => {
     chip.spin = 8;
 
     for (let i = 0; i < 30; i += 1) {
-      updateChamber(glass, { dt: 1 / 60, tube: 0 });
+      updateChamber(glass, { dt: 1 / 60, angle: 0 });
     }
 
     expect(chip.spin).toBeGreaterThan(0);
@@ -262,7 +263,7 @@ describe('updateChamber', () => {
   it('copes with a chip larger than the chamber', () => {
     const glass = chips(1, CHAMBER_RADIUS * 2);
 
-    updateChamber(glass, { dt: 0.1, tube: 0 });
+    updateChamber(glass, { dt: 0.1, angle: 0 });
 
     expect(Number.isFinite(glass[0]!.x)).toBe(true);
     expect(Number.isFinite(glass[0]!.y)).toBe(true);

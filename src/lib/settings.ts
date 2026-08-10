@@ -1,3 +1,4 @@
+import { isCameraFacing, type CameraFacing } from './camera';
 import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
@@ -18,6 +19,15 @@ export interface Settings {
    * `camera` only means "reopen that panel", not "reopen that picture".
    */
   source: SourceId;
+  /**
+   * Which camera to ask for.
+   *
+   * The back one by default: a kaleidoscope is something you point at the
+   * world, and a phone's front camera points at your face. Kept out of a shared
+   * link for the same reason `source` is — it describes the recipient's
+   * hardware, not the look being shared.
+   */
+  cameraFacing: CameraFacing;
   /** How many shards live in the source cell. */
   shards: number;
   /**
@@ -64,6 +74,7 @@ export const LIMITS = {
 
 export const DEFAULT_SETTINGS: Settings = {
   source: 'shards',
+  cameraFacing: 'environment',
   shards: 30,
   chipSize: 1,
   zoom: 1.2,
@@ -100,6 +111,9 @@ export function sanitizeSettings(input: unknown): Settings {
 
   return {
     source: isSourceId(raw.source) ? raw.source : DEFAULT_SETTINGS.source,
+    cameraFacing: isCameraFacing(raw.cameraFacing)
+      ? raw.cameraFacing
+      : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
