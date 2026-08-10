@@ -7,6 +7,12 @@ import { vi } from 'vitest';
  * this recorder instead. It answers the question the tests actually care about
  * — *what* was drawn, and how often — without pulling in a native dependency.
  */
+/** A stand-in for `CanvasGradient`, which records the stops it was given. */
+export interface FakeGradient {
+  stops: { at: number; color: string }[];
+  addColorStop: (at: number, color: string) => void;
+}
+
 /** The drawing state at the moment of a call. */
 export interface FakeStyle {
   fillStyle: unknown;
@@ -62,6 +68,11 @@ export function createFakeContext(): FakeContext {
     argsOf: (method: string) => args.get(method) ?? [],
     stylesOf: (method: string) => styles.get(method) ?? [],
     canvas: { width: 0, height: 0 },
+    // Real gradients, in the sense that matters here: the tests can read back
+    // the stops. Returning nothing instead sent the renderer down its
+    // no-gradient fallback, which is not the path the browser takes.
+    createRadialGradient: () => createFakeGradient(),
+    createLinearGradient: () => createFakeGradient(),
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 1,
@@ -89,6 +100,17 @@ export function createFakeContext(): FakeContext {
   }
 
   return context;
+}
+
+function createFakeGradient(): FakeGradient {
+  const stops: { at: number; color: string }[] = [];
+
+  return {
+    stops,
+    addColorStop: (at, color) => {
+      stops.push({ at, color });
+    },
+  };
 }
 
 /** Casts the recorder for APIs that demand the real context type. */

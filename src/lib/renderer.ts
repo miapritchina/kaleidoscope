@@ -31,6 +31,18 @@ const MIRROR_TINT = { r: 0.958, g: 0.983, b: 0.975 };
 /** Stops in the falloff gradient. Enough that the curve reads as smooth. */
 const FALLOFF_STOPS = 8;
 
+/** Width of a mirror join, as a fraction of the triangle's side. */
+const SEAM_WIDTH = 0.004;
+
+/** How dark a join is. A cut edge, not a drawn border. */
+const SEAM_ALPHA = 0.22;
+
+/** Fraction of the smaller edge the barrel leaves completely clear. */
+const VIGNETTE_CLEAR = 0.16;
+
+/** How dark the barrel is at the very corner of the view. */
+const VIGNETTE_DEPTH = 0.62;
+
 /**
  * Side of the mirror triangle, as a fraction of the smaller viewport edge.
  *
@@ -66,6 +78,7 @@ export class KaleidoscopeRenderer {
 
   #falloff: CanvasGradient | null = null;
   #falloffSide = 0;
+  #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
   #mode: WedgeMode | null = null;
 
@@ -135,6 +148,7 @@ export class KaleidoscopeRenderer {
     this.#frame.height = surface;
 
     this.#falloff = null;
+    this.#vignetteCache = null;
   }
 
   /**
@@ -308,6 +322,7 @@ export class KaleidoscopeRenderer {
       ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
     }
 
+    this.#drawSeams(side);
     ctx.restore();
 
     // What the mirrors themselves cost, applied last because it applies to the
@@ -319,6 +334,110 @@ export class KaleidoscopeRenderer {
       ctx.fillStyle = falloff;
       ctx.fillRect(0, 0, this.#width, this.#height);
       ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // The throat of the tube, last of all: it is in front of the optics rather
+    // than part of them.
+    const vignette = this.#vignette();
+
+    if (vignette) {
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, this.#width, this.#height);
+    }
+  }
+
+  /**
+   * The joins between the mirrors.
+   *
+   * Three mirrors meeting in a tube have edges, and you can see them: a hairline
+   * at every triangle boundary, where the silvering stops and the glass is cut.
+   * Without them the reflections run into each other so cleanly that the figure
+   * reads as a printed pattern rather than something assembled out of parts.
+   *
+   * Every triangle edge in the tiling lies on one of three families of parallel
+   * lines, sixty degrees apart and spaced `side * sqrt(3) / 2` — the height of
+   * the triangle. Drawing the three families straight is both exact and cheaper
+   * than outlining the triangles, which would stroke every edge twice, once from
+   * each side, and leave the joins twice as dark as the rest.
+   *
+   * Called inside the tiling's own transform, so the joins turn with it.
+   */
+  #drawSeams(side: number): void {
+    const ctx = this.#ctx;
+    const spacing = (side * Math.sqrt(3)) / 2;
+
+    if (spacing <= 0) {
+      return;
+    }
+
+    const reach = Math.hypot(this.#width, this.#height) / 2 + spacing;
+    const lines = Math.ceil(reach / spacing);
+
+    ctx.save();
+    ctx.lineWidth = Math.max(1, side * SEAM_WIDTH);
+    ctx.strokeStyle = `rgb(0 0 0 / ${String(SEAM_ALPHA)})`;
+    ctx.beginPath();
+
+    for (let family = 0; family < 3; family += 1) {
+      // A rotated copy of the same set of parallel lines. The families meet at
+      // sixty degrees, which is what makes the cells triangles.
+      const angle = (family * Math.PI) / 3;
+      const alongX = Math.cos(angle);
+      const alongY = Math.sin(angle);
+      // Perpendicular to them, which is the direction they step in.
+      const stepX = -alongY;
+      const stepY = alongX;
+
+      for (let line = -lines; line <= lines; line += 1) {
+        const offsetX = stepX * line * spacing;
+        const offsetY = stepY * line * spacing;
+
+        ctx.moveTo(offsetX - alongX * reach, offsetY - alongY * reach);
+        ctx.lineTo(offsetX + alongX * reach, offsetY + alongY * reach);
+      }
+    }
+
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The throat of the tube.
+   *
+   * A kaleidoscope is a barrel with an eyehole at one end, so the field of view
+   * is a circle and it does not end abruptly — the further off the axis you
+   * look, the more of the barrel is in the way. This is that, and it is a
+   * separate thing from what the mirrors cost: those dim the light on its way
+   * through, this one is in front of them.
+   */
+  #vignette(): CanvasGradient | null {
+    if (this.#vignetteCache) {
+      return this.#vignetteCache;
+    }
+
+    const centerX = this.#width / 2;
+    const centerY = this.#height / 2;
+
+    try {
+      const gradient = this.#ctx.createRadialGradient(
+        centerX,
+        centerY,
+        Math.min(this.#width, this.#height) * VIGNETTE_CLEAR,
+        centerX,
+        centerY,
+        this.#radius,
+      );
+      gradient.addColorStop(0, 'rgb(0 0 0 / 0)');
+      gradient.addColorStop(0.55, 'rgb(0 0 0 / 0.11)');
+      gradient.addColorStop(0.82, 'rgb(0 0 0 / 0.32)');
+      gradient.addColorStop(1, `rgb(0 0 0 / ${String(VIGNETTE_DEPTH)})`);
+
+      this.#vignetteCache = gradient;
+
+      return gradient;
+    } catch {
+      // jsdom and other partial canvas implementations may not support gradients.
+      return null;
     }
   }
 
