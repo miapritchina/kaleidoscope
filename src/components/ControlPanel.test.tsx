@@ -31,7 +31,6 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
     expect(screen.getByLabelText('Palette')).toBeInTheDocument();
-    expect(screen.getByLabelText('Skin')).toBeInTheDocument();
     expect(screen.getByLabelText('Metallic')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
@@ -104,15 +103,6 @@ describe('ControlPanel', () => {
     expect(props.onChange).toHaveBeenCalledWith('metallic', !DEFAULT_SETTINGS.metallic);
   });
 
-  it('reports skin changes', async () => {
-    const user = userEvent.setup();
-    const { props } = renderPanel();
-
-    await user.selectOptions(screen.getByLabelText('Skin'), 'photo');
-
-    expect(props.onChange).toHaveBeenCalledWith('skin', 'photo');
-  });
-
   it('lets the seed field be cleared while typing', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
@@ -182,21 +172,6 @@ describe('ControlPanel', () => {
 
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
     expect(screen.getByLabelText('Photo')).toBeInTheDocument();
-  });
-
-  // Skinning the pieces with a photograph needs one just as much as mirroring
-  // it does, and the mirrors are still repeating the shard field meanwhile.
-  it('offers the photo picker when the pieces are skinned with one', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, skin: 'photo' } });
-
-    expect(screen.getByLabelText('Photo')).toBeInTheDocument();
-    expect(screen.getByLabelText('Input')).toHaveValue('shards');
-  });
-
-  it('offers the camera picker when the pieces are skinned with it', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, skin: 'camera' }, cameraStatus: 'active' });
-
-    expect(screen.getByLabelText('Camera')).toBeInTheDocument();
   });
 
   it('passes a chosen photo to the handler', async () => {

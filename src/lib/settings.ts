@@ -11,15 +11,6 @@ export function isSourceId(value: unknown): value is SourceId {
   return typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
 }
 
-/** What the pieces in the chamber are made of. */
-export const SKINS = ['palette', 'photo', 'camera'] as const;
-
-export type SkinId = (typeof SKINS)[number];
-
-export function isSkinId(value: unknown): value is SkinId {
-  return typeof value === 'string' && (SKINS as readonly string[]).includes(value);
-}
-
 /** Everything that describes a kaleidoscope. Serialisable by design. */
 export interface Settings {
   /**
@@ -50,15 +41,6 @@ export interface Settings {
   zoom: number;
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
   trails: number;
-  /**
-   * What the pieces are skinned with.
-   *
-   * `palette` colours them from the chosen palette. The other two cut each
-   * piece its own patch of a photograph or the live camera, which is a
-   * different thing from pointing the mirrors at a picture: the pieces still
-   * tumble, and what you see is the picture wrapped round objects.
-   */
-  skin: SkinId;
   /**
    * A polished metal finish rather than a matte stone one.
    *
@@ -98,7 +80,6 @@ export const DEFAULT_SETTINGS: Settings = {
   chipSize: 1,
   zoom: 1.2,
   trails: 0.35,
-  skin: 'palette',
   metallic: false,
   paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
@@ -138,7 +119,6 @@ export function sanitizeSettings(input: unknown): Settings {
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
-    skin: isSkinId(raw.skin) ? raw.skin : DEFAULT_SETTINGS.skin,
     metallic: typeof raw.metallic === 'boolean' ? raw.metallic : DEFAULT_SETTINGS.metallic,
     paletteId: isPaletteId(raw.paletteId) ? raw.paletteId : DEFAULT_SETTINGS.paletteId,
     seed: toSeed(raw.seed),
@@ -162,7 +142,6 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     chipSize: String(settings.chipSize),
     zoom: String(settings.zoom),
     trails: String(settings.trails),
-    skin: settings.skin,
     metallic: settings.metallic ? '1' : '0',
     palette: settings.paletteId,
     seed: settings.seed,
@@ -179,14 +158,17 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
 const KNOWN_PARAMS: readonly string[] = [
   ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
   // Settings this app once offered, tolerated so an old link still opens: the
-  // mirror arrangement, back when there was a choice of one, and the two names
-  // this flag had while the pieces were transparent and lit from behind.
+  // mirror arrangement, back when there was a choice of one; the two names this
+  // flag had while the pieces were transparent and lit from behind; and the
+  // control that let a viewer skin the pieces with a picture of their own,
+  // which the built-in collection replaces.
   'segments',
   'mirrors',
   'geometry',
   'speed',
   'glow',
   'light',
+  'skin',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -207,7 +189,6 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     chipSize: params.get('chipSize'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),
-    skin: params.get('skin'),
     metallic: metallic === null ? undefined : metallic === '1' || metallic === 'true',
     paletteId: params.get('palette'),
     seed: params.get('seed'),

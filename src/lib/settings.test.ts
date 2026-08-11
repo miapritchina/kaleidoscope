@@ -61,7 +61,6 @@ describe('sanitizeSettings', () => {
       chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,
       trails: 0,
-      skin: DEFAULT_SETTINGS.skin,
       metallic: DEFAULT_SETTINGS.metallic,
       paletteId: DEFAULT_SETTINGS.paletteId,
       seed: 'drifting',
@@ -98,6 +97,9 @@ describe('hasSettingsParams', () => {
     expect(hasSettingsParams(new URLSearchParams('segments=12'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('mirrors=4'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('geometry=rosette'))).toBe(true);
+    // The control that let a viewer skin the pieces with a picture of their
+    // own, which the built-in object collection replaces.
+    expect(hasSettingsParams(new URLSearchParams('skin=photo'))).toBe(true);
   });
 
   it('ignores unrelated query strings', () => {
@@ -125,7 +127,7 @@ describe('search param round trip', () => {
   // An old link named an arrangement this app no longer offers. It should still
   // open, on the settings it does carry, rather than being ignored wholesale.
   it('opens an older link on everything still meaningful in it', () => {
-    const params = new URLSearchParams('geometry=rosette&mirrors=9&segments=18&zoom=2');
+    const params = new URLSearchParams('geometry=rosette&mirrors=9&segments=18&skin=camera&zoom=2');
 
     expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });

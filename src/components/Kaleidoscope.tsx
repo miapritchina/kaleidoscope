@@ -22,8 +22,6 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
-  /** Photo or camera element to skin the pieces with, when `settings.skin` selects one. */
-  skin?: MediaElement | null;
   /**
    * Applies a pinched zoom. Left out, pinching does nothing.
    *
@@ -45,7 +43,6 @@ export function Kaleidoscope({
   settings,
   paused = false,
   media = null,
-  skin = null,
   onZoom,
   ref,
 }: KaleidoscopeProps) {
@@ -98,8 +95,8 @@ export function Kaleidoscope({
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media, skin);
-  }, [size.width, size.height, scene, settings, media, skin]);
+    renderer.render(scene, settings, media);
+  }, [size.width, size.height, scene, settings, media]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -121,7 +118,7 @@ export function Kaleidoscope({
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
       });
-      renderer.render(scene, settings, media, skin);
+      renderer.render(scene, settings, media);
     },
     !paused || gesture.mode !== null,
   );

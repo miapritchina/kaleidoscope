@@ -1,9 +1,7 @@
-import type { SkinId, SourceId } from './settings';
+import type { SourceId } from './settings';
 
 export interface PlaybackInput {
   source: SourceId;
-  /** What the pieces are skinned with. Defaults to the palette's own colours. */
-  skin?: SkinId;
   prefersReducedMotion: boolean;
   /** Explicit Play/Pause press; `null` means "follow the system preference". */
   override: boolean | null;
@@ -14,14 +12,9 @@ export interface Playback {
   isPlaying: boolean;
 }
 
-/**
- * Whether the content is itself moving, rather than animated by this app.
- *
- * The camera counts wherever it is plugged in: skinning the pieces with it
- * makes the frame just as live as mirroring it does.
- */
-function isLive(source: SourceId, skin: SkinId): boolean {
-  return source === 'camera' || skin === 'camera';
+/** Sources whose content is itself moving, rather than animated by this app. */
+function isLive(source: SourceId): boolean {
+  return source === 'camera';
 }
 
 /**
@@ -41,7 +34,6 @@ function isLive(source: SourceId, skin: SkinId): boolean {
  */
 export function resolvePlayback({
   source,
-  skin = 'palette',
   prefersReducedMotion,
   override,
 }: PlaybackInput): Playback {
@@ -49,5 +41,5 @@ export function resolvePlayback({
     return { isPlaying: override };
   }
 
-  return { isPlaying: isLive(source, skin) || !prefersReducedMotion };
+  return { isPlaying: isLive(source) || !prefersReducedMotion };
 }
