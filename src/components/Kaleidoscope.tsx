@@ -11,9 +11,22 @@ import type { Settings } from '../lib/settings';
 
 import styles from './Kaleidoscope.module.css';
 
+/**
+ * How much one notch of wheel changes the zoom, as an exponent.
+ *
+ * Exponential rather than linear, so a notch is the same proportion of the zoom
+ * wherever it starts — the way a pinch is.
+ */
+const WHEEL_ZOOM = 0.0015;
+
 export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
+  /**
+   * Returns a square tile that repeats without a seam, as a PNG data URL.
+   * `null` before the first paint, or if the surfaces cannot be made.
+   */
+  capturePattern: () => string | null;
 }
 
 export interface KaleidoscopeProps {
@@ -22,6 +35,8 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
+  /** Picture to cut the pieces out of, when `settings.skin` asks for one. */
+  skin?: MediaElement | null;
   /**
    * Applies a pinched zoom. Left out, pinching does nothing.
    *
@@ -43,6 +58,7 @@ export function Kaleidoscope({
   settings,
   paused = false,
   media = null,
+  skin = null,
   onZoom,
   ref,
 }: KaleidoscopeProps) {
@@ -64,7 +80,14 @@ export function Kaleidoscope({
     [settings.seed, settings.shards],
   );
 
-  useImperativeHandle(ref, () => ({ capture: () => rendererRef.current?.toDataUrl() ?? null }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      capture: () => rendererRef.current?.toDataUrl() ?? null,
+      capturePattern: () => rendererRef.current?.toPatternUrl(settings) ?? null,
+    }),
+    [settings],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -95,8 +118,8 @@ export function Kaleidoscope({
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media);
-  }, [size.width, size.height, scene, settings, media]);
+    renderer.render(scene, settings, media, skin);
+  }, [size.width, size.height, scene, settings, media, skin]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -118,7 +141,7 @@ export function Kaleidoscope({
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
       });
-      renderer.render(scene, settings, media);
+      renderer.render(scene, settings, media, skin);
     },
     !paused || gesture.mode !== null,
   );
@@ -128,6 +151,17 @@ export function Kaleidoscope({
       ref={containerRef}
       className={cx(styles.stage, gesture.mode === 'pan' && styles.panning)}
       {...gesture.handlers}
+      onWheel={(event) => {
+        if (!onZoom) {
+          return;
+        }
+
+        // What a pinch does, for a hand that has not got two fingers on glass.
+        // A trackpad's pinch arrives here as a ctrl-wheel, so the two paths are
+        // the same gesture and take the same sensitivity.
+        event.preventDefault();
+        onZoom(zoomRef.current * Math.exp(-event.deltaY * WHEEL_ZOOM));
+      }}
       onContextMenu={(event) => {
         // A secondary-button drag pans; the menu would interrupt it.
         event.preventDefault();

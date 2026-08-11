@@ -47,9 +47,10 @@ works the same way:
 2. **The source.** `lib/scene.ts` holds the object chamber — loose pieces in a bounded cell,
    simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
    that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
-3. **The triangle.** Once per frame the source is painted from scratch into an offscreen
-   triangle, then blended into the surface the mirrors sample (`lib/renderer.ts`). Each
-   frame keeping a share of the ones before it is what produces motion trails.
+3. **The triangle.** Once per frame the source is painted from scratch onto the surface the
+   mirrors sample (`lib/renderer.ts`). From scratch every time rather than drawn over: the
+   pieces composite with `multiply` and `lighter`, neither of which is idempotent, so a
+   still pile stamped over its own remains walks away from a single pass of it.
 4. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
    and that hexagon is stamped across the field on its translation lattice, so neighbours
    meet mirror to mirror.
@@ -128,13 +129,21 @@ chamber where every green is the identical green reads as printed.
 
 ### Cutting the pieces out of a picture
 
-`lib/skin.ts` turns a photograph into the pieces themselves, rather than into a surface laid
-over generated ones. **Nothing in the app reaches it today** — the built-in object collection
-is what will drive it — but the engine and the drawing path are here and tested, and
-`KaleidoscopeRenderer.render` takes the picture as its fourth argument.
+`lib/skin.ts` turns a picture into the pieces themselves, rather than into a surface laid
+over generated ones. This is what the chamber is normally loaded with; the drawn shapes are
+what is left when there is no picture.
 
-When a picture is a few separate things on a plain backdrop, which is what a set of cut-out
-gemstones is, it comes apart cleanly. The picture is sampled to 96x96 and everything that is
+**Object sets.** A set is a PNG or WebP of a few objects on a transparent background. The
+bundled ones are discovered from the files rather than listed anywhere: dropping one into
+`src/assets/objects/` adds a preset to the **Objects** control and removing it takes one
+away, with no registry to keep in step and no way for the list and the files to disagree
+(`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). Two
+entries in that list are not files — **Upload a photo** takes one of your own, and
+**Generated shapes** is the drawn field. The app opens on the first bundled set when the
+build has any.
+
+A picture comes apart cleanly when it is a few separate things on a plain backdrop, which is
+what a set of cut-out gemstones is. The picture is sampled to 96x96 and everything that is
 not backdrop is flood-filled into separate objects. What counts as backdrop depends on what
 the picture is: an image with meaningful transparency — at least a twentieth of it clear —
 has already been segmented by whoever made it, so its alpha decides and the colour is never
@@ -196,25 +205,21 @@ src/
 
 ## Settings
 
-| Setting   | Range               | Effect                                            |
-| --------- | ------------------- | ------------------------------------------------- |
-| Input     | shards/photo/camera | What the mirrors repeat                           |
-| Zoom      | 0.5x–3x             | Magnification of the object cell                  |
-| Trails    | 0–95%               | How long each frame lingers                       |
-| Count     | 4–60                | Pieces in the chamber                             |
-| Chip size | 0.4x–2.5x           | How big each piece is, without changing how many  |
-| Palette   | 5 presets           | The piece colours                                 |
-| Metallic  | on/off              | Polished metal rather than matte stone            |
-| Seed      | any text            | Seeds the piece generator; same seed, same pieces |
+| Setting   | Range                | Effect                                              |
+| --------- | -------------------- | --------------------------------------------------- |
+| Input     | shards/photo/camera  | What the mirrors repeat                             |
+| Objects   | a set, or upload one | What the chamber is loaded with                     |
+| Count     | 4–60                 | Pieces in the chamber                               |
+| Chip size | 0.4x–2.5x            | How big each piece is, without changing how many    |
+| Palette   | 5 presets            | The ground, and the colours of the generated shapes |
+| Metallic  | on/off               | Polished metal rather than matte stone              |
+| Seed      | any text             | Seeds the chamber; same seed, same arrangement      |
 
-The last five apply to the shards only; the rest apply to every source. There is no mirror
-control — a tube has three — and no spin control: it is turned by swiping, as below.
-
-**Trails** blend whole frames rather than fading the surface each frame is painted on. The
-pieces are composited with `multiply` and `lighter`, neither of which is idempotent: a
-still pile stamped over its own remains every frame walks away from a single pass of it. So
-the frame is painted from scratch each time and the previous ones are kept as a share of
-the blend instead.
+Everything but Input applies to the chamber; Input applies to every source. There is no
+mirror control — a tube has three — no spin control, and no zoom control: those are the
+gestures, below. Zoom is still a setting, and still travels in a shared link; it just has no
+slider, because a pinch or a scroll over the artwork is a better way to reach it than a
+panel behind a button.
 
 ## The mirrors
 
@@ -318,15 +323,15 @@ nobody asked for.
 
 ## Photo and camera
 
-Choose **Photo** and pick a file, or drop one anywhere on the artwork. Choose **Camera** to
-mirror a live feed. The camera defaults to the **back** one: a kaleidoscope is something you
-point at the world, and a phone's front camera points at your face. It is asked for as a
+Choose **Photo** and pick a file, or drop one anywhere on the artwork.
+
+Choose **Camera** and you have a different instrument. A kaleidoscope has a chamber of loose
+objects at the far end; a **teleidoscope** has a lens or a glass ball instead, and mirrors
+whatever you point it at. That is what this is — an open-ended tube, with the world for a
+chamber. The camera defaults to the **back** one for the same reason: it is something you
+point at things, and a phone's front camera points at your face. It is asked for as a
 preference rather than a requirement, so a laptop with only a front camera still gets that
 one instead of failing outright.
-
-Pointing either at something with real surface is worth doing. The mirrors do not care
-where their pixels came from, so a photograph of polished stone or beaten metal gives you a
-genuinely photographic material, which no amount of drawing will match.
 
 Both stay on the device. The photo is read through an object URL, drawn to a canvas, and
 the URL revoked; the camera is a `getUserMedia` stream drawn frame by frame. Nothing is
@@ -334,8 +339,9 @@ uploaded, and no frame is stored. The camera is requested only while it is the s
 source, and its tracks are stopped the moment you switch away, so the camera light does not
 stay on behind your back.
 
-Shift-drag, or a two-finger drag, moves the source around; pinching those two fingers
-zooms it. It follows the pointer and stays where it is let go.
+Shift-drag, or a two-finger drag, moves the source around; pinching those two fingers zooms
+it, and a scroll over the artwork does the same for a hand with no second finger on glass.
+It follows the pointer and stays where it is let go.
 
 A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
 its edges would show inside the wedge — and its travel is bounded by however much of the
@@ -343,6 +349,41 @@ image hangs outside the mirrored area.
 
 The camera draws a fresh frame into the mirrors on every animation frame, so what you see
 is live rather than a snapshot.
+
+## The screen
+
+The artwork has the whole window. The controls are behind a button in the corner and start
+out of the way, because the point of the thing is the picture rather than the panel; Play
+and Pause is the only other thing on it.
+
+The panel slides in from the right, or up from the bottom on a narrow screen, and lies over
+the artwork rather than squeezing it — the canvas keeps its size, so opening the panel costs
+no re-render and no reflow of the pattern. Off screen it is `inert` as well as invisible,
+which is what keeps a keyboard from tabbing into a panel nobody can see; `visibility` in the
+stylesheet does the same thing, but only once a stylesheet has loaded. Escape closes it from
+anywhere and hands the focus back to the button.
+
+Two things live outside the panel for that reason. The document's `<h1>` is in the layout
+rather than in the drawer, since the drawer is not always on screen; and so is the live
+region, so that a message — a photo dropped on the artwork, say — still reaches a screen
+reader with the panel closed.
+
+## Saving a pattern
+
+**Save PNG** writes the frame as you see it. **Save pattern** writes a 1024px square that
+repeats without a seam.
+
+The square is not a period of the figure, and it cannot be. A three-mirror kaleidoscope tiles
+the plane on a hexagonal lattice, and a hexagonal lattice has no square period: `k` steps
+across can never equal `m` steps up, because the ratio is `sqrt(3)`. So the tile is built the
+way the figure itself is — a quarter of it is drawn once, then mirrored across and down.
+Every edge of the result is a mirror line, so a copy laid beside it matches along the join
+exactly. Measured on the built app, the mean step in brightness across the join between two
+tiles is **0**, against 9–12 for an ordinary boundary inside the tile.
+
+The barrel and the mirror falloff are left off it. Both are radial — they describe looking
+down a tube, not the pattern — and baked in they would put a dark blot at every repeat. That
+is why `lib/renderer.ts` keeps the field and the optics in front of it as separate steps.
 
 ## Accessibility
 

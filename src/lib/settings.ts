@@ -1,4 +1,5 @@
 import { isCameraFacing, type CameraFacing } from './camera';
+import { DEFAULT_OBJECTS, isObjectSetId } from './objectSets';
 import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
@@ -37,10 +38,17 @@ export interface Settings {
    * as how big they are — so growing that to enlarge them thins them out.
    */
   chipSize: number;
+  /**
+   * Which set of objects the chamber is loaded with.
+   *
+   * A bundled set's id, `custom` for a picture the viewer supplies, or
+   * `generated` for the drawn shapes. See `lib/objectSets.ts`. A picture cannot
+   * travel in a shared link, so a restored `custom` only means "offer the
+   * picker" — until one is chosen the pieces fall back to the drawn shapes.
+   */
+  objects: string;
   /** Magnification of the source cell. */
   zoom: number;
-  /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
-  trails: number;
   /**
    * A polished metal finish rather than a matte stone one.
    *
@@ -70,7 +78,6 @@ export const LIMITS = {
   shards: { min: 4, max: 60, step: 1 },
   chipSize: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
-  trails: { min: 0, max: 0.95, step: 0.05 },
 } as const satisfies Record<string, NumericLimit>;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -78,8 +85,8 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraFacing: 'environment',
   shards: 30,
   chipSize: 1,
+  objects: DEFAULT_OBJECTS,
   zoom: 1.2,
-  trails: 0.35,
   metallic: false,
   paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
@@ -117,8 +124,8 @@ export function sanitizeSettings(input: unknown): Settings {
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
+    objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
-    trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
     metallic: typeof raw.metallic === 'boolean' ? raw.metallic : DEFAULT_SETTINGS.metallic,
     paletteId: isPaletteId(raw.paletteId) ? raw.paletteId : DEFAULT_SETTINGS.paletteId,
     seed: toSeed(raw.seed),
@@ -140,8 +147,8 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     shards: String(settings.shards),
     chipSize: String(settings.chipSize),
+    objects: settings.objects,
     zoom: String(settings.zoom),
-    trails: String(settings.trails),
     metallic: settings.metallic ? '1' : '0',
     palette: settings.paletteId,
     seed: settings.seed,
@@ -160,14 +167,16 @@ const KNOWN_PARAMS: readonly string[] = [
   // Settings this app once offered, tolerated so an old link still opens: the
   // mirror arrangement, back when there was a choice of one; the two names this
   // flag had while the pieces were transparent and lit from behind; and the
-  // control that let a viewer skin the pieces with a picture of their own,
-  // which the built-in collection replaces.
+  // camera as a source for the pieces themselves, which is not offered; the
+  // motion trail, back when each frame lingered into the next; and the name the
+  // object set had while it was a choice of three.
   'segments',
   'mirrors',
   'geometry',
   'speed',
   'glow',
   'light',
+  'trails',
   'skin',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
@@ -187,8 +196,8 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
   return sanitizeSettings({
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
+    objects: params.get('objects'),
     zoom: params.get('zoom'),
-    trails: params.get('trails'),
     metallic: metallic === null ? undefined : metallic === '1' || metallic === 'true',
     paletteId: params.get('palette'),
     seed: params.get('seed'),
