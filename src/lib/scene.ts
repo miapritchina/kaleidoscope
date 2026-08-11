@@ -277,11 +277,21 @@ export function drawChamber(
 /**
  * One piece, cut from a photograph.
  *
- * Clipped to the piece's outline, filled with its own patch of the picture,
- * then given the same two lighting passes a coloured piece gets baked in: the
- * shading multiplied in, the blaze added on top. Doing it here rather than
- * caching a sprite per piece is what lets the camera skin them, since that
- * picture is different every frame.
+ * Two ways round, depending on what the picture turned out to be.
+ *
+ * When it is a few separate things on a plain backdrop, the pieces *are* those
+ * things: each one is clipped to an object's own traced silhouette and filled
+ * from the rectangle that object occupies. Nothing is lit — the photograph
+ * arrived with its own light in it, and a second one laid over the top only
+ * argues with the first.
+ *
+ * When it is not — a landscape, a live camera, anything with no backdrop to
+ * separate objects from — there is nothing to cut out, so a piece falls back to
+ * a generated shape filled with a patch of the picture, and that shape is a
+ * solid, so it takes the lighting.
+ *
+ * Either way it happens here rather than in a cached sprite, which is what lets
+ * the camera skin the pieces: its picture is different every frame.
  */
 function drawSkinned(
   ctx: CanvasRenderingContext2D,
@@ -292,11 +302,64 @@ function drawSkinned(
   scale: number,
   radius: number,
 ): void {
-  const shading = sprites.shading(shard.kind, shard.variant);
-  const blaze = sprites.blaze(shard.kind, shard.variant);
   const source = measureSource(skin);
 
-  if (!shading || !blaze || source.width === 0 || source.height === 0) {
+  if (source.width === 0 || source.height === 0) {
+    return;
+  }
+
+  const cut = patches?.cut(shard.skin) ?? null;
+
+  if (cut) {
+    ctx.save();
+    ctx.translate(shard.x * scale, shard.y * scale);
+    ctx.rotate(shard.rotation);
+
+    tracePolygon(
+      ctx,
+      cut.outline.map((point) => ({ x: point.x * radius, y: point.y * radius })),
+    );
+    ctx.clip();
+
+    // The object's own proportions, so a splinter stays a splinter instead of
+    // being stretched to fill a circle.
+    const width = cut.extent.x * radius;
+    const height = cut.extent.y * radius;
+
+    ctx.drawImage(
+      skin,
+      cut.source.x,
+      cut.source.y,
+      cut.source.width,
+      cut.source.height,
+      -width,
+      -height,
+      width * 2,
+      height * 2,
+    );
+    ctx.restore();
+
+    return;
+  }
+
+  drawPatched(ctx, shard, sprites, skin, source, patches, scale, radius);
+}
+
+/** A generated shape filled with a patch of the picture, and lit as a solid. */
+function drawPatched(
+  ctx: CanvasRenderingContext2D,
+  shard: Shard,
+  sprites: ChipSprites,
+  skin: CanvasImageSource,
+  source: { width: number; height: number },
+  patches: SkinPatches | null,
+  scale: number,
+  radius: number,
+): void {
+  const shading = sprites.shading(shard.kind, shard.variant);
+  const blaze = sprites.blaze(shard.kind, shard.variant);
+
+  if (!shading || !blaze) {
     return;
   }
 

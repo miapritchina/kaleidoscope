@@ -22,6 +22,29 @@ export interface Size {
   height: number;
 }
 
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * One object cut out of a picture: its shape, and where it came from.
+ *
+ * The outline and the source rectangle are in the same normalised frame, so
+ * drawing the rectangle into a box `2r` across and clipping to the outline
+ * scaled by `r` lines the two up exactly.
+ */
+export interface SkinCut {
+  /** The object's shape, scaled so its furthest point is 1 from the centre. */
+  readonly outline: readonly Point[];
+  /** Where in the picture it is, in the picture's own pixels. */
+  readonly source: Rect;
+  /** The object's proportions, longest side 1. Keeps a splinter a splinter. */
+  readonly extent: Point;
+}
+
 export interface SkinPatches {
   /**
    * Where to cut one piece from.
@@ -32,6 +55,13 @@ export interface SkinPatches {
    * @returns Position along the available travel, each axis in `[0, 1]`.
    */
   pick(draw: Point): Point;
+  /**
+   * The objects found in the picture, largest first. Empty when it has no
+   * plain backdrop to separate them from, or too few to be worth using.
+   */
+  readonly cuts: readonly SkinCut[];
+  /** One of those objects, fixed for a given piece. `null` when there are none. */
+  cut(draw: Point): SkinCut | null;
 }
 
 export interface SkinPatchOptions {
@@ -43,8 +73,44 @@ export interface SkinPatchOptions {
 /** Candidate positions across each axis. */
 const GRID = 10;
 
-/** Side the picture is scored at. Coarse on purpose — this is not a thumbnail. */
-const SAMPLE = 48;
+/**
+ * Side the picture is worked at.
+ *
+ * Coarse on purpose — this is not a thumbnail — but fine enough that an object
+ * traced out of it has a recognisable silhouette rather than a staircase.
+ */
+const SAMPLE = 96;
+
+/** Corners on a traced outline. Enough for a crystal, few enough to clip cheaply. */
+const OUTLINE_CORNERS = 28;
+
+/** Smallest object worth cutting out, as a share of the picture. */
+const MIN_OBJECT = 0.002;
+
+/**
+ * Largest, as a share of the picture.
+ *
+ * Past this the "object" is the whole photograph — which is what a picture with
+ * no plain backdrop gives — and cutting every piece to that one silhouette
+ * would be a chamber of identical shapes.
+ */
+const MAX_OBJECT = 0.55;
+
+/** Fewest objects worth switching to. Below this the patch path reads better. */
+const MIN_OBJECTS = 3;
+
+/** Most objects kept, largest first. A busy picture can label hundreds. */
+const MAX_OBJECTS = 24;
+
+/**
+ * How far the traced outline is pulled in, as a fraction.
+ *
+ * The picture is scored small, so the ring of pixels where an object meets the
+ * backdrop is a blend of the two — far enough from the backdrop colour to count
+ * as the object, and pale enough to read as a halo drawn round it. Taking the
+ * silhouette in by a few percent cuts inside that ring.
+ */
+const OUTLINE_TRIM = 0.93;
 
 /**
  * How far a pixel must sit from the backdrop colour to count as content.
@@ -93,8 +159,180 @@ export function createSkinPatches(
   const backdrop = borderColor(pixels);
   const content = contentMask(pixels, backdrop);
   const weights = scorePatches(content, size, patch);
+  const cuts = cutOutObjects(content, size);
 
-  return { pick: (draw) => choose(weights, draw) };
+  return {
+    pick: (draw) => choose(weights, draw),
+    cuts,
+    cut: (draw) => (cuts.length === 0 ? null : cuts[index(draw.x, cuts.length)]!),
+  };
+}
+
+/**
+ * Finds the separate objects in a picture and traces each one.
+ *
+ * A photograph of a handful of things on a plain backdrop is a handful of
+ * islands in the content mask, so they come out of a flood fill. What comes
+ * back are shapes to cut pieces to — the picture's own objects rather than
+ * generated polygons — which only works when the picture really is a few
+ * separate things; the guards below are what decide that.
+ */
+function cutOutObjects(content: Float32Array, size: Size): SkinCut[] {
+  const labels = new Int32Array(content.length).fill(-1);
+  const blobs: { pixels: number[]; area: number }[] = [];
+  const queue: number[] = [];
+
+  for (let start = 0; start < content.length; start += 1) {
+    if (content[start] === 0 || labels[start] !== -1) {
+      continue;
+    }
+
+    const label = blobs.length;
+    const pixels: number[] = [];
+    labels[start] = label;
+    queue.length = 0;
+    queue.push(start);
+
+    // Iterative: a photograph-sized region would blow a recursive fill's stack.
+    while (queue.length > 0) {
+      const at = queue.pop()!;
+      pixels.push(at);
+
+      const x = at % SAMPLE;
+      const y = Math.floor(at / SAMPLE);
+
+      for (const [dx, dy] of NEIGHBOURS) {
+        const nx = x + dx;
+        const ny = y + dy;
+
+        if (nx < 0 || ny < 0 || nx >= SAMPLE || ny >= SAMPLE) {
+          continue;
+        }
+
+        const next = ny * SAMPLE + nx;
+
+        if (content[next] !== 0 && labels[next] === -1) {
+          labels[next] = label;
+          queue.push(next);
+        }
+      }
+    }
+
+    blobs.push({ pixels, area: pixels.length / content.length });
+  }
+
+  const kept = blobs
+    .filter((blob) => blob.area >= MIN_OBJECT && blob.area <= MAX_OBJECT)
+    .sort((a, b) => b.area - a.area)
+    .slice(0, MAX_OBJECTS);
+
+  if (kept.length < MIN_OBJECTS) {
+    return [];
+  }
+
+  return kept.map((blob) => traceObject(blob.pixels, size)).filter((cut) => cut !== null);
+}
+
+/** The four-way neighbourhood. Diagonals would bridge objects that merely touch. */
+const NEIGHBOURS: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/**
+ * Turns one blob of pixels into an outline and a source rectangle.
+ *
+ * Traced by casting rays out from the middle and taking the furthest pixel of
+ * the blob along each: a star-shaped approximation. Exact for the compact,
+ * roughly convex things this is for — crystals, pebbles, beads — and it cannot
+ * produce the self-intersecting mess a contour walk gives on a ragged edge.
+ */
+function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
+  let left = SAMPLE;
+  let right = 0;
+  let top = SAMPLE;
+  let bottom = 0;
+  let sumX = 0;
+  let sumY = 0;
+
+  const inside = new Set(pixels);
+
+  for (const at of pixels) {
+    const x = at % SAMPLE;
+    const y = Math.floor(at / SAMPLE);
+
+    left = Math.min(left, x);
+    right = Math.max(right, x + 1);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y + 1);
+    sumX += x + 0.5;
+    sumY += y + 0.5;
+  }
+
+  const width = right - left;
+  const height = bottom - top;
+
+  if (width < 2 || height < 2) {
+    return null;
+  }
+
+  // Everything is measured from the bounding box's middle rather than the
+  // blob's, so the outline and the source rectangle share an origin.
+  const middleX = (left + right) / 2;
+  const middleY = (top + bottom) / 2;
+  // Rays are cast from the blob's own middle, which for a crescent is the only
+  // point that can see all of it.
+  const fromX = sumX / pixels.length;
+  const fromY = sumY / pixels.length;
+  const half = Math.max(width, height) / 2;
+  const reach = Math.hypot(width, height);
+
+  const outline: Point[] = [];
+
+  for (let corner = 0; corner < OUTLINE_CORNERS; corner += 1) {
+    const angle = (corner / OUTLINE_CORNERS) * Math.PI * 2;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    let hit = 0;
+
+    for (let step = reach; step >= 0; step -= 0.5) {
+      const x = Math.floor(fromX + dx * step);
+      const y = Math.floor(fromY + dy * step);
+
+      if (x >= 0 && y >= 0 && x < SAMPLE && y < SAMPLE && inside.has(y * SAMPLE + x)) {
+        hit = step + 0.5;
+        break;
+      }
+    }
+
+    // Pulled in along the ray, so the silhouette erodes towards the object's
+    // own middle rather than towards the corner of its bounding box.
+    outline.push({
+      x: (fromX + dx * hit * OUTLINE_TRIM - middleX) / half,
+      y: (fromY + dy * hit * OUTLINE_TRIM - middleY) / half,
+    });
+  }
+
+  const acrossX = size.width / SAMPLE;
+  const acrossY = size.height / SAMPLE;
+
+  return {
+    outline,
+    source: {
+      x: left * acrossX,
+      y: top * acrossY,
+      width: width * acrossX,
+      height: height * acrossY,
+    },
+    extent: { x: width / (half * 2), y: height / (half * 2) },
+  };
+}
+
+/** A stable index into a list from a piece's fixed number. */
+function index(draw: number, length: number): number {
+  return Math.min(length - 1, Math.max(0, Math.floor(clampUnit(draw) * length)));
 }
 
 /** Redraws the picture small enough to score in a few thousand reads. */

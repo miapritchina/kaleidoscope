@@ -52,6 +52,34 @@ function picture(
   return { source, createCanvas };
 }
 
+/** Five separate blobs of colour on white, the way a stock photograph is. */
+function objects(x: number, y: number): [number, number, number] {
+  const spots: [number, number, number][] = [
+    [0.2, 0.2, 0.09],
+    [0.55, 0.22, 0.07],
+    [0.25, 0.62, 0.08],
+    [0.72, 0.58, 0.1],
+    [0.5, 0.85, 0.06],
+  ];
+
+  for (const [cx, cy, r] of spots) {
+    if (Math.hypot(x - cx, y - cy) < r) {
+      return [40, 20, 140];
+    }
+  }
+
+  return [250, 250, 250];
+}
+
+/** Three long thin objects — enough of them to be worth cutting out. */
+function splinters(x: number, y: number): [number, number, number] {
+  const bars = [0.2, 0.5, 0.8];
+
+  return x > 0.25 && x < 0.75 && bars.some((at) => Math.abs(y - at) < 0.035)
+    ? [30, 30, 30]
+    : [250, 250, 250];
+}
+
 /** White everywhere except a blob of colour in the lower-right quarter. */
 const SUBJECT_ON_WHITE = (x: number, y: number): [number, number, number] =>
   x > 0.6 && y > 0.6 ? [40, 20, 140] : [250, 250, 250];
@@ -158,6 +186,115 @@ describe('createSkinPatches', () => {
           }) as unknown as HTMLCanvasElement,
       }),
     ).toBeNull();
+  });
+});
+
+describe('cutting objects out of a picture', () => {
+  const cuts = (
+    paint: (x: number, y: number) => [number, number, number],
+    width = 400,
+    height = 400,
+  ) => {
+    const { source, createCanvas } = picture(width, height, paint);
+
+    return createSkinPatches(source, { patch: 0.26, createCanvas })!.cuts;
+  };
+
+  // The point of the whole thing: the pieces are the picture's own objects
+  // rather than generated polygons with a scrap of picture inside them.
+  it('finds each separate object in the picture', () => {
+    expect(cuts(objects)).toHaveLength(5);
+  });
+
+  it('traces each one as a closed outline reaching the unit circle', () => {
+    for (const cut of cuts(objects)) {
+      expect(cut.outline.length).toBeGreaterThan(8);
+
+      // The outline shares its frame with the rectangle the picture is drawn
+      // into, and must stay inside it: a clip reaching past the object's own
+      // bounding box would show the backdrop beside it.
+      for (const point of cut.outline) {
+        expect(Math.abs(point.x)).toBeLessThanOrEqual(cut.extent.x + 1e-6);
+        expect(Math.abs(point.y)).toBeLessThanOrEqual(cut.extent.y + 1e-6);
+      }
+
+      // Something actually reaches out: an outline hugging the middle would
+      // clip the picture down to a dot.
+      const reach = cut.outline.map((point) => Math.hypot(point.x, point.y));
+      expect(Math.max(...reach)).toBeGreaterThan(0.5);
+    }
+  });
+
+  it('cuts each one from where it actually is in the picture', () => {
+    for (const cut of cuts(objects)) {
+      expect(cut.source.width).toBeGreaterThan(0);
+      expect(cut.source.height).toBeGreaterThan(0);
+      expect(cut.source.x).toBeGreaterThanOrEqual(0);
+      expect(cut.source.x + cut.source.width).toBeLessThanOrEqual(400 + 1e-6);
+      expect(cut.source.y + cut.source.height).toBeLessThanOrEqual(400 + 1e-6);
+    }
+
+    // Five objects in five places, not five copies of one rectangle.
+    const places = new Set(cuts(objects).map((cut) => `${cut.source.x},${cut.source.y}`));
+    expect(places.size).toBe(5);
+  });
+
+  // Stretching every object to fill a circle would turn a splinter into a
+  // pebble, which is the one thing the shapes are here to avoid.
+  it('keeps an object as long and thin as it was', () => {
+    const found = cuts(splinters);
+
+    expect(found).toHaveLength(3);
+
+    for (const cut of found) {
+      expect(cut.extent.x).toBeCloseTo(1, 5);
+      expect(cut.extent.y).toBeLessThan(0.5);
+      // And the rectangle it is cut from is the same shape as the object.
+      expect(cut.source.width).toBeGreaterThan(cut.source.height * 2);
+    }
+  });
+
+  // A landscape has no backdrop to separate objects from, and the whole frame
+  // comes back as one blob. Cutting every piece to that silhouette would be a
+  // chamber of identical shapes, so this falls back to the patch path instead.
+  it('refuses a picture that is all one object', () => {
+    expect(cuts(() => [30, 90, 160])).toHaveLength(0);
+  });
+
+  it('refuses a picture with too few objects to be worth it', () => {
+    expect(cuts(SUBJECT_ON_WHITE)).toHaveLength(0);
+  });
+
+  it('ignores specks too small to be anything', () => {
+    const speckled = (x: number, y: number): [number, number, number] =>
+      Math.hypot(x - 0.5, y - 0.5) < 0.006 ? [0, 0, 0] : objects(x, y);
+
+    expect(cuts(speckled)).toHaveLength(5);
+  });
+
+  it('gives the same piece the same object every time', () => {
+    const { source, createCanvas } = picture(400, 400, objects);
+    const patches = createSkinPatches(source, { patch: 0.26, createCanvas })!;
+
+    expect(patches.cut({ x: 0.42, y: 0.1 })).toBe(patches.cut({ x: 0.42, y: 0.1 }));
+  });
+
+  it('spreads the pieces across the objects it found', () => {
+    const { source, createCanvas } = picture(400, 400, objects);
+    const patches = createSkinPatches(source, { patch: 0.26, createCanvas })!;
+    const chosen = new Set(
+      Array.from({ length: 40 }, (_, i) => patches.cut({ x: (i + 0.5) / 40, y: 0.5 })),
+    );
+
+    expect(chosen.size).toBe(5);
+  });
+
+  it('reports no object when there are none to report', () => {
+    const { source, createCanvas } = picture(400, 400, SUBJECT_ON_WHITE);
+
+    expect(createSkinPatches(source, { patch: 0.26, createCanvas })!.cut({ x: 0.5, y: 0.5 })).toBe(
+      null,
+    );
   });
 });
 

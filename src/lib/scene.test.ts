@@ -268,9 +268,10 @@ describe('drawChamber', () => {
     expect(context.globalCompositeOperation).toBe('source-over');
   });
 
-  // A photograph does not replace the objects, it becomes their surface: each
-  // piece is clipped to its own outline and filled from its own patch.
-  it('cuts each piece its own patch of a photograph when skinned', () => {
+  // With no objects to cut out — a landscape, a live camera — the photograph
+  // becomes the surface of generated shapes instead: each piece clipped to its
+  // own outline, filled from its own patch, and lit as the solid it is.
+  it('falls back to patches of the photograph when it has no objects in it', () => {
     const context = createFakeContext();
     const skin = { width: 400, height: 300 } as unknown as CanvasImageSource;
 
@@ -283,6 +284,48 @@ describe('drawChamber', () => {
     const patches = context.argsOf('drawImage').filter((args) => args.length === 9);
     const corners = patches.map((args) => `${String(args[1])},${String(args[2])}`);
     expect(new Set(corners).size).toBeGreaterThan(1);
+  });
+
+  // When the picture is a few things on a plain backdrop, the pieces *are*
+  // those things: one draw each, clipped to the object's own silhouette, with
+  // no lighting over the top — the photograph came with its own.
+  it('cuts the pieces to the objects in the picture when it has any', () => {
+    const context = createFakeContext();
+    const skin = { width: 400, height: 300 } as unknown as CanvasImageSource;
+    const cut = {
+      outline: [
+        { x: -0.9, y: -0.4 },
+        { x: 0.9, y: -0.4 },
+        { x: 0.9, y: 0.4 },
+        { x: -0.9, y: 0.4 },
+      ],
+      source: { x: 20, y: 30, width: 90, height: 40 },
+      extent: { x: 1, y: 0.44 },
+    };
+    const patches = { pick: (draw: { x: number; y: number }) => draw, cuts: [cut], cut: () => cut };
+
+    drawChamber(asContext(context), createScene('cut', 5), {
+      ...BASE,
+      scale: 60,
+      skin,
+      patches,
+    });
+
+    expect(context.countOf('clip')).toBe(5);
+    // One draw per piece: the object itself, and nothing laid over it.
+    expect(context.countOf('drawImage')).toBe(5);
+
+    for (const args of context.argsOf('drawImage')) {
+      // Drawn from the object's own rectangle in the picture...
+      expect(args.slice(1, 5)).toEqual([20, 30, 90, 40]);
+      // ...into a box of the object's own proportions, not a square.
+      expect(args[7]).not.toBe(args[8]);
+    }
+
+    // No `multiply` or `lighter`: the photograph is not relit.
+    expect(
+      context.stylesOf('drawImage').every((at) => at.globalCompositeOperation === 'source-over'),
+    ).toBe(true);
   });
 
   it('scales the glass without moving it', () => {
