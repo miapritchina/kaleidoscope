@@ -6,10 +6,10 @@
  * behind it. Bright, because a lit face returns most of what it is given and
  * the shading takes it down from there rather than up.
  *
- * The ground is per palette, because it is the inside of the tube behind
- * opaque objects rather than a light in front of them: polished metal reads
- * best against near-black, while a set of pale stones wants somewhere brighter
- * to sit.
+ * The ground behind them is white. It stays a property of the palette rather
+ * than a constant, so a palette can be given its own again, but every one of
+ * them is white today: the objects are the subject and a white ground is what a
+ * photographer would put them on.
  */
 
 export interface Rgb {
@@ -27,38 +27,43 @@ export interface Palette {
   readonly background: string;
 }
 
+/** The ground behind the objects. */
+const WHITE = '#ffffff';
+
 export const PALETTES = [
   {
     id: 'aurora',
     name: 'Aurora',
     colors: ['#2fd694', '#3aa6f0', '#7b5cf0', '#f05ca8', '#f2b134'],
-    background: '#0a0d14',
+    background: WHITE,
   },
   {
     id: 'ember',
     name: 'Ember',
     colors: ['#f5c542', '#f08a2c', '#e0452f', '#b02020', '#7a1420'],
-    background: '#140a08',
+    background: WHITE,
   },
   {
     id: 'lagoon',
     name: 'Lagoon',
     colors: ['#9fe07a', '#3fd2bc', '#2aa2cc', '#3a6fd0', '#4a4ec0'],
-    background: '#f0f5f7',
+    background: WHITE,
   },
   {
     id: 'orchid',
     name: 'Orchid',
     colors: ['#f0b6e8', '#d071e8', '#a03fd6', '#6f2ab0', '#4a1a80'],
-    background: '#f8f2fa',
+    background: WHITE,
   },
   {
     // Bare metals, and the palette the light-at-the-eye arrangement is really
     // for: there is no body colour to speak of, only what the surface returns.
+    // Darker than the metals themselves are, because a pale steel on a white
+    // ground is a piece you cannot see the edge of.
     id: 'metal',
     name: 'Metal',
-    colors: ['#e8e8ee', '#c9a227', '#b87333', '#8f9aa8', '#5c6470'],
-    background: '#0b0b0e',
+    colors: ['#9aa3ad', '#c9a227', '#b87333', '#6c7581', '#3f4650'],
+    background: WHITE,
   },
 ] as const satisfies readonly Palette[];
 

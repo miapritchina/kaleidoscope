@@ -42,8 +42,9 @@ works the same way:
    that comes back bright, a facet ground away from you goes dark, and the specular peaks
    in the same place the shading does rather than off to one side. That arrangement is what
    lets metal read as metal — a hard blaze on some facets and nothing at all on their
-   neighbours. The backdrop is the inside of the tube behind them, so it is set per palette
-   rather than fixed: polished metal wants near-black, pale stones want somewhere brighter.
+   neighbours. Behind them the ground is white — the objects are the subject, and white is
+   what a photographer would stand them on. It is still a property of the palette rather
+   than a constant, so one can be given its own again, but every palette is white today.
 2. **The source.** `lib/scene.ts` holds the object chamber — loose pieces in a bounded cell,
    simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
    that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
@@ -162,7 +163,7 @@ src/
 | Count     | 4–60                 | Pieces in the chamber                             |
 | Chip size | 0.4x–2.5x            | How big each piece is, without changing how many  |
 | Skin      | palette/photo/camera | What the pieces are surfaced with                 |
-| Palette   | 5 presets            | The piece colours, and the tube behind them       |
+| Palette   | 5 presets            | The piece colours                                 |
 | Metallic  | on/off               | Polished metal rather than matte stone            |
 | Seed      | any text             | Seeds the piece generator; same seed, same pieces |
 

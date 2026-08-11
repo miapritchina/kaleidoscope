@@ -208,7 +208,7 @@ export function ControlPanel({
             onChange={(value) => {
               onChange('chipSize', value);
             }}
-            description="How big each piece of glass is, without changing how many there are."
+            description="How big each piece is, without changing how many there are."
           />
           <SelectField
             label="Skin"
@@ -217,7 +217,7 @@ export function ControlPanel({
             onChange={(value) => {
               onChange('skin', value);
             }}
-            description="What the pieces are made of. A photo or the camera wraps round them rather than replacing them."
+            description="What the pieces are. Given a photo of a few things on a plain background, they become those things."
           />
           <SelectField
             label="Palette"
@@ -228,7 +228,7 @@ export function ControlPanel({
             }}
             {...(settings.skin === 'palette'
               ? {}
-              : { description: 'Sets the backdrop while the pieces are skinned.' })}
+              : { description: 'Only the shard colours, which a skin replaces.' })}
           />
           <ToggleField
             label="Metallic"
