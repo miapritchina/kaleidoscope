@@ -15,7 +15,7 @@ function chips(count: number, radius = 0.1): Shard[] {
     rotation: 0,
     spin: 0,
     colorStop: 0.5,
-    alpha: 1,
+    skin: { x: 0.5, y: 0.5 },
   }));
 }
 

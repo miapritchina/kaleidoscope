@@ -18,7 +18,7 @@ const sprites = createChipSprites(getPalette('aurora'), {
     }) as unknown as HTMLCanvasElement,
 });
 
-const BASE = { rotation: 0, pan: { x: 0, y: 0 }, sprites, light: false };
+const BASE = { rotation: 0, pan: { x: 0, y: 0 }, sprites };
 
 describe('createScene', () => {
   it('is deterministic for a given seed', () => {
@@ -259,25 +259,30 @@ describe('drawChamber', () => {
     expect(context.calls).toHaveLength(0);
   });
 
-  // Glass takes colour out of the light behind it rather than adding its own.
-  it('composites the glass subtractively, whatever the light', () => {
-    for (const light of [false, true]) {
-      const context = createFakeContext();
+  // The pieces are solid, so each one covers what is behind it.
+  it('composites the pieces opaquely', () => {
+    const context = createFakeContext();
 
-      drawChamber(asContext(context), createScene('blend', 2), { ...BASE, scale: 50, light });
+    drawChamber(asContext(context), createScene('blend', 2), { ...BASE, scale: 50 });
 
-      expect(context.globalCompositeOperation).toBe('multiply');
-    }
+    expect(context.globalCompositeOperation).toBe('source-over');
   });
 
-  it('thins the glass under a strong light, so more of it comes through', () => {
-    const soft = createFakeContext();
-    const bright = createFakeContext();
+  // A photograph does not replace the objects, it becomes their surface: each
+  // piece is clipped to its own outline and filled from its own patch.
+  it('cuts each piece its own patch of a photograph when skinned', () => {
+    const context = createFakeContext();
+    const skin = { width: 400, height: 300 } as unknown as CanvasImageSource;
 
-    drawChamber(asContext(soft), createScene('thin', 6), { ...BASE, scale: 60 });
-    drawChamber(asContext(bright), createScene('thin', 6), { ...BASE, scale: 60, light: true });
+    drawChamber(asContext(context), createScene('skin', 5), { ...BASE, scale: 60, skin });
 
-    expect(bright.globalAlpha as number).toBeLessThan(soft.globalAlpha as number);
+    expect(context.countOf('clip')).toBe(5);
+    // The patch, the shading and the blaze, for each piece.
+    expect(context.countOf('drawImage')).toBe(15);
+
+    const patches = context.argsOf('drawImage').filter((args) => args.length === 9);
+    const corners = patches.map((args) => `${String(args[1])},${String(args[2])}`);
+    expect(new Set(corners).size).toBeGreaterThan(1);
   });
 
   it('scales the glass without moving it', () => {

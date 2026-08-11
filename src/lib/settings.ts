@@ -11,6 +11,15 @@ export function isSourceId(value: unknown): value is SourceId {
   return typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
 }
 
+/** What the pieces in the chamber are made of. */
+export const SKINS = ['palette', 'photo', 'camera'] as const;
+
+export type SkinId = (typeof SKINS)[number];
+
+export function isSkinId(value: unknown): value is SkinId {
+  return typeof value === 'string' && (SKINS as readonly string[]).includes(value);
+}
+
 /** Everything that describes a kaleidoscope. Serialisable by design. */
 export interface Settings {
   /**
@@ -42,13 +51,23 @@ export interface Settings {
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
   trails: number;
   /**
-   * A strong light behind the glass rather than a soft one.
+   * What the pieces are skinned with.
    *
-   * You look through a kaleidoscope at a light, so how bright that light is
-   * changes everything: held up to a lamp the glass thins out and goes
-   * brilliant, against a diffuse window it stays deep and saturated.
+   * `palette` colours them from the chosen palette. The other two cut each
+   * piece its own patch of a photograph or the live camera, which is a
+   * different thing from pointing the mirrors at a picture: the pieces still
+   * tumble, and what you see is the picture wrapped round objects.
    */
-  light: boolean;
+  skin: SkinId;
+  /**
+   * A polished metal finish rather than a matte stone one.
+   *
+   * The light sits at the viewer's eye, so a facet turned towards you is the
+   * one that blazes. How hard that blaze is — a blown-out white on some facets
+   * and nothing on their neighbours, against an even shading across all of
+   * them — is the whole difference between metal and stone.
+   */
+  metallic: boolean;
   paletteId: PaletteId;
   /** Seed for the shard generator. */
   seed: string;
@@ -79,7 +98,8 @@ export const DEFAULT_SETTINGS: Settings = {
   chipSize: 1,
   zoom: 1.2,
   trails: 0.35,
-  light: false,
+  skin: 'palette',
+  metallic: false,
   paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
 };
@@ -118,7 +138,8 @@ export function sanitizeSettings(input: unknown): Settings {
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
-    light: typeof raw.light === 'boolean' ? raw.light : DEFAULT_SETTINGS.light,
+    skin: isSkinId(raw.skin) ? raw.skin : DEFAULT_SETTINGS.skin,
+    metallic: typeof raw.metallic === 'boolean' ? raw.metallic : DEFAULT_SETTINGS.metallic,
     paletteId: isPaletteId(raw.paletteId) ? raw.paletteId : DEFAULT_SETTINGS.paletteId,
     seed: toSeed(raw.seed),
   };
@@ -141,7 +162,8 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     chipSize: String(settings.chipSize),
     zoom: String(settings.zoom),
     trails: String(settings.trails),
-    light: settings.light ? '1' : '0',
+    skin: settings.skin,
+    metallic: settings.metallic ? '1' : '0',
     palette: settings.paletteId,
     seed: settings.seed,
   });
@@ -157,13 +179,14 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
 const KNOWN_PARAMS: readonly string[] = [
   ...settingsToSearchParams(DEFAULT_SETTINGS).keys(),
   // Settings this app once offered, tolerated so an old link still opens: the
-  // mirror arrangement, back when there was a choice of one, and the additive
-  // blending that made sense while the backdrop was a void rather than a light.
+  // mirror arrangement, back when there was a choice of one, and the two names
+  // this flag had while the pieces were transparent and lit from behind.
   'segments',
   'mirrors',
   'geometry',
   'speed',
   'glow',
+  'light',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -174,16 +197,18 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 
 /** Decodes a query string produced by {@link settingsToSearchParams}. */
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
-  // `glow` is what this flag was called while it meant additive blending. Both
-  // asked for the more brilliant of the two looks, so an old link keeps its.
-  const light = params.get('light') ?? params.get('glow');
+  // `glow` and then `light` are what this flag was called while the pieces were
+  // transparent. All three ask for the more brilliant of the two finishes, so
+  // an old link still opens on the one it was shared for.
+  const metallic = params.get('metallic') ?? params.get('light') ?? params.get('glow');
 
   return sanitizeSettings({
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),
-    light: light === null ? undefined : light === '1' || light === 'true',
+    skin: params.get('skin'),
+    metallic: metallic === null ? undefined : metallic === '1' || metallic === 'true',
     paletteId: params.get('palette'),
     seed: params.get('seed'),
   });

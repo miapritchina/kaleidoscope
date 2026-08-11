@@ -1,50 +1,60 @@
 import { pickGlassColor, rgbToCss, type Palette, type Rgb } from './palettes';
-import { hashSeed, mulberry32, randomBetween, randomInt, type Rng } from './random';
+import { hashSeed, mulberry32, randomBetween, type Rng } from './random';
 import type { ShardKind } from './scene';
 
 /**
- * Pre-rendered glass chips.
+ * Pre-rendered chips.
  *
- * A kaleidoscope is held up to a light, so a chip is not a lit object on a dark
- * field — it is a hole in the light with a colour. What you see is the light
- * that survived the glass, which is why these are stamped with `multiply`
- * (see `drawChamber`) and why they are drawn as absorption rather than paint:
+ * The pieces are **solid and opaque**, and the light is at the viewer's eye —
+ * a ring flash, not a window behind them. That one decision sets everything
+ * else about how they are shaded:
  *
- * - **The body** takes the glass's transmission colour out of the light.
- * - **The rim** is darker, because light entering near an edge crosses more
- *   glass and meets the bevel at a grazing angle.
- * - **The facets** are hard-edged, not a soft gradient. Broken glass is a solid
- *   with flat faces, and each face turns the light a different way; a smooth
- *   airbrushed falloff is what makes rendered glass read as plastic.
+ * - A face turned straight at you is lit straight on and comes back bright. A
+ *   face tilted away catches almost nothing and goes dark. So the flat top of a
+ *   piece blazes and the ground bevel around it falls off towards the rim,
+ *   which is the exact opposite of the backlit arrangement, where the rim was
+ *   dark because light had furthest to travel there.
+ * - Because the light and the eye are in the same place, the specular
+ *   highlight lands where the surface faces you rather than off to one side.
+ *   On a polished metal that is a hard, blown-out blaze on some facets and
+ *   nothing at all on their neighbours, and it is most of what says "metal".
+ * - Every facet is flat and they meet along hard lines. A piece cut this way
+ *   reads as a mosaic of separate brightnesses; airbrush it into one smooth
+ *   dome and it reads as a plastic bead.
  *
- * Building all that per chip per frame would mean several gradients and a
- * dozen path fills for every one of hundreds of draws, so each shape-and-colour
- * combination is rendered once into a small canvas and stamped from then on —
- * the same trick the mirror triangle uses, one level down.
+ * The shape and the lighting are kept apart, because they are wanted
+ * separately: the lighting alone goes over a photograph to skin a piece with
+ * it, and the two composed together with a palette colour make an ordinary
+ * coloured stone.
  */
 export interface ChipSprites {
   readonly palette: Palette;
   /**
-   * The sprite for a chip.
+   * A finished chip, in one of the palette's colours.
    *
    * @param kind Which family of fragment.
    * @param colorStop Position along the palette; quantised to the cached steps.
-   * @param variant Which cut of that fragment, so no two chips are twins.
+   * @param variant Which cut of that fragment, so no two pieces are twins.
    */
   get(kind: ShardKind, colorStop: number, variant?: number): CanvasImageSource | null;
+  /** How much of the light each facet returns. Stamp with `multiply`. */
+  shading(kind: ShardKind, variant?: number): CanvasImageSource | null;
+  /** The blaze off the facets that face you. Stamp with `lighter`. */
+  blaze(kind: ShardKind, variant?: number): CanvasImageSource | null;
+  /** The outline on the unit circle, for clipping a photograph to a piece. */
+  outline(kind: ShardKind, variant?: number): readonly Point[];
   /** Side of every sprite, in pixels. Chips are scaled from this. */
   readonly size: number;
 }
 
-/** Distinct cuts rendered per shape, so a chamber is not full of identical glass. */
+/** Distinct cuts rendered per shape, so a chamber is not full of identical pieces. */
 export const CHIP_VARIANTS = 3;
 
 /**
  * Shades rendered per palette colour.
  *
- * Two chips out of the same jar are not the same colour. Glass is coloured by
- * metal oxides stirred into a melt, and the melt is never quite even; a chamber
- * where every green is the identical green reads as printed rather than filled.
+ * Two pieces out of the same jar are not the same colour; a chamber where every
+ * green is the identical green reads as printed rather than filled.
  */
 const TONES = 3;
 
@@ -53,45 +63,147 @@ export interface ChipSpriteOptions {
   steps?: number;
   /** Side of each sprite in pixels. */
   size?: number;
+  /** Polished metal rather than a matte stone: harder blaze, deeper shadow. */
+  metallic?: boolean;
   createCanvas?: () => HTMLCanvasElement;
 }
 
-/** Builds the sprite sheet for a palette. Cheap enough to redo on palette change. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** Builds the sprite sheet for a palette. Cheap enough to redo on any change. */
 export function createChipSprites(palette: Palette, options: ChipSpriteOptions = {}): ChipSprites {
   const steps = Math.max(1, options.steps ?? palette.colors.length * TONES);
-  // Big enough that the largest a chip is ever drawn — the top of the zoom
-  // range, on a dense display — is still a mild upscale rather than a blur.
   const size = Math.max(8, options.size ?? 192);
+  const metallic = options.metallic ?? false;
   const create = options.createCanvas ?? (() => document.createElement('canvas'));
   const cache = new Map<string, HTMLCanvasElement | null>();
+
+  const cut = (variant: number) =>
+    ((Math.round(variant) % CHIP_VARIANTS) + CHIP_VARIANTS) % CHIP_VARIANTS;
+
+  const cached = (key: string, build: () => HTMLCanvasElement | null) => {
+    const found = cache.get(key);
+
+    if (found !== undefined) {
+      return found;
+    }
+
+    const made = build();
+    cache.set(key, made);
+
+    return made;
+  };
+
+  // The lighting depends on the cut, not on the colour, so it is rendered once
+  // per cut and shared by every colour of it — and by the photograph path,
+  // which stamps the very same two layers over a patch of picture.
+  const shadingFor = (kind: ShardKind, variant: number) =>
+    cached(`shade:${kind}:${String(variant)}`, () =>
+      renderFacets(create, kind, variant, size, metallic, 'shading'),
+    );
+
+  const blazeFor = (kind: ShardKind, variant: number) =>
+    cached(`blaze:${kind}:${String(variant)}`, () =>
+      renderFacets(create, kind, variant, size, metallic, 'blaze'),
+    );
 
   return {
     palette,
     size,
     get(kind, colorStop, variant = 0) {
       const step = ((Math.round(colorStop * steps) % steps) + steps) % steps;
-      const cut = ((Math.round(variant) % CHIP_VARIANTS) + CHIP_VARIANTS) % CHIP_VARIANTS;
-      const key = `${kind}:${step}:${cut}`;
-      const cached = cache.get(key);
+      const shape = cut(variant);
 
-      if (cached !== undefined) {
-        return cached;
-      }
-
-      const sprite = renderChip(create, kind, cut, temper(palette, step, steps), size);
-      cache.set(key, sprite);
-
-      return sprite;
+      return cached(`chip:${kind}:${String(step)}:${String(shape)}`, () =>
+        renderChip(
+          create,
+          kind,
+          shape,
+          temper(palette, step, steps),
+          size,
+          shadingFor(kind, shape),
+          blazeFor(kind, shape),
+        ),
+      );
+    },
+    shading(kind, variant = 0) {
+      return shadingFor(kind, cut(variant));
+    },
+    blaze(kind, variant = 0) {
+      return blazeFor(kind, cut(variant));
+    },
+    outline(kind, variant = 0) {
+      return outlineFor(kind, cut(variant), 1);
     },
   };
 }
 
+/**
+ * A finished coloured piece: the colour, shaded, with the blaze on top.
+ *
+ * The same two passes the photograph path applies at draw time, composed once
+ * here because the colour never changes between frames.
+ */
 function renderChip(
   create: () => HTMLCanvasElement,
   kind: ShardKind,
   variant: number,
   color: Rgb,
   size: number,
+  shading: HTMLCanvasElement | null,
+  blaze: HTMLCanvasElement | null,
+): HTMLCanvasElement | null {
+  const canvas = create();
+  canvas.width = size;
+  canvas.height = size;
+
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx || !shading || !blaze) {
+    return null;
+  }
+
+  const radius = (size / 2) * 0.96;
+  const outline = outlineFor(kind, variant, radius);
+
+  ctx.save();
+  ctx.translate(size / 2, size / 2);
+  tracePolygon(ctx, outline);
+  ctx.fillStyle = rgbToCss(color);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(shading, 0, 0);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(blaze, 0, 0);
+  // Trim back to the shape: `lighter` has no alpha of its own to respect, so
+  // without this the blaze would leave a faint square around every piece.
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.drawImage(shading, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+
+  return canvas;
+}
+
+/**
+ * The lighting, as two separable layers.
+ *
+ * `shading` is how much of the light each facet returns, to be multiplied into
+ * whatever the piece is made of. `blaze` is the specular on top, to be added.
+ * Split because a photograph skinning a piece needs both applied to it, and
+ * they composite differently.
+ */
+function renderFacets(
+  create: () => HTMLCanvasElement,
+  kind: ShardKind,
+  variant: number,
+  size: number,
+  metallic: boolean,
+  layer: 'shading' | 'blaze',
 ): HTMLCanvasElement | null {
   const canvas = create();
   canvas.width = size;
@@ -103,197 +215,100 @@ function renderChip(
     return null;
   }
 
-  const centre = size / 2;
-  // Leave room for the rim to sit inside the sprite.
-  const radius = centre * 0.94;
-  const cut = CUTS[kind];
-  // The same seed the outline came from, so a given cut always has the same
-  // flaws in the same places — the sprite cache hands the one canvas to every
-  // chip that shares them, and a scene has to look identical between runs.
-  const rng = mulberry32(hashSeed(`flaws:${kind}:${String(variant)}`));
+  const radius = (size / 2) * 0.96;
   const outline = outlineFor(kind, variant, radius);
+  const cut = CUTS[kind];
+  // Same seed as the outline, so a cut always has the same facets on it.
+  const rng = mulberry32(hashSeed(`facets:${kind}:${String(variant)}`));
+  const table = scalePolygon(outline, cut.table);
 
-  ctx.translate(centre, centre);
+  ctx.translate(size / 2, size / 2);
 
-  // The body: what the light looks like after crossing the middle of the chip.
-  // Graded across the piece, because a broken fragment is a wedge rather than a
-  // slab: thicker one way than the other, and thicker glass passes less light.
-  ctx.fillStyle = bodyGradient(ctx, color, radius, rng) ?? rgbToCss(color, 0.94);
-  tracePolygon(ctx, outline);
-  ctx.fill();
-
-  // The bevel: the ring of ground faces between the flat top and the edge. It
-  // is the single most recognisable thing about a piece of cut glass, and the
-  // reason a lit chip has a bright interior with a distinctly darker border
-  // rather than one even wash of colour.
-  const table = scalePolygon(outline, 0.62);
-
-  // The faces of that bevel, shaded by how far each turns from the light. Hard
-  // edges between them, because a ground face is flat: a smooth falloff here is
-  // what makes rendered glass read as moulded plastic.
-  for (let face = 0; face < cut.faces; face += 1) {
-    const from = Math.round((face * outline.length) / cut.faces);
-    const to = Math.round(((face + 1) * outline.length) / cut.faces);
-    const near = outline[from % outline.length]!;
-    const far = outline[to % outline.length]!;
-    // Which way the face looks, from the middle of the chip out past its edge.
-    const facing = Math.atan2((near.y + far.y) / 2, (near.x + far.x) / 2);
-    // The light is over the viewer's shoulder, up and to the left, the way it
-    // is in every photograph anyone takes down one of these.
-    const lit = Math.cos(facing - LIGHT_ANGLE);
-
-    traceBevelFace(ctx, outline, table, from, to);
-    ctx.fillStyle =
-      lit >= 0
-        ? rgbToCss(WHITE, lit * 0.34) // Facing the light: thin, and it shines.
-        : rgbToCss(shade(color, 0.55), -lit * 0.5);
+  if (layer === 'blaze') {
+    // Everything that is not blazing is black, since this layer is added.
+    ctx.fillStyle = '#000';
+    tracePolygon(ctx, outline);
     ctx.fill();
   }
 
-  // The catch-light: a small face turned straight at the light. Glass is
-  // specular, and one hard white spark is most of what separates it from a
-  // coloured shape. Clipped to the chip, since an irregular cut can put it
-  // near enough to an edge to hang over it.
-  ctx.save();
-  tracePolygon(ctx, outline);
-  ctx.clip();
-  ctx.fillStyle = rgbToCss(WHITE, 0.55);
-  tracePolygon(
-    ctx,
-    translatePolygon(scalePolygon(table, cut.spark), {
-      x: Math.cos(LIGHT_ANGLE) * radius * 0.3,
-      y: Math.sin(LIGHT_ANGLE) * radius * 0.3,
-    }),
-  );
-  ctx.fill();
-  ctx.restore();
+  // The flat top, split into a few faces of its own so it is not one slab.
+  const tableFaces = Math.max(1, cut.tableFaces);
 
-  // The flaws, inside the piece and clipped to it.
-  ctx.save();
-  tracePolygon(ctx, outline);
-  ctx.clip();
-  drawCracks(ctx, outline, radius, rng);
-  drawBubbles(ctx, radius, rng);
-  ctx.restore();
+  for (let face = 0; face < tableFaces; face += 1) {
+    const from = Math.round((face * table.length) / tableFaces);
+    const to = Math.round(((face + 1) * table.length) / tableFaces);
+    // Near enough flat, but not exactly: a real table is never one plane, and
+    // when the light is at your eye a degree of tilt is a visible step in
+    // brightness.
+    paint(ctx, layer, Math.cos(randomBetween(rng, 0, 0.34)), metallic);
+    traceWedge(ctx, table, from, to);
+    ctx.fill();
+  }
 
-  // The rim. Light entering here crosses the most glass and meets the edge
-  // side-on, so the border of a piece of glass is always its darkest part.
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = Math.max(1, radius * 0.09);
-  ctx.strokeStyle = rgbToCss(shade(color, 0.55), 0.85);
-  tracePolygon(ctx, outline);
-  ctx.stroke();
+  // The ground bevel: a ring of flat faces, each tilted a little differently,
+  // which is what makes a cut piece a mosaic rather than a dome.
+  for (let face = 0; face < cut.faces; face += 1) {
+    const from = Math.round((face * outline.length) / cut.faces);
+    const to = Math.round(((face + 1) * outline.length) / cut.faces);
+
+    paint(ctx, layer, Math.cos(randomBetween(rng, 0.6, 1.25)), metallic);
+    traceBevelFace(ctx, outline, table, from, to);
+    ctx.fill();
+  }
+
+  if (layer === 'shading') {
+    // The rim: the last sliver before the piece turns away from you entirely.
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1, radius * 0.07);
+    ctx.strokeStyle = 'rgb(28 28 32)';
+    tracePolygon(ctx, outline);
+    ctx.stroke();
+  }
 
   return canvas;
 }
 
 /**
- * The body's shading: a gradient across the piece rather than one flat wash.
+ * Sets the fill for a facet whose normal makes `facing` with the line of sight.
  *
- * A fragment off a broken sheet is a wedge, not a slab — thicker one way than
- * the other — and thicker glass passes less light. The direction is part of the
- * cut, so a piece keeps the same wedge whichever way up it lands.
+ * The light is at the eye, so a facet's diffuse return and its specular both
+ * peak in the same place — straight on — rather than the specular sitting off
+ * to one side of the shading. Raising the same quantity to a high power is
+ * what separates a metal, which is either blazing or black, from a stone,
+ * which shades gently.
  */
-function bodyGradient(
+function paint(
   ctx: CanvasRenderingContext2D,
-  color: Rgb,
-  radius: number,
-  rng: Rng,
-): CanvasGradient | null {
-  const angle = rng() * Math.PI * 2;
-  const thin = { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
-
-  try {
-    const gradient = ctx.createLinearGradient(thin.x, thin.y, -thin.x, -thin.y);
-    gradient.addColorStop(0, rgbToCss(lighten(color, 0.16), 0.88));
-    gradient.addColorStop(1, rgbToCss(shade(color, 0.2), 0.97));
-
-    return gradient;
-  } catch {
-    // Canvas implementations without gradients still get a usable chip.
-    return null;
-  }
-}
-
-/**
- * Internal fractures.
- *
- * Glass that was broken to this size is nearly always cracked short of broken
- * somewhere inside as well, and a fracture is a surface in the middle of a
- * transparent solid: it reflects, so it reads as a bright hairline rather than
- * a dark one. Each runs from somewhere on the rim towards the middle and stops,
- * the way a fracture that ran out of energy does.
- */
-function drawCracks(
-  ctx: CanvasRenderingContext2D,
-  outline: Point[],
-  radius: number,
-  rng: Rng,
+  layer: 'shading' | 'blaze',
+  facing: number,
+  metallic: boolean,
 ): void {
-  const count = randomInt(rng, 1, 3);
+  const straight = Math.max(0, facing);
 
-  ctx.lineCap = 'round';
+  if (layer === 'shading') {
+    const ambient = metallic ? 0.16 : 0.34;
+    const level = ambient + (1 - ambient) * straight ** (metallic ? 1.7 : 1.1);
+    const channel = Math.round(level * 255);
 
-  for (let crack = 0; crack < count; crack += 1) {
-    // Starting on an edge, since that is where the break happened.
-    const corner = randomInt(rng, 0, outline.length - 1);
-    const from = outline[corner]!;
-    const to = outline[(corner + 1) % outline.length]!;
-    const along = randomBetween(rng, 0.2, 0.8);
-    let x = from.x + (to.x - from.x) * along;
-    let y = from.y + (to.y - from.y) * along;
-    // Inwards, give or take: a fracture wanders rather than running straight.
-    let heading = Math.atan2(-y, -x) + randomBetween(rng, -0.5, 0.5);
-
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-
-    const segments = randomInt(rng, 2, 3);
-
-    for (let segment = 0; segment < segments; segment += 1) {
-      const reach = radius * randomBetween(rng, 0.16, 0.3);
-      heading += randomBetween(rng, -0.6, 0.6);
-      x += Math.cos(heading) * reach;
-      y += Math.sin(heading) * reach;
-      ctx.lineTo(x, y);
-    }
-
-    ctx.lineWidth = Math.max(1, radius * randomBetween(rng, 0.02, 0.045));
-    ctx.strokeStyle = rgbToCss(WHITE, randomBetween(rng, 0.3, 0.55));
-    ctx.stroke();
+    ctx.fillStyle = `rgb(${String(channel)} ${String(channel)} ${String(channel)})`;
+    return;
   }
+
+  const sharpness = metallic ? 34 : 12;
+  const strength = metallic ? 0.95 : 0.3;
+  const channel = Math.round(straight ** sharpness * strength * 255);
+
+  ctx.fillStyle = `rgb(${String(channel)} ${String(channel)} ${String(channel)})`;
 }
 
-/**
- * Trapped air.
- *
- * Cheap glass is full of seeds — bubbles frozen in as it cooled. A bubble is a
- * void, so it bends light around its edge and lets it straight through the
- * middle: a dark ring with a bright centre, which is why one reads as a bubble
- * and a plain dot reads as a speck of dirt.
- */
-function drawBubbles(ctx: CanvasRenderingContext2D, radius: number, rng: Rng): void {
-  const count = randomInt(rng, 0, 3);
-
-  for (let bubble = 0; bubble < count; bubble += 1) {
-    const angle = rng() * Math.PI * 2;
-    const distance = Math.sqrt(rng()) * radius * 0.6;
-    const x = Math.cos(angle) * distance;
-    const y = Math.sin(angle) * distance;
-    const size = radius * randomBetween(rng, 0.05, 0.11);
-
-    ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
-    ctx.fillStyle = rgbToCss(WHITE, 0.45);
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.arc(x, y, size, 0, Math.PI * 2);
-    ctx.lineWidth = Math.max(1, size * 0.35);
-    ctx.strokeStyle = 'rgb(0 0 0 / 0.28)';
-    ctx.stroke();
-  }
-}
+/** How each family of fragment is cut: bevel faces, table faces, table size. */
+const CUTS: Record<ShardKind, { faces: number; tableFaces: number; table: number }> = {
+  triangle: { faces: 3, tableFaces: 3, table: 0.56 },
+  shard: { faces: 4, tableFaces: 2, table: 0.5 },
+  bead: { faces: 6, tableFaces: 3, table: 0.6 },
+  // A splinter is thin enough for two ground faces and no room for more.
+  sliver: { faces: 2, tableFaces: 1, table: 0.42 },
+};
 
 /**
  * The colour of one piece: a palette colour, off the melt by a shade.
@@ -303,36 +318,16 @@ function drawBubbles(ctx: CanvasRenderingContext2D, radius: number, rng: Rng): v
  */
 function temper(palette: Palette, step: number, steps: number): Rgb {
   const base = pickGlassColor(palette, step / steps);
-  // Centred on zero, so the palette colour itself is one of the shades.
   const off = ((step % TONES) - (TONES - 1) / 2) / Math.max(1, (TONES - 1) / 2);
 
   return off >= 0 ? lighten(base, off * 0.12) : shade(base, -off * 0.14);
-}
-
-/** How each family of fragment is ground: bevel faces, and the size of its spark. */
-const CUTS: Record<ShardKind, { faces: number; spark: number }> = {
-  triangle: { faces: 3, spark: 0.34 },
-  shard: { faces: 3, spark: 0.3 },
-  bead: { faces: 4, spark: 0.28 },
-  // A splinter is thin enough to have two ground faces and no room for more.
-  sliver: { faces: 2, spark: 0.22 },
-};
-
-/** Where the light is, as an angle in the sprite's own frame. */
-const LIGHT_ANGLE = (-3 * Math.PI) / 4;
-
-const WHITE: Rgb = { r: 255, g: 255, b: 255 };
-
-interface Point {
-  x: number;
-  y: number;
 }
 
 /**
  * The outline of one cut of one kind of fragment.
  *
  * Generated from a seed fixed by the kind and the cut rather than written out,
- * so every chip is irregular the way broken glass is while staying identical
+ * so every piece looks broken rather than stamped while staying identical
  * between runs — the sprite cache and the seeded scene both depend on that.
  */
 function outlineFor(kind: ShardKind, variant: number, radius: number): Point[] {
@@ -342,13 +337,10 @@ function outlineFor(kind: ShardKind, variant: number, radius: number): Point[] {
     case 'triangle':
       return polygon(rng, radius, 3, 0.18, 1);
     case 'shard':
-      // Four or five corners, unevenly spaced: a piece off a broken sheet.
       return polygon(rng, radius, rng() < 0.5 ? 4 : 5, 0.3, 1);
     case 'bead':
-      // Many small faces, so it reads as a rounded, tumbled bead.
       return polygon(rng, radius, 9, 0.06, 1);
     case 'sliver':
-      // A splinter: the same construction, squashed onto one axis.
       return polygon(rng, radius, 4, 0.22, 0.32);
   }
 }
@@ -380,7 +372,7 @@ function polygon(
   return points;
 }
 
-function tracePolygon(ctx: CanvasRenderingContext2D, points: Point[]): void {
+export function tracePolygon(ctx: CanvasRenderingContext2D, points: readonly Point[]): void {
   ctx.beginPath();
 
   for (const [index, point] of points.entries()) {
@@ -394,14 +386,32 @@ function tracePolygon(ctx: CanvasRenderingContext2D, points: Point[]): void {
   ctx.closePath();
 }
 
-/**
- * Traces one face of the bevel: the band between the chip's edge and its top,
- * spanning corners `from` up to `to`.
- */
+/** A slice of the flat top, from the middle out to corners `from` up to `to`. */
+function traceWedge(
+  ctx: CanvasRenderingContext2D,
+  table: readonly Point[],
+  from: number,
+  to: number,
+): void {
+  const count = table.length;
+  const steps = (((to - from) % count) + count) % count || count;
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+
+  for (let step = 0; step <= steps; step += 1) {
+    const point = table[(from + step) % count]!;
+    ctx.lineTo(point.x, point.y);
+  }
+
+  ctx.closePath();
+}
+
+/** One face of the bevel: the band between the edge and the top. */
 function traceBevelFace(
   ctx: CanvasRenderingContext2D,
-  outline: Point[],
-  table: Point[],
+  outline: readonly Point[],
+  table: readonly Point[],
   from: number,
   to: number,
 ): void {
@@ -429,23 +439,16 @@ function traceBevelFace(
   ctx.closePath();
 }
 
-/** The same outline, shrunk towards the middle. */
-function scalePolygon(points: Point[], scale: number): Point[] {
+function scalePolygon(points: readonly Point[], scale: number): Point[] {
   return points.map((point) => ({ x: point.x * scale, y: point.y * scale }));
 }
 
-function translatePolygon(points: Point[], by: Point): Point[] {
-  return points.map((point) => ({ x: point.x + by.x, y: point.y + by.y }));
-}
-
-/** Darkens towards black, for the parts of a chip the light crosses furthest. */
 function shade({ r, g, b }: Rgb, amount: number): Rgb {
   const keep = 1 - amount;
 
   return { r: r * keep, g: g * keep, b: b * keep };
 }
 
-/** Lightens towards white, for thinner glass and the faces that catch the light. */
 function lighten({ r, g, b }: Rgb, amount: number): Rgb {
   return {
     r: r + (255 - r) * amount,

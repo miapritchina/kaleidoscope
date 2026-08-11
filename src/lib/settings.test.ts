@@ -49,7 +49,7 @@ describe('sanitizeSettings', () => {
       shards: '30',
       zoom: 1.5,
       trails: -4,
-      light: 'yes',
+      metallic: 'yes',
       paletteId: 'unknown-palette',
       seed: '  drifting  ',
     });
@@ -61,7 +61,8 @@ describe('sanitizeSettings', () => {
       chipSize: DEFAULT_SETTINGS.chipSize,
       zoom: 1.5,
       trails: 0,
-      light: DEFAULT_SETTINGS.light,
+      skin: DEFAULT_SETTINGS.skin,
+      metallic: DEFAULT_SETTINGS.metallic,
       paletteId: DEFAULT_SETTINGS.paletteId,
       seed: 'drifting',
     });
@@ -107,7 +108,7 @@ describe('hasSettingsParams', () => {
 
 describe('search param round trip', () => {
   it('restores the settings it encoded', () => {
-    const settings = { ...DEFAULT_SETTINGS, zoom: 2, light: true, seed: 'round-trip' };
+    const settings = { ...DEFAULT_SETTINGS, zoom: 2, metallic: true, seed: 'round-trip' };
 
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
   });
@@ -129,17 +130,18 @@ describe('search param round trip', () => {
     expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });
 
-  it('treats a missing light flag as the default', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('seed=abc')).light).toBe(
-      DEFAULT_SETTINGS.light,
+  it('treats a missing finish flag as the default', () => {
+    expect(settingsFromSearchParams(new URLSearchParams('seed=abc')).metallic).toBe(
+      DEFAULT_SETTINGS.metallic,
     );
   });
 
-  // This flag used to switch on additive blending, back when the backdrop was
-  // a void rather than a light. Both asked for the more brilliant of the two
-  // looks, so a link made then still opens on the one it was shared for.
-  it('reads the old blending flag as the light', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('glow=1')).light).toBe(true);
-    expect(settingsFromSearchParams(new URLSearchParams('light=0&glow=1')).light).toBe(false);
+  // This flag has been called `glow` and then `light`, while the pieces were
+  // transparent. All three ask for the more brilliant of the two finishes, so a
+  // link made under either old name still opens on the one it was shared for.
+  it("reads either of the finish flag's older names", () => {
+    expect(settingsFromSearchParams(new URLSearchParams('glow=1')).metallic).toBe(true);
+    expect(settingsFromSearchParams(new URLSearchParams('light=1')).metallic).toBe(true);
+    expect(settingsFromSearchParams(new URLSearchParams('metallic=0&glow=1')).metallic).toBe(false);
   });
 });

@@ -33,6 +33,30 @@ describe('resolvePlayback', () => {
         resolvePlayback({ source: 'camera', prefersReducedMotion: true, override: null }),
       ).toEqual({ isPlaying: true });
     });
+
+    // The camera is just as live wherever it is plugged in: skinning the
+    // pieces with it freezes on the first frame exactly as mirroring it would.
+    it('keeps drawing when the camera only skins the pieces', () => {
+      expect(
+        resolvePlayback({
+          source: 'shards',
+          skin: 'camera',
+          prefersReducedMotion: true,
+          override: null,
+        }),
+      ).toEqual({ isPlaying: true });
+    });
+
+    it('still pauses a photo skin, which is not going anywhere', () => {
+      expect(
+        resolvePlayback({
+          source: 'shards',
+          skin: 'photo',
+          prefersReducedMotion: true,
+          override: null,
+        }).isPlaying,
+      ).toBe(false);
+    });
   });
 
   describe('with an explicit choice', () => {

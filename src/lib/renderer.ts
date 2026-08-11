@@ -91,6 +91,7 @@ export class KaleidoscopeRenderer {
   #falloffSide = 0;
   #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
+  #spritesMetallic = false;
   #mode: WedgeMode | null = null;
 
   /** This frame alone, before it is blended into the trail. */
@@ -168,8 +169,17 @@ export class KaleidoscopeRenderer {
    * @param media Photo or camera element to mirror instead of the shard field.
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
+   * @param skin Photo or camera element to cut the pieces' surfaces from.
+   *   Ignored unless `settings.skin` selects it. A separate element from
+   *   `media`, because skinning the objects with the camera while the mirrors
+   *   repeat a photo is a perfectly reasonable thing to ask for.
    */
-  render(scene: Scene, settings: Settings, media?: MediaElement | null): void {
+  render(
+    scene: Scene,
+    settings: Settings,
+    media?: MediaElement | null,
+    skin?: MediaElement | null,
+  ): void {
     if (this.#width === 0 || this.#height === 0) {
       return;
     }
@@ -177,14 +187,24 @@ export class KaleidoscopeRenderer {
     const triangle = this.#triangleSide(settings);
 
     const palette = getPalette(settings.paletteId);
-    const sprites = this.#sprites?.palette === palette ? this.#sprites : createChipSprites(palette);
+    // The finish is baked into the sprites, so a change of it rebuilds them
+    // just as a change of palette does.
+    const sprites =
+      this.#sprites?.palette === palette && this.#spritesMetallic === settings.metallic
+        ? this.#sprites
+        : createChipSprites(palette, { metallic: settings.metallic });
     this.#sprites = sprites;
+    this.#spritesMetallic = settings.metallic;
 
     const frame = settings.source === 'shards' ? null : media;
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, triangle);
+    // Until it has pixels there is nothing to cut a surface from, so the pieces
+    // fall back to their palette colours rather than to a blank rectangle.
+    const surface = settings.skin !== 'palette' && isMediaReady(skin) ? skin : null;
+
+    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, surface, triangle);
     this.#compositeTiling(palette, triangle);
   }
 
@@ -215,6 +235,7 @@ export class KaleidoscopeRenderer {
     sprites: ChipSprites,
     mode: WedgeMode,
     media: MediaElement | null,
+    skin: MediaElement | null,
     triangleSide: number,
   ): void {
     const ctx = this.#frameCtx;
@@ -274,7 +295,7 @@ export class KaleidoscopeRenderer {
           y: scene.drag.y * DRAG_CELLS,
         },
         sprites,
-        light: settings.light,
+        skin,
       });
       ctx.restore();
     }

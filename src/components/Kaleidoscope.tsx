@@ -22,6 +22,8 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
+  /** Photo or camera element to skin the pieces with, when `settings.skin` selects one. */
+  skin?: MediaElement | null;
   ref?: RefObject<KaleidoscopeHandle | null>;
 }
 
@@ -32,7 +34,13 @@ export interface KaleidoscopeProps {
  * lives in refs. React owns the settings; the animation loop owns the pixels.
  * Re-rendering this component never restarts the animation.
  */
-export function Kaleidoscope({ settings, paused = false, media = null, ref }: KaleidoscopeProps) {
+export function Kaleidoscope({
+  settings,
+  paused = false,
+  media = null,
+  skin = null,
+  ref,
+}: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
   const gesture = useStageGesture();
@@ -76,8 +84,8 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media);
-  }, [size.width, size.height, scene, settings, media]);
+    renderer.render(scene, settings, media, skin);
+  }, [size.width, size.height, scene, settings, media, skin]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -99,7 +107,7 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
       });
-      renderer.render(scene, settings, media);
+      renderer.render(scene, settings, media, skin);
     },
     !paused || gesture.mode !== null,
   );

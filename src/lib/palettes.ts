@@ -1,12 +1,15 @@
 /**
- * Named colour palettes for the glass.
+ * Named palettes for the objects in the chamber.
  *
- * You look through a kaleidoscope *at* a light: the far end of the tube is a
- * frosted window, and everything you see is that light with coloured glass in
- * front of it. So the backdrop is the light source, not a void, and the palette
- * colours are transmission colours — what a piece of glass leaves of the light
- * that passes through it. They are deep and saturated for the same reason
- * stained glass is: a pale tint over a bright light reads as no glass at all.
+ * The pieces are solid and the light is at the viewer's eye, so a colour here
+ * is a *body* colour — what the material is, not what it leaves of a light
+ * behind it. Bright, because a lit face returns most of what it is given and
+ * the shading takes it down from there rather than up.
+ *
+ * The ground is per palette, because it is the inside of the tube behind
+ * opaque objects rather than a light in front of them: polished metal reads
+ * best against near-black, while a set of pale stones wants somewhere brighter
+ * to sit.
  */
 
 export interface Rgb {
@@ -18,9 +21,9 @@ export interface Rgb {
 export interface Palette {
   readonly id: string;
   readonly name: string;
-  /** The jars of glass a chamber is loaded from. Each chip is one of these. */
+  /** The materials a chamber is loaded from. Each piece is one of these. */
   readonly colors: readonly string[];
-  /** The light behind the glass, seen through the frosted end of the tube. */
+  /** The inside of the tube, behind the objects. */
   readonly background: string;
 }
 
@@ -28,32 +31,34 @@ export const PALETTES = [
   {
     id: 'aurora',
     name: 'Aurora',
-    colors: ['#0f8f57', '#12659d', '#3d2199', '#a3186d', '#c07f0c'],
-    background: '#f3f6fa',
+    colors: ['#2fd694', '#3aa6f0', '#7b5cf0', '#f05ca8', '#f2b134'],
+    background: '#0a0d14',
   },
   {
     id: 'ember',
     name: 'Ember',
-    colors: ['#d19b06', '#c65a09', '#ad1a17', '#780c17', '#42080e'],
-    background: '#fff5e8',
+    colors: ['#f5c542', '#f08a2c', '#e0452f', '#b02020', '#7a1420'],
+    background: '#140a08',
   },
   {
     id: 'lagoon',
     name: 'Lagoon',
-    colors: ['#5aa838', '#0f9182', '#0f6285', '#1b3673', '#141652'],
-    background: '#eef8fa',
+    colors: ['#9fe07a', '#3fd2bc', '#2aa2cc', '#3a6fd0', '#4a4ec0'],
+    background: '#f0f5f7',
   },
   {
     id: 'orchid',
     name: 'Orchid',
-    colors: ['#b6519f', '#9a3bb8', '#6f21a8', '#451580', '#230a45'],
-    background: '#f9f1fb',
+    colors: ['#f0b6e8', '#d071e8', '#a03fd6', '#6f2ab0', '#4a1a80'],
+    background: '#f8f2fa',
   },
   {
-    id: 'monochrome',
-    name: 'Monochrome',
-    colors: ['#d8d8e0', '#a9a9b8', '#727284', '#454556', '#1e1e2a'],
-    background: '#f4f4f7',
+    // Bare metals, and the palette the light-at-the-eye arrangement is really
+    // for: there is no body colour to speak of, only what the surface returns.
+    id: 'metal',
+    name: 'Metal',
+    colors: ['#e8e8ee', '#c9a227', '#b87333', '#8f9aa8', '#5c6470'],
+    background: '#0b0b0e',
   },
 ] as const satisfies readonly Palette[];
 
