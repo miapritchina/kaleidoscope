@@ -129,7 +129,11 @@ bundled ones are discovered from the files rather than listed anywhere: dropping
 `src/assets/objects/` adds a preset to the **Objects** control and removing it takes one
 away, with no registry to keep in step and no way for the list and the files to disagree
 (`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). One
-entry is not a file — **Upload a photo** takes one of your own. There is nothing else: a
+entry is not a file — **Upload a photo** takes one of your own. They sit in the same list as
+**Mirror a photo** and **Camera**, because a chamber of objects, a flat photograph and the
+live camera are three answers to the same question. They were two controls once, and the one
+that chose between them decided whether the other was rendered at all — so leaving it on
+Photo took the object sets out of the panel entirely, with nothing to say why. There is nothing else: a
 chamber is loaded with objects out of a picture, or it is empty. Without one, nothing is
 drawn at all, which is a truer answer than a chamber full of shapes nobody chose.
 
@@ -208,7 +212,7 @@ src/
 | Chip size | 0.4x–2.5x            | How big each piece is, and so how the pile packs |
 | Seed      | any text             | Seeds the chamber; same seed, same arrangement   |
 
-Everything but Input applies to the chamber; Input applies to every source. There is no
+Everything but Source applies to the chamber; Source applies to every one of them. There is no
 mirror control — a tube has three — no spin control, and no zoom control: those are the
 gestures, below. Zoom is still a setting, and still travels in a shared link; it just has no
 slider, because a pinch or a scroll over the artwork is a better way to reach it than a

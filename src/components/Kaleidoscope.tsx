@@ -198,7 +198,7 @@ function describe({ source, seed }: Settings): string {
       return `${assembly}, mirroring an uploaded photo`;
     case 'camera':
       return `${assembly}, mirroring the live camera`;
-    case 'shards':
+    case 'objects':
       return `${assembly}, seed ${seed}`;
   }
 }

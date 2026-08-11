@@ -5,6 +5,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { ControlPanel, type ControlPanelProps } from './ControlPanel';
 
+/** The values a select offers, in order. */
+function optionsOf(select: HTMLElement): string[] {
+  return [...select.querySelectorAll('option')].map((option) => option.value);
+}
+
 function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
   const props: ControlPanelProps = {
     settings: DEFAULT_SETTINGS,
@@ -27,7 +32,7 @@ describe('ControlPanel', () => {
   it('labels every control', () => {
     renderPanel();
 
-    expect(screen.getByLabelText('Objects')).toBeInTheDocument();
+    expect(screen.getByLabelText('Source')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
@@ -135,11 +140,11 @@ describe('ControlPanel', () => {
     expect(screen.getByText(/motion access was blocked/i)).toBeInTheDocument();
   });
 
-  it('reports a change of which objects the chamber holds', async () => {
+  it('reports a change to an uploaded set', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.selectOptions(screen.getByLabelText('Objects'), 'custom');
+    await user.selectOptions(screen.getByLabelText('Source'), 'set:custom');
 
     expect(props.onChange).toHaveBeenCalledWith('objects', 'custom');
   });
@@ -150,7 +155,7 @@ describe('ControlPanel', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'custom' } });
 
     expect(screen.getByLabelText('Photo')).toBeInTheDocument();
-    expect(screen.getByLabelText('Input')).toHaveValue('shards');
+    expect(screen.getByLabelText('Source')).toHaveValue('set:custom');
   });
 
   // One group now, not two: the input and what it is made of are the same
@@ -159,46 +164,71 @@ describe('ControlPanel', () => {
     renderPanel();
 
     const groups = screen.getAllByRole('group').map((group) => group.textContent);
-    const source = groups.find((text) => text.includes('Input'))!;
+    const source = groups.find((text) => text.includes('Source'))!;
 
-    expect(source).toContain('Objects');
     expect(source).toContain('Count');
     expect(source).toContain('Seed');
   });
 
-  it('offers the three input sources', () => {
+  // One list, not two. A separate input control decided whether the object
+  // sets were rendered at all, so leaving it on Photo took the sets out of the
+  // panel entirely, with nothing to say why.
+  it('asks what the mirrors are pointed at once, sets and all', () => {
     renderPanel();
 
-    const input = screen.getByLabelText('Input');
+    const source = screen.getByLabelText('Source');
+    const values = optionsOf(source);
 
-    expect(input).toHaveValue('shards');
-    expect([...(input as HTMLSelectElement).options].map((option) => option.value)).toEqual([
-      'shards',
-      'image',
-      'camera',
-    ]);
+    expect(values).toContain('mirror:image');
+    expect(values).toContain('mirror:camera');
+    expect(values.filter((value) => value.startsWith('set:')).length).toBeGreaterThan(0);
+    expect(values).toContain(`set:${DEFAULT_SETTINGS.objects}`);
+    expect(source).toHaveValue(`set:${DEFAULT_SETTINGS.objects}`);
+    expect(screen.queryByLabelText('Input')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
   });
 
-  it('reports source changes', async () => {
+  // Whatever it is pointed at, every set is still one tap away.
+  it('still lists the sets while the mirrors are on a photo', () => {
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
+
+    const values = optionsOf(screen.getByLabelText('Source'));
+
+    expect(values).toContain(`set:${DEFAULT_SETTINGS.objects}`);
+    expect(screen.getByLabelText('Source')).toHaveValue('mirror:image');
+  });
+
+  it('reports a change to the camera', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.selectOptions(screen.getByLabelText('Input'), 'camera');
+    await user.selectOptions(screen.getByLabelText('Source'), 'mirror:camera');
 
     expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
+  });
+
+  // Picking a set has to say both things: which set, and that the mirrors are
+  // on the chamber rather than on a photo.
+  it('reports a change of set as a set and a chamber', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
+
+    await user.selectOptions(screen.getByLabelText('Source'), `set:${DEFAULT_SETTINGS.objects}`);
+
+    expect(props.onChange).toHaveBeenCalledWith('source', 'objects');
+    expect(props.onChange).toHaveBeenCalledWith('objects', DEFAULT_SETTINGS.objects);
   });
 
   it('hides shard-only controls when a photo is the source', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
 
     // Chamber-specific
-    expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
-    expect(screen.getByLabelText('Input')).toBeInTheDocument();
+    expect(screen.getByLabelText('Source')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save PNG' })).toBeInTheDocument();
   });
 

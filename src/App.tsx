@@ -119,13 +119,13 @@ export function App() {
     const link = document.createElement('a');
     link.href = dataUrl;
     // The seed names the pattern only when the shards are the pattern.
-    link.download = `kaleidoscope-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
+    link.download = `kaleidoscope-${settings.source === 'objects' ? settings.seed : settings.source}.png`;
     link.click();
     announce('Saved a PNG of the current frame.');
   }, [announce, settings.seed, settings.source]);
 
   const handleSavePattern = useCallback(() => {
-    const name = `kaleidoscope-pattern-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
+    const name = `kaleidoscope-pattern-${settings.source === 'objects' ? settings.seed : settings.source}.png`;
 
     void (async () => {
       const blob = await kaleidoscopeRef.current?.capturePattern();

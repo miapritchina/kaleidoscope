@@ -4,7 +4,7 @@ import type { CameraStatus } from '../hooks/useCamera';
 import type { TiltStatus } from '../hooks/useDeviceTilt';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
-import { LIMITS, type Settings, type SourceId } from '../lib/settings';
+import { isSourceId, LIMITS, type Settings } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -32,13 +32,28 @@ export interface ControlPanelProps {
   tiltStatus: TiltStatus;
 }
 
-const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
-  { value: 'shards', label: 'Objects' },
-  { value: 'image', label: 'Photo' },
-  { value: 'camera', label: 'Camera' },
+/**
+ * What the mirrors are pointed at — one list, not two.
+ *
+ * Two controls, one of which decided whether the other was even rendered, meant
+ * the object sets could disappear from the panel entirely: leave the input on
+ * Photo and there was nowhere left to choose a set, and nothing to say why. A
+ * chamber of objects, a flat photograph and the live camera are three answers
+ * to the same question, so they are asked as one.
+ *
+ * The values are prefixed because a set's id comes from a filename, and a file
+ * called `camera.webp` would otherwise collide with the camera.
+ */
+const SOURCE_OPTIONS = [
+  ...OBJECT_SETS.map((set) => ({ value: `set:${set.id}`, label: set.name })),
+  { value: 'mirror:image', label: 'Mirror a photo' },
+  { value: 'mirror:camera', label: 'Camera (teleidoscope)' },
 ];
 
-const OBJECT_OPTIONS = OBJECT_SETS.map((set) => ({ value: set.id, label: set.name }));
+/** The one option that stands for the current settings. */
+function currentSource(settings: Settings): string {
+  return settings.source === 'objects' ? `set:${settings.objects}` : `mirror:${settings.source}`;
+}
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
   environment: 'Back',
@@ -109,25 +124,24 @@ export function ControlPanel({
         <legend className={styles.legend}>Source</legend>
 
         <SelectField
-          label="Input"
-          value={settings.source}
+          label="Source"
+          value={currentSource(settings)}
           options={SOURCE_OPTIONS}
           onChange={(value) => {
-            onChange('source', value);
+            const [kind, name = ''] = value.split(':');
+
+            if (kind === 'set') {
+              onChange('source', 'objects');
+              onChange('objects', name);
+            } else if (isSourceId(name)) {
+              onChange('source', name);
+            }
           }}
+          description="A chamber of objects, or a photo or the camera mirrored flat."
         />
 
-        {settings.source === 'shards' && (
+        {settings.source === 'objects' && (
           <>
-            <SelectField
-              label="Objects"
-              value={settings.objects}
-              options={OBJECT_OPTIONS}
-              onChange={(value) => {
-                onChange('objects', value);
-              }}
-              description="What the chamber is loaded with. The pieces are the things in the picture, cut out one per object."
-            />
             <RangeField
               label="Count"
               value={settings.shards}
@@ -193,7 +207,7 @@ export function ControlPanel({
           </>
         )}
 
-        {settings.source === 'shards' && (
+        {settings.source === 'objects' && (
           <>
             <TextField
               label="Seed"
@@ -235,7 +249,7 @@ export function ControlPanel({
       </fieldset>
 
       <div className={styles.actions}>
-        {settings.source === 'shards' && (
+        {settings.source === 'objects' && (
           <button type="button" className={styles.primary} onClick={onRandomize}>
             Randomize
           </button>

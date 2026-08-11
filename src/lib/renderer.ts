@@ -8,7 +8,7 @@ import { LIMITS, type Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
 /** Which source last painted the wedge, so a switch can clear it. */
-type WedgeMode = 'shards' | 'media' | 'empty';
+type WedgeMode = 'chamber' | 'media' | 'empty';
 
 /**
  * How far each wedge's clip is bled outwards, in device pixels.
@@ -195,9 +195,9 @@ export class KaleidoscopeRenderer {
     this.#sprites ??= createChipSprites();
     const sprites = this.#sprites;
 
-    const frame = settings.source === 'shards' ? null : media;
+    const frame = settings.source === 'objects' ? null : media;
     const mode: WedgeMode =
-      settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
+      settings.source === 'objects' ? 'chamber' : isMediaReady(frame) ? 'media' : 'empty';
 
     // Until it has pixels there is nothing to cut objects out of, and nothing
     // to draw: the chamber comes up empty rather than full of shapes nobody
@@ -356,7 +356,7 @@ export class KaleidoscopeRenderer {
         pan: scene.drag,
       });
       ctx.restore();
-    } else if (mode === 'shards') {
+    } else if (mode === 'chamber') {
       ctx.save();
       ctx.translate(SEAM_BLEED, SEAM_BLEED);
       // The mirror triangle is inscribed in the object cell, the way a real
