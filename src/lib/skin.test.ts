@@ -9,11 +9,9 @@ import { createSkinPatches, measureSource } from './skin';
  * with a painter: the picture is described as a function of position and the
  * fake fills the sampled buffer from it.
  */
-function picture(
-  width: number,
-  height: number,
-  paint: (x: number, y: number) => [number, number, number],
-) {
+type Paint = (x: number, y: number) => [number, number, number] | [number, number, number, number];
+
+function picture(width: number, height: number, paint: Paint) {
   const source = { width, height } as unknown as CanvasImageSource;
 
   const createCanvas = () => {
@@ -34,12 +32,12 @@ function picture(
 
           for (let y = 0; y < h; y += 1) {
             for (let x = 0; x < w; x += 1) {
-              const [r, g, b] = paint(x / w, y / h);
+              const [r, g, b, a] = paint(x / w, y / h);
               const i = (y * w + x) * 4;
               data[i] = r;
               data[i + 1] = g;
               data[i + 2] = b;
-              data[i + 3] = 255;
+              data[i + 3] = a ?? 255;
             }
           }
 
@@ -90,8 +88,19 @@ const NOISE = (x: number, y: number): [number, number, number] => [
   Math.round((Math.sin((x + y) * 71) * 0.5 + 0.5) * 255),
 ];
 
+/**
+ * The same five objects, but cut out: transparent everywhere else, and the
+ * objects themselves near-black — which by colour alone reads as backdrop.
+ */
+function cutOutPng(x: number, y: number): [number, number, number, number] {
+  const [red] = objects(x, y);
+
+  // White in the photograph is the backdrop, and here it is nothing at all.
+  return red === 250 ? [0, 0, 0, 0] : [8, 6, 14, 255];
+}
+
 /** Where a spread of pieces would be cut from, as fractions of the travel. */
-function spread(paint: (x: number, y: number) => [number, number, number], count = 60) {
+function spread(paint: Paint, count = 60) {
   const { source, createCanvas } = picture(400, 400, paint);
   const patches = createSkinPatches(source, { patch: 0.26, createCanvas })!;
 
@@ -190,11 +199,7 @@ describe('createSkinPatches', () => {
 });
 
 describe('cutting objects out of a picture', () => {
-  const cuts = (
-    paint: (x: number, y: number) => [number, number, number],
-    width = 400,
-    height = 400,
-  ) => {
+  const cuts = (paint: Paint, width = 400, height = 400) => {
     const { source, createCanvas } = picture(width, height, paint);
 
     return createSkinPatches(source, { patch: 0.26, createCanvas })!.cuts;
@@ -270,6 +275,27 @@ describe('cutting objects out of a picture', () => {
       Math.hypot(x - 0.5, y - 0.5) < 0.006 ? [0, 0, 0] : objects(x, y);
 
     expect(cuts(speckled)).toHaveLength(5);
+  });
+
+  // A cut-out PNG has already been segmented by whoever made it. Judging it by
+  // colour instead punches holes through a dark gem and breaks one into several
+  // — or loses it entirely, since near-black is near the transparent ground's
+  // own colour.
+  it('trusts the alpha channel of a cut-out rather than the colours', () => {
+    const found = cuts(cutOutPng);
+
+    expect(found).toHaveLength(5);
+
+    for (const cut of found) {
+      const reach = cut.outline.map((point) => Math.hypot(point.x, point.y));
+      expect(Math.max(...reach)).toBeGreaterThan(0.5);
+    }
+  });
+
+  // A photograph has no alpha to trust, and a stray transparent corner is not
+  // a cut-out, so the backdrop colour still decides there.
+  it('still goes by colour on a picture with no transparency', () => {
+    expect(cuts(objects)).toHaveLength(5);
   });
 
   it('gives the same piece the same object every time', () => {
