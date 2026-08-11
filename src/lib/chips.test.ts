@@ -2,13 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanvas';
 import { CHIP_VARIANTS, createChipSprites } from './chips';
-import { getPalette } from './palettes';
 import { SHARD_KINDS } from './scene';
 
-const palette = getPalette('aurora');
-
-/** Canvases rendered per finished piece: the shading, the blaze, the piece. */
-const LAYERS = 3;
+/** Canvases rendered per cut: the shading, and the blaze. */
+const LAYERS = 2;
 
 /** How each kind is cut. Mirrors the table in `chips.ts`. */
 const CUTS = {
@@ -16,7 +13,7 @@ const CUTS = {
   bead: { faces: 6, tableFaces: 3 },
 } as const;
 
-/** Mean channel of an `rgb(r g b / a)` string, for comparing two paints. */
+/** Mean channel of an `rgb(r g b)` string, for comparing two paints. */
 function brightness(style: unknown): number {
   const channels = /rgb\((\d+) (\d+) (\d+)/.exec(String(style));
 
@@ -45,72 +42,53 @@ function recordingCanvases() {
 }
 
 describe('createChipSprites', () => {
-  it('renders a sprite per shape', () => {
+  it('renders the two lighting layers per shape', () => {
     const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
+    const sprites = createChipSprites({ createCanvas });
 
     for (const kind of SHARD_KINDS) {
-      expect(sprites.get(kind, 0.5)).not.toBeNull();
+      expect(sprites.shading(kind)).not.toBeNull();
+      expect(sprites.blaze(kind)).not.toBeNull();
     }
 
-    // The piece itself, plus the two lighting layers it is composed from.
     expect(createCanvas).toHaveBeenCalledTimes(SHARD_KINDS.length * LAYERS);
   });
 
-  // Chips are drawn hundreds of times a frame; rendering the gradient each time
-  // is exactly what this cache exists to avoid.
-  it('renders each shape and colour once', () => {
+  // These are stamped over every piece, every frame. Rendering them again each
+  // time is exactly what the cache exists to avoid.
+  it('renders each shape and cut once', () => {
     const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
+    const sprites = createChipSprites({ createCanvas });
 
-    const first = sprites.get('bead', 0.25);
-    const again = sprites.get('bead', 0.25);
+    const first = sprites.shading('bead');
+    const again = sprites.shading('bead');
 
     expect(again).toBe(first);
-    expect(createCanvas).toHaveBeenCalledTimes(LAYERS);
+    expect(createCanvas).toHaveBeenCalledOnce();
   });
 
-  it('quantises nearby colours onto the same sprite', () => {
+  // Every piece cut from the same die is what makes a chamber look printed.
+  it('cuts each shape more than one way', () => {
     const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { steps: 8, createCanvas });
+    const sprites = createChipSprites({ createCanvas });
 
-    expect(sprites.get('bead', 0.26)).toBe(sprites.get('bead', 0.24));
-    expect(createCanvas).toHaveBeenCalledTimes(LAYERS);
+    expect(sprites.shading('shard', 0)).not.toBe(sprites.shading('shard', 1));
+    expect(sprites.shading('shard', CHIP_VARIANTS)).toBe(sprites.shading('shard', 0));
+    expect(createCanvas).toHaveBeenCalledTimes(2);
   });
 
-  it('separates distinct colours', () => {
-    const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { steps: 8, createCanvas });
-
-    expect(sprites.get('bead', 0.1)).not.toBe(sprites.get('bead', 0.6));
-    // The lighting depends on the cut rather than the colour, so the second
-    // colour costs one more canvas rather than another three.
-    expect(createCanvas).toHaveBeenCalledTimes(LAYERS + 1);
-  });
-
-  it('wraps colour positions outside [0, 1]', () => {
-    const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { steps: 8, createCanvas });
-
-    expect(sprites.get('bead', 1.25)).toBe(sprites.get('bead', 0.25));
-    expect(sprites.get('bead', -0.75)).toBe(sprites.get('bead', 0.25));
-  });
-
-  // A chip is a solid with flat faces, and each face turns the light a
-  // different way. Airbrushing a single soft gradient over it is what makes a
-  // rendered solid read as plastic.
+  // A piece is a solid with flat faces, each turning the light a different way.
+  // Airbrushing one soft gradient over it is what makes a rendered solid read
+  // as moulded plastic.
   it('paints the piece as a mosaic of flat faces rather than one dome', () => {
     const { contexts, createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
 
-    sprites.get('triangle', 0.5);
+    createChipSprites({ createCanvas }).shading('triangle');
 
-    // Built shading first, then the blaze, then the piece composed from them.
     const [shading] = contexts;
     const faces = CUTS.triangle.faces + CUTS.triangle.tableFaces;
 
     expect(shading!.countOf('fill')).toBe(faces);
-    // Every face is filled with its own level, not all with one.
     expect(
       new Set(shading!.stylesOf('fill').map((style) => String(style.fillStyle))).size,
     ).toBeGreaterThan(1);
@@ -123,7 +101,7 @@ describe('createChipSprites', () => {
   it('shades the flat top brighter than the faces ground away from you', () => {
     const { contexts, createCanvas } = recordingCanvases();
 
-    createChipSprites(palette, { createCanvas }).shading('bead');
+    createChipSprites({ createCanvas }).shading('bead');
 
     const fills = contexts[0]!.stylesOf('fill').map((style) => brightness(style.fillStyle));
     const table = fills.slice(0, CUTS.bead.tableFaces);
@@ -132,95 +110,47 @@ describe('createChipSprites', () => {
     expect(Math.min(...table)).toBeGreaterThan(Math.max(...bevel));
   });
 
-  // Metal is either blazing or black; stone shades gently between. That
-  // difference, and not the colour, is what reads as polished.
-  it('blazes harder off metal than off stone, and shadows it deeper', () => {
-    const build = (metallic: boolean) => {
-      const { contexts, createCanvas } = recordingCanvases();
-      const sprites = createChipSprites(palette, { createCanvas, metallic });
+  // The blaze is added over the shading, so everything not catching the light
+  // has to be black rather than merely dark.
+  it('lays the blaze over black, and only on the faces that catch it', () => {
+    const { contexts, createCanvas } = recordingCanvases();
 
-      sprites.shading('bead');
-      sprites.blaze('bead');
+    createChipSprites({ createCanvas }).blaze('bead');
 
-      return {
-        shading: contexts[0]!.stylesOf('fill').map((style) => brightness(style.fillStyle)),
-        // The first fill is the black ground the specular is added over.
-        blaze: contexts[1]!
-          .stylesOf('fill')
-          .slice(1)
-          .map((style) => brightness(style.fillStyle)),
-      };
-    };
+    const styles = contexts[0]!.stylesOf('fill').map((style) => String(style.fillStyle));
+    const [ground, ...faces] = styles;
+    const levels = faces.map(brightness);
 
-    const stone = build(false);
-    const metal = build(true);
-
-    expect(Math.max(...metal.blaze)).toBeGreaterThan(Math.max(...stone.blaze));
-    expect(Math.min(...metal.shading)).toBeLessThan(Math.min(...stone.shading));
-    // Either blazing or black: most faces of a metal piece catch nothing.
-    expect(metal.blaze.filter((level) => level < 1).length).toBeGreaterThan(metal.blaze.length / 2);
+    expect(ground).toBe('#000');
+    expect(Math.max(...levels)).toBeGreaterThan(0);
+    expect(Math.min(...levels)).toBe(0);
   });
 
-  // The two layers go over a photograph as well as over a palette colour, so
-  // they have to be usable apart from the finished piece.
-  it('offers the lighting on its own, and the outline to clip a photo to', () => {
-    const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
-
-    expect(sprites.shading('shard')).not.toBeNull();
-    expect(sprites.blaze('shard')).not.toBeNull();
-
+  // The outline clips a photograph to a piece, so it has to be usable apart
+  // from either layer.
+  it('offers the outline on the unit circle, for clipping a picture to', () => {
+    const sprites = createChipSprites({ createCanvas: recordingCanvases().createCanvas });
     const outline = sprites.outline('shard');
+
     expect(outline.length).toBeGreaterThan(2);
-    // On the unit circle, so the caller scales it to whatever the piece is.
+
     for (const point of outline) {
       expect(Math.hypot(point.x, point.y)).toBeLessThanOrEqual(1);
     }
   });
 
   it('gives the same cut the same outline every time', () => {
-    const sprites = createChipSprites(palette, { createCanvas: recordingCanvases().createCanvas });
+    const sprites = createChipSprites({ createCanvas: recordingCanvases().createCanvas });
 
     expect(sprites.outline('bead', 1)).toEqual(sprites.outline('bead', 1));
     expect(sprites.outline('bead', 1)).not.toEqual(sprites.outline('bead', 0));
   });
 
-  // The palette is a handful of jars, but a melt is never quite even, and a
-  // chamber where every green is the identical green reads as printed.
-  it('renders more than one shade of each palette colour', () => {
-    const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
-
-    // Two positions inside the same jar: the same colour, off the melt by a
-    // shade. Neighbouring jars would prove nothing.
-    const first = sprites.get('bead', 0.01);
-    const second = sprites.get('bead', 1 / palette.colors.length - 0.01);
-
-    expect(second).not.toBe(first);
-  });
-
-  // Every chip cut from the same die is what makes a chamber look printed.
-  it('cuts each shape more than one way', () => {
-    const { createCanvas } = recordingCanvases();
-    const sprites = createChipSprites(palette, { createCanvas });
-
-    expect(sprites.get('shard', 0.5, 0)).not.toBe(sprites.get('shard', 0.5, 1));
-    expect(sprites.get('shard', 0.5, CHIP_VARIANTS)).toBe(sprites.get('shard', 0.5, 0));
-    // A different cut is a different shape, so it needs its own lighting too.
-    expect(createCanvas).toHaveBeenCalledTimes(LAYERS * 2);
-  });
-
   it('survives a canvas that cannot give a context', () => {
-    const sprites = createChipSprites(palette, {
+    const sprites = createChipSprites({
       createCanvas: () => ({ getContext: () => null }) as unknown as HTMLCanvasElement,
     });
 
-    expect(sprites.get('bead', 0.5)).toBeNull();
-  });
-
-  it('exposes the palette it was built for, so it can be swapped when that changes', () => {
-    expect(
-      createChipSprites(palette, { createCanvas: recordingCanvases().createCanvas }).palette,
-    ).toBe(palette);
+    expect(sprites.shading('bead')).toBeNull();
   });
 });

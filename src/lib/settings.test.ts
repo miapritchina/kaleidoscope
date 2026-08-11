@@ -47,8 +47,6 @@ describe('sanitizeSettings', () => {
     const result = sanitizeSettings({
       shards: '30',
       zoom: 1.5,
-      metallic: 'yes',
-      paletteId: 'unknown-palette',
       seed: '  drifting  ',
     });
 
@@ -59,8 +57,7 @@ describe('sanitizeSettings', () => {
       chipSize: DEFAULT_SETTINGS.chipSize,
       objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,
-      metallic: DEFAULT_SETTINGS.metallic,
-      paletteId: DEFAULT_SETTINGS.paletteId,
+      tilt: DEFAULT_SETTINGS.tilt,
       seed: 'drifting',
     });
   });
@@ -95,8 +92,11 @@ describe('hasSettingsParams', () => {
     expect(hasSettingsParams(new URLSearchParams('segments=12'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('mirrors=4'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('geometry=rosette'))).toBe(true);
-    // The motion trail, back when each frame lingered into the next.
+    // The motion trail, back when each frame lingered into the next, and the
+    // palette, back when the pieces were drawn and coloured from one.
     expect(hasSettingsParams(new URLSearchParams('trails=0.5'))).toBe(true);
+    expect(hasSettingsParams(new URLSearchParams('palette=ember'))).toBe(true);
+    expect(hasSettingsParams(new URLSearchParams('metallic=1'))).toBe(true);
   });
 
   it('ignores unrelated query strings', () => {
@@ -107,13 +107,13 @@ describe('hasSettingsParams', () => {
 
 describe('search param round trip', () => {
   it('restores the settings it encoded', () => {
-    const settings = { ...DEFAULT_SETTINGS, zoom: 2, metallic: true, seed: 'round-trip' };
+    const settings = { ...DEFAULT_SETTINGS, zoom: 2, seed: 'round-trip' };
 
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
   });
 
   it('sanitises hand-edited links', () => {
-    const params = new URLSearchParams('shards=9999&palette=hax&seed=&objects=nope');
+    const params = new URLSearchParams('shards=9999&seed=&objects=nope');
 
     expect(settingsFromSearchParams(params)).toEqual({
       ...DEFAULT_SETTINGS,
@@ -129,18 +129,11 @@ describe('search param round trip', () => {
     expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });
 
-  it('treats a missing finish flag as the default', () => {
-    expect(settingsFromSearchParams(new URLSearchParams('seed=abc')).metallic).toBe(
-      DEFAULT_SETTINGS.metallic,
-    );
-  });
+  // The finish and the palette described drawn pieces, which are gone. A link
+  // carrying either still opens, on whatever else it carries.
+  it('ignores the settings that described drawn pieces', () => {
+    const params = new URLSearchParams('metallic=1&palette=ember&trails=0.5&zoom=2');
 
-  // This flag has been called `glow` and then `light`, while the pieces were
-  // transparent. All three ask for the more brilliant of the two finishes, so a
-  // link made under either old name still opens on the one it was shared for.
-  it("reads either of the finish flag's older names", () => {
-    expect(settingsFromSearchParams(new URLSearchParams('glow=1')).metallic).toBe(true);
-    expect(settingsFromSearchParams(new URLSearchParams('light=1')).metallic).toBe(true);
-    expect(settingsFromSearchParams(new URLSearchParams('metallic=0&glow=1')).metallic).toBe(false);
+    expect(settingsFromSearchParams(params)).toEqual({ ...DEFAULT_SETTINGS, zoom: 2 });
   });
 });

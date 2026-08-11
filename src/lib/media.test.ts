@@ -49,7 +49,6 @@ describe('drawMedia', () => {
       zoom: 1,
       rotation: 0,
       pan: NO_PAN,
-      alpha: 1,
       ...options,
     });
 
@@ -128,10 +127,9 @@ describe('drawMedia', () => {
     expect(offset).toEqual({ x: 0, y: 0 });
   });
 
-  it('applies alpha for trails and composites normally', () => {
-    const { ctx } = draw(fakeImage(400, 400), { alpha: 0.4 });
+  it('composites normally, laying the frame down opaque', () => {
+    const { ctx } = draw(fakeImage(400, 400));
 
-    expect(ctx.globalAlpha).toBe(0.4);
     expect(ctx.globalCompositeOperation).toBe('source-over');
   });
 

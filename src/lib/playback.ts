@@ -3,8 +3,6 @@ import type { SourceId } from './settings';
 export interface PlaybackInput {
   source: SourceId;
   prefersReducedMotion: boolean;
-  /** Explicit Play/Pause press; `null` means "follow the system preference". */
-  override: boolean | null;
 }
 
 export interface Playback {
@@ -26,20 +24,10 @@ function isLive(source: SourceId): boolean {
  * live source keeps drawing.
  *
  * Turning the tube is not covered either way: it only happens while a swipe is
- * in progress, and motion the viewer is producing with their own finger is not
- * the kind a reduced-motion preference is asking to remove.
- *
- * An explicit Play or Pause always wins — a deliberate Pause on the camera is a
- * freeze-frame, which is a reasonable thing to want.
+ * in progress, or while the instrument is being held at an angle, and motion
+ * the viewer is producing with their own hand is not the kind a reduced-motion
+ * preference is asking to remove.
  */
-export function resolvePlayback({
-  source,
-  prefersReducedMotion,
-  override,
-}: PlaybackInput): Playback {
-  if (override !== null) {
-    return { isPlaying: override };
-  }
-
+export function resolvePlayback({ source, prefersReducedMotion }: PlaybackInput): Playback {
   return { isPlaying: isLive(source) || !prefersReducedMotion };
 }

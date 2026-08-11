@@ -6,10 +6,12 @@ import { Kaleidoscope, type KaleidoscopeHandle } from './components/Kaleidoscope
 import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
 import { useImageUrl } from './hooks/useImageUrl';
+import { useDeviceTilt } from './hooks/useDeviceTilt';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { cx } from './lib/cx';
-import { CUSTOM, GENERATED, objectSetUrl } from './lib/objectSets';
+import { CUSTOM, objectSetUrl } from './lib/objectSets';
+import { sharePicture } from './lib/share';
 import { resolvePlayback } from './lib/playback';
 import { clampToLimit, LIMITS, settingsToSearchParams } from './lib/settings';
 
@@ -26,25 +28,9 @@ export function App() {
   const controlsRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
-  // `null` means "follow the system preference"; pressing Play or Pause pins an
-  // explicit choice.
-  const [playOverride, setPlayOverride] = useState<boolean | null>(null);
-  const [lastPreference, setLastPreference] = useState(prefersReducedMotion);
+  const { isPlaying } = resolvePlayback({ source: settings.source, prefersReducedMotion });
 
-  // Changing the OS preference mid-session hands control back to it, so turning
-  // on "reduce motion" never leaves a canvas spinning. Adjusting state during
-  // render (rather than in an effect) avoids a throwaway animated frame.
-  if (lastPreference !== prefersReducedMotion) {
-    setLastPreference(prefersReducedMotion);
-    setPlayOverride(null);
-  }
-
-  const { isPlaying } = resolvePlayback({
-    source: settings.source,
-    prefersReducedMotion,
-    override: playOverride,
-  });
-
+  const tilt = useDeviceTilt(settings.tilt);
   const image = useImageSource();
   // The video element lives here so it can sit in the document — Safari will
   // not play a detached one — while the hook owns the stream bound to it.
@@ -56,11 +42,7 @@ export function App() {
   const media =
     settings.source === 'image' ? image.image : settings.source === 'camera' ? video : null;
   // The chosen set's picture, if it is one of the bundled ones.
-  const preset = useImageUrl(
-    settings.objects === CUSTOM || settings.objects === GENERATED
-      ? null
-      : objectSetUrl(settings.objects),
-  );
+  const preset = useImageUrl(settings.objects === CUSTOM ? null : objectSetUrl(settings.objects));
 
   // What the pieces are cut out of, which is a different question from what the
   // mirrors repeat: the objects can come out of one picture while the mirrors
@@ -104,7 +86,14 @@ export function App() {
   // tabbing back through the artwork.
   useEffect(() => {
     if (controlsOpen) {
-      controlsRef.current?.focus();
+      const panel = controlsRef.current;
+
+      if (panel) {
+        // From the top, not from wherever it was left: a panel that opens
+        // half-scrolled looks like it has rendered wrong.
+        panel.scrollTop = 0;
+        panel.focus();
+      }
     }
   }, [controlsOpen]);
 
@@ -136,18 +125,29 @@ export function App() {
   }, [announce, settings.seed, settings.source]);
 
   const handleSavePattern = useCallback(() => {
-    const dataUrl = kaleidoscopeRef.current?.capturePattern();
+    const name = `kaleidoscope-pattern-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
 
-    if (!dataUrl) {
-      announce('Nothing to save yet.');
-      return;
-    }
+    void (async () => {
+      const blob = await kaleidoscopeRef.current?.capturePattern();
 
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = `kaleidoscope-pattern-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
-    link.click();
-    announce('Saved a square tile that repeats without a seam.');
+      if (!blob) {
+        announce('Nothing to save yet.');
+        return;
+      }
+
+      const outcome = await sharePicture(new File([blob], name, { type: blob.type }));
+
+      // Dismissing the sheet is an answer, not an event worth narrating.
+      if (outcome === 'dismissed') {
+        return;
+      }
+
+      announce(
+        outcome === 'failed'
+          ? 'Could not save the pattern.'
+          : 'A square tile that repeats without a seam.',
+      );
+    })();
   }, [announce, settings.seed, settings.source]);
 
   const handleShare = useCallback(() => {
@@ -203,6 +203,7 @@ export function App() {
           paused={!isPlaying}
           media={media}
           skin={skin}
+          {...(settings.tilt ? { tiltRef: tilt.angleRef } : {})}
           onZoom={handleZoom}
         />
 
@@ -212,15 +213,12 @@ export function App() {
             that is not in the document, and display:none can pause playback. */}
         <video ref={setVideo} className={styles.hiddenVideo} muted playsInline aria-hidden="true" />
 
-        <button
-          type="button"
-          className={styles.playToggle}
-          aria-pressed={isPlaying}
-          onClick={() => {
-            setPlayOverride(!isPlaying);
-          }}
-        >
-          {isPlaying ? 'Pause' : 'Play'}
+        <button type="button" className={styles.saveButton} onClick={handleSavePattern}>
+          <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3h2Z" />
+            <path d="M4 19h16v2H4z" />
+          </svg>
+          Save pattern
         </button>
       </main>
 
@@ -272,8 +270,8 @@ export function App() {
         </div>
 
         <p className={styles.subtitle}>
-          A mirrored canvas toy. Feed it shards, a photo, or your camera, then swipe across the
-          artwork to turn the tube.
+          A mirrored canvas toy. Load the chamber with objects, mirror a photo, or point the camera
+          at the world — then swipe across the artwork to turn it.
         </p>
 
         <ControlPanel
@@ -282,7 +280,6 @@ export function App() {
           onRandomize={randomize}
           onReset={reset}
           onSave={handleSave}
-          onSavePattern={handleSavePattern}
           onShare={handleShare}
           status={status}
           imageName={image.fileName}
@@ -291,13 +288,14 @@ export function App() {
           onClearImage={image.clear}
           cameraStatus={camera.status}
           cameraMessage={camera.message}
+          tiltStatus={tilt.status}
         />
 
-        {prefersReducedMotion && playOverride === null && (
+        {prefersReducedMotion && (
           <p className={styles.notice}>
             {isPlaying
               ? 'Your system asks for reduced motion. The camera feed is live; swiping still turns the tube.'
-              : 'Motion is paused because your system asks for reduced motion. Swiping still turns the tube; press Play to animate.'}
+              : 'Motion is held still because your system asks for reduced motion. Swiping still turns the tube.'}
           </p>
         )}
       </aside>

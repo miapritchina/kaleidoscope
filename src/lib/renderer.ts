@@ -1,7 +1,7 @@
 import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
-import { getPalette, rgbToCss, type Palette } from './palettes';
+import { GROUND, rgbToCss } from './color';
 import { DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
@@ -95,7 +95,6 @@ export class KaleidoscopeRenderer {
   #falloffSide = 0;
   #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
-  #spritesMetallic = false;
 
   readonly #createCanvas: () => HTMLCanvasElement;
   #tile: HTMLCanvasElement | null = null;
@@ -191,37 +190,23 @@ export class KaleidoscopeRenderer {
 
     const triangle = this.#triangleSide(settings);
 
-    const palette = getPalette(settings.paletteId);
-    // The finish is baked into the sprites, so a change of it rebuilds them
-    // just as a change of palette does.
-    const sprites =
-      this.#sprites?.palette === palette && this.#spritesMetallic === settings.metallic
-        ? this.#sprites
-        : createChipSprites(palette, { metallic: settings.metallic });
-    this.#sprites = sprites;
-    this.#spritesMetallic = settings.metallic;
+    // Shapes and lighting only, and neither depends on a setting, so they are
+    // built once and kept.
+    this.#sprites ??= createChipSprites();
+    const sprites = this.#sprites;
 
     const frame = settings.source === 'shards' ? null : media;
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    // Until it has pixels there is nothing to cut objects out of, so the pieces
-    // fall back to their palette colours rather than to a blank rectangle.
+    // Until it has pixels there is nothing to cut objects out of, and nothing
+    // to draw: the chamber comes up empty rather than full of shapes nobody
+    // chose.
     const surface = isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
 
-    this.#paintWedge(
-      scene,
-      settings,
-      palette,
-      sprites,
-      mode,
-      frame ?? null,
-      surface,
-      patches,
-      triangle,
-    );
-    this.#compositeTiling(palette, triangle);
+    this.#paintWedge(scene, settings, sprites, mode, frame ?? null, surface, patches, triangle);
+    this.#compositeTiling(triangle);
   }
 
   /**
@@ -268,7 +253,7 @@ export class KaleidoscopeRenderer {
   }
 
   /**
-   * Serialises a square tile that repeats without a seam.
+   * Renders a square tile that repeats without a seam.
    *
    * A three-mirror kaleidoscope tiles the plane on a hexagonal lattice, and a
    * hexagonal lattice has no square period — `k` steps across can never equal
@@ -286,10 +271,9 @@ export class KaleidoscopeRenderer {
    * @param size Side of the tile in pixels. Rounded up to an even number, since
    *   it is built from four quarters.
    */
-  toPatternUrl(settings: Settings, size = TILE_SIZE, type = 'image/png'): string | null {
+  toPatternBlob(settings: Settings, size = TILE_SIZE, type = 'image/png'): Promise<Blob | null> {
     const side = this.#triangleSide(settings);
     const half = Math.max(1, Math.ceil(size / 2));
-    const palette = getPalette(settings.paletteId);
 
     this.#quadrant ??= this.#createCanvas();
     this.#tile ??= this.#createCanvas();
@@ -306,10 +290,10 @@ export class KaleidoscopeRenderer {
     const tileCtx = tile.getContext('2d');
 
     if (!quadrantCtx || !tileCtx) {
-      return null;
+      return Promise.resolve(null);
     }
 
-    this.#stampField(quadrantCtx, half, half, palette, side);
+    this.#stampField(quadrantCtx, half, half, side);
 
     // The quarter, then its reflection across, down, and both — the same four
     // ways round the mirrors themselves work.
@@ -325,14 +309,17 @@ export class KaleidoscopeRenderer {
 
     tileCtx.setTransform(1, 0, 0, 1, 0, 0);
 
-    return tile.toDataURL(type);
+    // A blob rather than a data URL: it is what the share sheet wants, and it
+    // saves encoding a megabyte of base64 only to decode it again.
+    return new Promise((resolve) => {
+      tile.toBlob(resolve, type);
+    });
   }
 
   /** Paints the chosen source into the offscreen wedge surface. */
   #paintWedge(
     scene: Scene,
     settings: Settings,
-    palette: Palette,
     sprites: ChipSprites,
     mode: WedgeMode,
     media: MediaElement | null,
@@ -353,7 +340,7 @@ export class KaleidoscopeRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.fillStyle = palette.background;
+    ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, size, size);
 
     if (mode === 'media' && media) {
@@ -367,7 +354,6 @@ export class KaleidoscopeRenderer {
         // a little behind it.
         rotation: scene.contents,
         pan: scene.drag,
-        alpha: 1,
       });
       ctx.restore();
     } else if (mode === 'shards') {
@@ -383,7 +369,6 @@ export class KaleidoscopeRenderer {
         // The triangle's circumradius: the cell reaches all three corners and no
         // further, so every chip that is simulated has a chance of being seen.
         scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
-        chipScale: settings.chipSize,
         // The cell turns inside the fixed mirrors. What the glass does within it
         // is the physics' business, not this rotation's.
         rotation: scene.cell,
@@ -407,10 +392,10 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(palette: Palette, side: number): void {
+  #compositeTiling(side: number): void {
     const ctx = this.#ctx;
 
-    this.#stampField(ctx, this.#width, this.#height, palette, side);
+    this.#stampField(ctx, this.#width, this.#height, side);
 
     // What the mirrors themselves cost, applied last because it applies to the
     // whole view — the light coming through the gaps as much as the glass.
@@ -441,19 +426,13 @@ export class KaleidoscopeRenderer {
    * the field and nothing else: the barrel and the mirror falloff are radial,
    * so baking either into a tile puts a dark blot at every repeat.
    */
-  #stampField(
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    palette: Palette,
-    side: number,
-  ): void {
-    const hexagon = this.#buildHexagon(palette, side);
+  #stampField(ctx: CanvasRenderingContext2D, width: number, height: number, side: number): void {
+    const hexagon = this.#buildHexagon(side);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.fillStyle = palette.background;
+    ctx.fillStyle = GROUND;
     ctx.fillRect(0, 0, width, height);
 
     if (!hexagon) {
@@ -593,7 +572,7 @@ export class KaleidoscopeRenderer {
    * Kept transparent outside the hexagon so the stamps tile without their
    * rectangular corners painting over their neighbours.
    */
-  #buildHexagon(palette: Palette, side: number): HTMLCanvasElement | null {
+  #buildHexagon(side: number): HTMLCanvasElement | null {
     const span = Math.ceil((side + SEAM_BLEED) * 2);
     const cell = this.#hexagon;
 
@@ -645,7 +624,7 @@ export class KaleidoscopeRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.translate(span / 2, span / 2);
     ctx.globalCompositeOperation = 'destination-in';
-    ctx.fillStyle = palette.background;
+    ctx.fillStyle = GROUND;
     traceHexagon(ctx, side + SEAM_BLEED / 2);
     ctx.fill();
     ctx.restore();

@@ -12,11 +12,11 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onRandomize: vi.fn(),
     onReset: vi.fn(),
     onSave: vi.fn(),
-    onSavePattern: vi.fn(),
     onShare: vi.fn(),
     onSelectImage: vi.fn(),
     onClearImage: vi.fn(),
     cameraStatus: 'idle',
+    tiltStatus: 'idle',
     ...overrides,
   };
 
@@ -30,7 +30,6 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Objects')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
-    expect(screen.getByLabelText('Palette')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
 
@@ -93,24 +92,6 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Chip size')).toHaveAttribute('aria-valuetext', '2.00x');
   });
 
-  it('reports palette changes', async () => {
-    const user = userEvent.setup();
-    const { props } = renderPanel();
-
-    await user.selectOptions(screen.getByLabelText('Palette'), 'ember');
-
-    expect(props.onChange).toHaveBeenCalledWith('paletteId', 'ember');
-  });
-
-  it('reports finish toggles', async () => {
-    const user = userEvent.setup();
-    const { props } = renderPanel();
-
-    await user.click(screen.getByLabelText('Metallic'));
-
-    expect(props.onChange).toHaveBeenCalledWith('metallic', !DEFAULT_SETTINGS.metallic);
-  });
-
   it('lets the seed field be cleared while typing', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
@@ -128,15 +109,30 @@ describe('ControlPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Randomize' }));
     await user.click(screen.getByRole('button', { name: 'Save PNG' }));
-    await user.click(screen.getByRole('button', { name: 'Save pattern' }));
     await user.click(screen.getByRole('button', { name: 'Copy link' }));
     await user.click(screen.getByRole('button', { name: 'Reset' }));
 
     expect(props.onRandomize).toHaveBeenCalledOnce();
     expect(props.onSave).toHaveBeenCalledOnce();
-    expect(props.onSavePattern).toHaveBeenCalledOnce();
     expect(props.onShare).toHaveBeenCalledOnce();
     expect(props.onReset).toHaveBeenCalledOnce();
+  });
+
+  // A real one is held and turned, and that is the whole point of the setting:
+  // gravity stays where it is while the tube does not.
+  it('reports turning the tube by tilting the device', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.click(screen.getByLabelText('Turn by tilting'));
+
+    expect(props.onChange).toHaveBeenCalledWith('tilt', true);
+  });
+
+  it('says why tilting is unavailable rather than offering it silently', () => {
+    renderPanel({ tiltStatus: 'denied' });
+
+    expect(screen.getByText(/motion access was blocked/i)).toBeInTheDocument();
   });
 
   it('reports a change of which objects the chamber holds', async () => {
@@ -167,7 +163,6 @@ describe('ControlPanel', () => {
 
     expect(source).toContain('Objects');
     expect(source).toContain('Count');
-    expect(source).toContain('Palette');
     expect(source).toContain('Seed');
   });
 
@@ -199,13 +194,12 @@ describe('ControlPanel', () => {
     // Chamber-specific
     expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Palette')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
     expect(screen.getByLabelText('Input')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save pattern' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save PNG' })).toBeInTheDocument();
   });
 
   it('shows the photo picker only for the photo source', () => {

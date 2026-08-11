@@ -41,7 +41,7 @@
   background: rgb(26 26 39 / 0.9);
 }
 
-.playToggle {
+.saveButton {
   composes: control;
   inset-block-end: 1rem;
   inset-inline-start: 1rem;
@@ -53,8 +53,9 @@
   inset-inline-end: 1rem;
 }
 
-/* Drawn rather than an icon font, so it needs no network and no glyph. */
-.gear {
+/* Drawn rather than an icon font, so they need no network and no glyph. */
+.gear,
+.icon {
   display: block;
   width: 1rem;
   height: 1rem;
@@ -86,6 +87,9 @@
 
 .drawer {
   position: absolute;
+  /* Its own scrolling, and nothing beyond it: a flick that runs off the end of
+     the list must not carry on into the page behind. */
+  overscroll-behavior: contain;
   z-index: 3;
   inset-block: 0;
   inset-inline-end: 0;

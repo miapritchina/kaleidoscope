@@ -1,4 +1,3 @@
-import { pickGlassColor, rgbToCss, type Palette, type Rgb } from './palettes';
 import { hashSeed, mulberry32, randomBetween, type Rng } from './random';
 import type { ShardKind } from './scene';
 
@@ -22,21 +21,11 @@ import type { ShardKind } from './scene';
  *   reads as a mosaic of separate brightnesses; airbrush it into one smooth
  *   dome and it reads as a plastic bead.
  *
- * The shape and the lighting are kept apart, because they are wanted
- * separately: the lighting alone goes over a photograph to skin a piece with
- * it, and the two composed together with a palette colour make an ordinary
- * coloured stone.
+ * Only ever laid over a photograph, which is where a piece's colour comes from:
+ * these two say how much of the light each facet returns, and nothing about
+ * what it is made of.
  */
 export interface ChipSprites {
-  readonly palette: Palette;
-  /**
-   * A finished chip, in one of the palette's colours.
-   *
-   * @param kind Which family of fragment.
-   * @param colorStop Position along the palette; quantised to the cached steps.
-   * @param variant Which cut of that fragment, so no two pieces are twins.
-   */
-  get(kind: ShardKind, colorStop: number, variant?: number): CanvasImageSource | null;
   /** How much of the light each facet returns. Stamp with `multiply`. */
   shading(kind: ShardKind, variant?: number): CanvasImageSource | null;
   /** The blaze off the facets that face you. Stamp with `lighter`. */
@@ -50,21 +39,9 @@ export interface ChipSprites {
 /** Distinct cuts rendered per shape, so a chamber is not full of identical pieces. */
 export const CHIP_VARIANTS = 3;
 
-/**
- * Shades rendered per palette colour.
- *
- * Two pieces out of the same jar are not the same colour; a chamber where every
- * green is the identical green reads as printed rather than filled.
- */
-const TONES = 3;
-
 export interface ChipSpriteOptions {
-  /** Distinct colours rendered per shape. Defaults to the palette's own. */
-  steps?: number;
   /** Side of each sprite in pixels. */
   size?: number;
-  /** Polished metal rather than a matte stone: harder blaze, deeper shadow. */
-  metallic?: boolean;
   createCanvas?: () => HTMLCanvasElement;
 }
 
@@ -73,11 +50,9 @@ export interface Point {
   y: number;
 }
 
-/** Builds the sprite sheet for a palette. Cheap enough to redo on any change. */
-export function createChipSprites(palette: Palette, options: ChipSpriteOptions = {}): ChipSprites {
-  const steps = Math.max(1, options.steps ?? palette.colors.length * TONES);
+/** Builds the shape and lighting sheet. Cheap enough to redo on any change. */
+export function createChipSprites(options: ChipSpriteOptions = {}): ChipSprites {
   const size = Math.max(8, options.size ?? 192);
-  const metallic = options.metallic ?? false;
   const create = options.createCanvas ?? (() => document.createElement('canvas'));
   const cache = new Map<string, HTMLCanvasElement | null>();
 
@@ -102,33 +77,16 @@ export function createChipSprites(palette: Palette, options: ChipSpriteOptions =
   // which stamps the very same two layers over a patch of picture.
   const shadingFor = (kind: ShardKind, variant: number) =>
     cached(`shade:${kind}:${String(variant)}`, () =>
-      renderFacets(create, kind, variant, size, metallic, 'shading'),
+      renderFacets(create, kind, variant, size, 'shading'),
     );
 
   const blazeFor = (kind: ShardKind, variant: number) =>
     cached(`blaze:${kind}:${String(variant)}`, () =>
-      renderFacets(create, kind, variant, size, metallic, 'blaze'),
+      renderFacets(create, kind, variant, size, 'blaze'),
     );
 
   return {
-    palette,
     size,
-    get(kind, colorStop, variant = 0) {
-      const step = ((Math.round(colorStop * steps) % steps) + steps) % steps;
-      const shape = cut(variant);
-
-      return cached(`chip:${kind}:${String(step)}:${String(shape)}`, () =>
-        renderChip(
-          create,
-          kind,
-          shape,
-          temper(palette, step, steps),
-          size,
-          shadingFor(kind, shape),
-          blazeFor(kind, shape),
-        ),
-      );
-    },
     shading(kind, variant = 0) {
       return shadingFor(kind, cut(variant));
     },
@@ -139,54 +97,6 @@ export function createChipSprites(palette: Palette, options: ChipSpriteOptions =
       return outlineFor(kind, cut(variant), 1);
     },
   };
-}
-
-/**
- * A finished coloured piece: the colour, shaded, with the blaze on top.
- *
- * The same two passes the photograph path applies at draw time, composed once
- * here because the colour never changes between frames.
- */
-function renderChip(
-  create: () => HTMLCanvasElement,
-  kind: ShardKind,
-  variant: number,
-  color: Rgb,
-  size: number,
-  shading: HTMLCanvasElement | null,
-  blaze: HTMLCanvasElement | null,
-): HTMLCanvasElement | null {
-  const canvas = create();
-  canvas.width = size;
-  canvas.height = size;
-
-  const ctx = canvas.getContext('2d');
-
-  if (!ctx || !shading || !blaze) {
-    return null;
-  }
-
-  const radius = (size / 2) * 0.96;
-  const outline = outlineFor(kind, variant, radius);
-
-  ctx.save();
-  ctx.translate(size / 2, size / 2);
-  tracePolygon(ctx, outline);
-  ctx.fillStyle = rgbToCss(color);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.globalCompositeOperation = 'multiply';
-  ctx.drawImage(shading, 0, 0);
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.drawImage(blaze, 0, 0);
-  // Trim back to the shape: `lighter` has no alpha of its own to respect, so
-  // without this the blaze would leave a faint square around every piece.
-  ctx.globalCompositeOperation = 'destination-in';
-  ctx.drawImage(shading, 0, 0);
-  ctx.globalCompositeOperation = 'source-over';
-
-  return canvas;
 }
 
 /**
@@ -202,7 +112,6 @@ function renderFacets(
   kind: ShardKind,
   variant: number,
   size: number,
-  metallic: boolean,
   layer: 'shading' | 'blaze',
 ): HTMLCanvasElement | null {
   const canvas = create();
@@ -240,7 +149,7 @@ function renderFacets(
     // Near enough flat, but not exactly: a real table is never one plane, and
     // when the light is at your eye a degree of tilt is a visible step in
     // brightness.
-    paint(ctx, layer, Math.cos(randomBetween(rng, 0, 0.34)), metallic);
+    paint(ctx, layer, Math.cos(randomBetween(rng, 0, 0.34)));
     traceWedge(ctx, table, from, to);
     ctx.fill();
   }
@@ -251,7 +160,7 @@ function renderFacets(
     const from = Math.round((face * outline.length) / cut.faces);
     const to = Math.round(((face + 1) * outline.length) / cut.faces);
 
-    paint(ctx, layer, Math.cos(randomBetween(rng, 0.6, 1.25)), metallic);
+    paint(ctx, layer, Math.cos(randomBetween(rng, 0.6, 1.25)));
     traceBevelFace(ctx, outline, table, from, to);
     ctx.fill();
   }
@@ -273,30 +182,21 @@ function renderFacets(
  *
  * The light is at the eye, so a facet's diffuse return and its specular both
  * peak in the same place — straight on — rather than the specular sitting off
- * to one side of the shading. Raising the same quantity to a high power is
- * what separates a metal, which is either blazing or black, from a stone,
- * which shades gently.
+ * to one side of the shading.
  */
-function paint(
-  ctx: CanvasRenderingContext2D,
-  layer: 'shading' | 'blaze',
-  facing: number,
-  metallic: boolean,
-): void {
+function paint(ctx: CanvasRenderingContext2D, layer: 'shading' | 'blaze', facing: number): void {
   const straight = Math.max(0, facing);
 
   if (layer === 'shading') {
-    const ambient = metallic ? 0.16 : 0.34;
-    const level = ambient + (1 - ambient) * straight ** (metallic ? 1.7 : 1.1);
+    const ambient = 0.34;
+    const level = ambient + (1 - ambient) * straight ** 1.1;
     const channel = Math.round(level * 255);
 
     ctx.fillStyle = `rgb(${String(channel)} ${String(channel)} ${String(channel)})`;
     return;
   }
 
-  const sharpness = metallic ? 34 : 12;
-  const strength = metallic ? 0.95 : 0.3;
-  const channel = Math.round(straight ** sharpness * strength * 255);
+  const channel = Math.round(straight ** 12 * 0.3 * 255);
 
   ctx.fillStyle = `rgb(${String(channel)} ${String(channel)} ${String(channel)})`;
 }
@@ -309,19 +209,6 @@ const CUTS: Record<ShardKind, { faces: number; tableFaces: number; table: number
   // A splinter is thin enough for two ground faces and no room for more.
   sliver: { faces: 2, tableFaces: 1, table: 0.42 },
 };
-
-/**
- * The colour of one piece: a palette colour, off the melt by a shade.
- *
- * The jar is chosen first and the shade within it second, so the palette still
- * reads as a handful of distinct colours rather than a smear between them.
- */
-function temper(palette: Palette, step: number, steps: number): Rgb {
-  const base = pickGlassColor(palette, step / steps);
-  const off = ((step % TONES) - (TONES - 1) / 2) / Math.max(1, (TONES - 1) / 2);
-
-  return off >= 0 ? lighten(base, off * 0.12) : shade(base, -off * 0.14);
-}
 
 /**
  * The outline of one cut of one kind of fragment.
@@ -441,18 +328,4 @@ function traceBevelFace(
 
 function scalePolygon(points: readonly Point[], scale: number): Point[] {
   return points.map((point) => ({ x: point.x * scale, y: point.y * scale }));
-}
-
-function shade({ r, g, b }: Rgb, amount: number): Rgb {
-  const keep = 1 - amount;
-
-  return { r: r * keep, g: g * keep, b: b * keep };
-}
-
-function lighten({ r, g, b }: Rgb, amount: number): Rgb {
-  return {
-    r: r + (255 - r) * amount,
-    g: g + (255 - g) * amount,
-    b: b + (255 - b) * amount,
-  };
 }
