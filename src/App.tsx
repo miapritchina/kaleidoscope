@@ -8,7 +8,7 @@ import { useImageSource } from './hooks/useImageSource';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { resolvePlayback } from './lib/playback';
-import { settingsToSearchParams } from './lib/settings';
+import { clampToLimit, LIMITS, settingsToSearchParams } from './lib/settings';
 
 export function App() {
   const { settings, set, randomize, reset } = useSettings();
@@ -64,6 +64,13 @@ export function App() {
   const announce = useCallback((message: string) => {
     setStatus(message);
   }, []);
+
+  const handleZoom = useCallback(
+    (zoom: number) => {
+      set('zoom', clampToLimit(zoom, LIMITS.zoom));
+    },
+    [set],
+  );
 
   const handleSave = useCallback(() => {
     const dataUrl = kaleidoscopeRef.current?.capture();
@@ -130,6 +137,7 @@ export function App() {
           paused={!isPlaying}
           media={media}
           skin={skin}
+          onZoom={handleZoom}
         />
 
         {emptyState ? <p className={styles.emptyState}>{emptyState}</p> : null}

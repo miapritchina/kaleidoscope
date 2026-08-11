@@ -6,8 +6,18 @@ import { useStageGesture, type StageGesture } from './useStageGesture';
 const WIDTH = 200;
 const HEIGHT = 200;
 
-function Harness({ expose, now }: { expose: (gesture: StageGesture) => void; now: () => number }) {
-  const gesture = useStageGesture(now);
+function Harness({
+  expose,
+  now,
+  zoom,
+  onZoom,
+}: {
+  expose: (gesture: StageGesture) => void;
+  now: () => number;
+  zoom: () => number;
+  onZoom: (value: number) => void;
+}) {
+  const gesture = useStageGesture({ now, zoom, onZoom });
   expose(gesture);
 
   return (
@@ -17,12 +27,26 @@ function Harness({ expose, now }: { expose: (gesture: StageGesture) => void; now
   );
 }
 
-function renderStage() {
+function renderStage(startingZoom = 1) {
   let gesture!: StageGesture;
   // The hook's clock is injected so a swipe's speed can be dictated exactly;
   // event timestamps cannot be, jsdom overwrites them.
   let clock = 1000;
-  const view = render(<Harness expose={(value) => (gesture = value)} now={() => clock} />);
+  // The zoom lives outside the hook, the way it does in the app: a setting the
+  // pinch reads and writes rather than state of its own.
+  let zoom = startingZoom;
+  const zoomed: number[] = [];
+  const view = render(
+    <Harness
+      expose={(value) => (gesture = value)}
+      now={() => clock}
+      zoom={() => zoom}
+      onZoom={(value) => {
+        zoom = value;
+        zoomed.push(value);
+      }}
+    />,
+  );
   // Scoped to this render's own container: the default queries search the whole
   // document, and some tests mount two stages to compare them.
   const stage = view.container.querySelector<HTMLElement>('[data-testid="stage"]')!;
@@ -36,11 +60,20 @@ function renderStage() {
 
   return {
     stage,
+    /** Every zoom the pinch has asked for, in order. */
+    zoomed,
+    get zoom() {
+      return zoom;
+    },
     get gesture() {
       return gesture;
     },
     down(x: number, y: number, init: Record<string, unknown> = {}) {
       fireEvent.pointerDown(stage, { pointerId: 1, button: 0, clientX: x, clientY: y, ...init });
+    },
+    /** Puts a second finger down, which is what starts a pinch. */
+    second(x: number, y: number, pointerId = 2) {
+      fireEvent.pointerDown(stage, { pointerId, button: 0, clientX: x, clientY: y });
     },
     /** Moves the pointer, advancing the injected clock by `ms`. */
     move(x: number, y: number, ms = 100, pointerId = 1) {
@@ -281,6 +314,130 @@ describe('useStageGesture', () => {
       view.move(10_000, 100);
 
       expect(view.gesture.panRef.current.x).toBe(1);
+    });
+
+    // Two fingers track the pair, not either one. Following the first finger
+    // alone would shove the source sideways every time the other one squeezed.
+    it('drags from the point midway between two fingers', () => {
+      const view = renderStage();
+
+      view.down(60, 100);
+      view.second(140, 100);
+      // Both fingers move right by 20: the middle moves 20, not 40.
+      view.move(80, 100, 100, 1);
+      view.move(160, 100, 100, 2);
+
+      expect(view.gesture.panRef.current.x).toBeCloseTo((20 / WIDTH) * 2, 5);
+    });
+
+    it('does not shove the source when a pinch is symmetric', () => {
+      const view = renderStage();
+
+      view.down(60, 100);
+      view.second(140, 100);
+      view.move(40, 100, 100, 1);
+      view.move(160, 100, 100, 2);
+
+      expect(view.gesture.panRef.current.x).toBeCloseTo(0, 5);
+    });
+  });
+
+  describe('pinching', () => {
+    it('zooms in as the fingers spread, from wherever the zoom already is', () => {
+      const view = renderStage(1.5);
+
+      view.down(60, 100);
+      view.second(140, 100);
+      // The span doubles, from 80 to 160.
+      view.move(20, 100, 100, 1);
+      view.move(180, 100, 100, 2);
+
+      expect(view.zoom).toBeCloseTo(3, 5);
+    });
+
+    it('zooms out as the fingers close', () => {
+      const view = renderStage(2);
+
+      view.down(20, 100);
+      view.second(180, 100);
+      view.move(60, 100, 100, 1);
+      view.move(140, 100, 100, 2);
+
+      expect(view.zoom).toBeCloseTo(1, 5);
+    });
+
+    // Fingers dragging together are never perfectly parallel, so without a
+    // deadband every two-finger pan would creep the zoom along with it.
+    it('ignores the wobble in a two-finger drag', () => {
+      const view = renderStage();
+
+      view.down(60, 100);
+      view.second(140, 100);
+      // Both move right, one a couple of pixels further: a 2.5% change.
+      view.move(90, 100, 100, 1);
+      view.move(172, 100, 100, 2);
+
+      expect(view.zoomed).toHaveLength(0);
+    });
+
+    // Two fingers landing on top of each other give a tiny starting span, and
+    // dividing by it turns a millimetre of movement into a wild change.
+    it('does not pinch from two fingers landing on the same spot', () => {
+      const view = renderStage();
+
+      view.down(100, 100);
+      view.second(105, 100);
+      view.move(60, 100, 100, 1);
+      view.move(160, 100, 100, 2);
+
+      expect(view.zoomed).toHaveLength(0);
+    });
+
+    it('leaves the zoom alone for a one-finger swipe', () => {
+      const view = renderStage();
+
+      view.down(50, 100);
+      view.move(150, 100);
+      view.up();
+
+      expect(view.zoomed).toHaveLength(0);
+    });
+
+    // Fingers rarely leave together. The one still down goes on dragging, and
+    // it must not take the source with it by the width of the gap.
+    it('keeps the source still when one finger of a pinch lifts', () => {
+      const view = renderStage();
+
+      view.down(60, 100);
+      view.second(140, 100);
+      view.move(60, 100, 100, 1);
+      view.move(140, 100, 100, 2);
+
+      const held = { ...view.gesture.panRef.current };
+      view.up(2);
+      view.move(140, 100, 100, 1);
+
+      expect(view.gesture.panRef.current.x).toBeCloseTo(held.x + (80 / WIDTH) * 2, 5);
+    });
+
+    it('starts a fresh pinch from the zoom the last one left', () => {
+      const view = renderStage(1);
+
+      view.down(60, 100);
+      view.second(140, 100);
+      view.move(20, 100, 100, 1);
+      view.move(180, 100, 100, 2);
+      view.up(1);
+      view.up(2);
+
+      expect(view.zoom).toBeCloseTo(2, 5);
+
+      view.down(60, 100);
+      view.second(140, 100);
+      view.move(20, 100, 100, 1);
+      view.move(180, 100, 100, 2);
+
+      expect(view.zoom).toBeCloseTo(4, 5);
     });
   });
 

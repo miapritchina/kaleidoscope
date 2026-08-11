@@ -2,7 +2,8 @@ import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { getPalette, rgbToCss, type Palette } from './palettes';
-import { DRAG_CELLS, drawChamber, type Scene } from './scene';
+import { DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
+import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
@@ -93,6 +94,10 @@ export class KaleidoscopeRenderer {
   #sprites: ChipSprites | null = null;
   #spritesMetallic = false;
   #mode: WedgeMode | null = null;
+
+  #patches: SkinPatches | null = null;
+  #patchesFor: CanvasImageSource | null = null;
+  #patchesSize = '';
 
   /** This frame alone, before it is blended into the trail. */
   readonly #frame: HTMLCanvasElement;
@@ -203,9 +208,44 @@ export class KaleidoscopeRenderer {
     // Until it has pixels there is nothing to cut a surface from, so the pieces
     // fall back to their palette colours rather than to a blank rectangle.
     const surface = settings.skin !== 'palette' && isMediaReady(skin) ? skin : null;
+    const patches = surface ? this.#patchesOf(surface) : null;
 
-    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, surface, triangle);
+    this.#paintWedge(
+      scene,
+      settings,
+      palette,
+      sprites,
+      mode,
+      frame ?? null,
+      surface,
+      patches,
+      triangle,
+    );
     this.#compositeTiling(palette, triangle);
+  }
+
+  /**
+   * Where in the skin each piece is cut from, scored once per picture.
+   *
+   * Kept until the picture itself changes. A camera frame changes every frame
+   * and is not rescored for each one: reading a canvas back is a pipeline stall,
+   * and a live feed is interesting all over anyway — the scoring is there for a
+   * still of a subject on a plain backdrop, which is what a picked photo
+   * usually is.
+   */
+  #patchesOf(skin: CanvasImageSource): SkinPatches | null {
+    const size = measureSource(skin);
+    const stamp = `${String(size.width)}x${String(size.height)}`;
+
+    if (this.#patchesFor === skin && this.#patchesSize === stamp) {
+      return this.#patches;
+    }
+
+    this.#patchesFor = skin;
+    this.#patchesSize = stamp;
+    this.#patches = createSkinPatches(skin, { patch: SKIN_PATCH });
+
+    return this.#patches;
   }
 
   /** Side of the mirror triangle in device pixels. */
@@ -236,6 +276,7 @@ export class KaleidoscopeRenderer {
     mode: WedgeMode,
     media: MediaElement | null,
     skin: MediaElement | null,
+    patches: SkinPatches | null,
     triangleSide: number,
   ): void {
     const ctx = this.#frameCtx;
@@ -296,6 +337,7 @@ export class KaleidoscopeRenderer {
         },
         sprites,
         skin,
+        patches,
       });
       ctx.restore();
     }

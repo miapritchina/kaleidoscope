@@ -254,8 +254,19 @@ A photo or camera frame has no physics of its own, so it simply turns with the c
 little behind it — a capped lag, which lets it evolve as it turns rather than revolving
 rigidly.
 
-Hold **Shift**, use a secondary button, or put a second finger down to pan the source
-instead of turning it.
+Hold **Shift**, use a secondary button, or put a second finger down to move the source
+instead of turning it. With two fingers down it is the pair that is tracked rather than
+either one: the point midway between them drags the source, and the span between them
+zooms it, the way a photo viewer on a phone behaves. Tracking the first finger alone would
+shove the source sideways every time the other one squeezed.
+
+Two things make the pinch behave on a real hand. Pointer events arrive one finger at a
+time, so between two of them the span reflects one finger that has moved and one that has
+not — a transient the hand never made — and the pinch is only read once both have reported
+in. And fingers dragging together are never quite parallel, so a change under 6% is left
+alone, which is what keeps a two-finger drag from creeping the zoom along with it. The
+pinch scales from wherever the zoom already is, so a spread, a lift and another spread
+compound rather than starting over, and the Zoom slider follows along live.
 
 Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
 link wins over stored settings on load. Both are treated as untrusted input and clamped to
@@ -291,8 +302,8 @@ uploaded, and no frame is stored. The camera is requested only while it is the s
 source or the chosen skin, and its tracks are stopped the moment you switch away from both,
 so the camera light does not stay on behind your back.
 
-Shift-drag (or two-finger drag) moves the source around. It follows the pointer and stays
-where it is let go.
+Shift-drag, or a two-finger drag, moves the source around; pinching those two fingers
+zooms it. It follows the pointer and stays where it is let go.
 
 A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
 its edges would show inside the wedge — and its travel is bounded by however much of the

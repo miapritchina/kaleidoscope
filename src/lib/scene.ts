@@ -1,6 +1,7 @@
 import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
+import { measureSource, type SkinPatches } from './skin';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
@@ -217,6 +218,14 @@ export interface DrawChamberOptions {
    * the same shading and the same blaze as a coloured one.
    */
   skin?: CanvasImageSource | null;
+  /**
+   * Where in that photograph each piece is cut from.
+   *
+   * Left out, the pieces are cut at uniformly random spots, which is right for
+   * a picture that is interesting all over and wrong for one that is a subject
+   * on a plain backdrop. See `lib/skin.ts`.
+   */
+  patches?: SkinPatches | null;
 }
 
 /**
@@ -228,7 +237,7 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, rotation, pan, chipScale = 1, sprites, skin = null }: DrawChamberOptions,
+  { scale, rotation, pan, chipScale = 1, sprites, skin = null, patches = null }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
@@ -245,7 +254,7 @@ export function drawChamber(
     const radius = shard.radius * scale * chipScale * DEPTH_OVERLAP;
 
     if (skin) {
-      drawSkinned(ctx, shard, sprites, skin, scale, radius);
+      drawSkinned(ctx, shard, sprites, skin, patches, scale, radius);
       continue;
     }
 
@@ -279,12 +288,13 @@ function drawSkinned(
   shard: Shard,
   sprites: ChipSprites,
   skin: CanvasImageSource,
+  patches: SkinPatches | null,
   scale: number,
   radius: number,
 ): void {
   const shading = sprites.shading(shard.kind, shard.variant);
   const blaze = sprites.blaze(shard.kind, shard.variant);
-  const source = measure(skin);
+  const source = measureSource(skin);
 
   if (!shading || !blaze || source.width === 0 || source.height === 0) {
     return;
@@ -292,8 +302,9 @@ function drawSkinned(
 
   // A square patch, so the picture is not stretched by the piece's proportions.
   const patch = Math.min(source.width, source.height) * SKIN_PATCH;
-  const left = shard.skin.x * (source.width - patch);
-  const top = shard.skin.y * (source.height - patch);
+  const where = patches ? patches.pick(shard.skin) : shard.skin;
+  const left = where.x * (source.width - patch);
+  const top = where.y * (source.height - patch);
 
   ctx.save();
   ctx.translate(shard.x * scale, shard.y * scale);
@@ -316,16 +327,11 @@ function drawSkinned(
   ctx.restore();
 }
 
-/** Fraction of a picture's shorter side that one piece is cut from. */
-const SKIN_PATCH = 0.34;
-
-/** Natural size of whatever the skin is: an image, a video, or a canvas. */
-function measure(source: CanvasImageSource): { width: number; height: number } {
-  if (source instanceof HTMLVideoElement) {
-    return { width: source.videoWidth, height: source.videoHeight };
-  }
-
-  const sized = source as { width?: number; height?: number };
-
-  return { width: sized.width ?? 0, height: sized.height ?? 0 };
-}
+/**
+ * Fraction of a picture's shorter side that one piece is cut from.
+ *
+ * Small enough that neighbouring pieces are visibly different scraps rather
+ * than near-copies of the whole picture, and large enough that a piece carries
+ * a recognisable part of something rather than a swatch of one colour.
+ */
+export const SKIN_PATCH = 0.26;

@@ -1,4 +1,10 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 
 export type GestureMode = 'turn' | 'pan';
 
@@ -74,11 +80,47 @@ const COAST_MINIMUM = 0.12;
 /** How far a drag across half the stage moves the source. */
 const PAN_SENSITIVITY = 2;
 
+/**
+ * Shortest pinch, in pixels, that is taken as one.
+ *
+ * Two fingers landing almost on top of each other give a tiny starting span, and
+ * dividing by it turns a millimetre of movement into a wild change of scale.
+ */
+const MIN_PINCH_SPAN = 40;
+
+/**
+ * How far the span has to change before it counts as a pinch, as a fraction.
+ *
+ * Fingers dragging together are never perfectly parallel, so without a deadband
+ * every two-finger pan would creep the zoom along with it.
+ */
+const PINCH_DEADBAND = 0.06;
+
+export interface StageGestureOptions {
+  /** Injectable clock, so a swipe's speed can be dictated in tests. */
+  now?: (() => number) | undefined;
+  /**
+   * The current zoom, read when a pinch begins.
+   *
+   * Read rather than remembered, so the pinch scales from wherever the zoom has
+   * got to — including a change made on the slider between two pinches.
+   */
+  zoom?: (() => number) | undefined;
+  /** The pinched zoom. Clamping to the allowed range is the caller's business. */
+  onZoom?: ((zoom: number) => void) | undefined;
+}
+
 interface Origin {
   x: number;
   y: number;
   startX: number;
   startY: number;
+}
+
+/** Where a pinch began: the span between the fingers, and the zoom then. */
+interface Pinch {
+  span: number;
+  zoom: number;
 }
 
 interface Sample {
@@ -92,22 +134,71 @@ interface Sample {
  *
  * A plain swipe turns the tube: left-to-right or top-to-bottom goes
  * anticlockwise, and the swipe's speed sets the turning rate. Let go mid-swipe
- * and it coasts to a stop the way a real barrel does. Holding a second finger
- * down — or Shift, or a secondary button — pans the source instead, so both
- * gestures live on the same surface without one stealing the other.
+ * and it coasts to a stop the way a real barrel does.
+ *
+ * Two fingers — or Shift, or a secondary button — move the source instead, so
+ * both gestures live on the same surface without one stealing the other. With
+ * two down it is the pair that is tracked rather than either finger: the point
+ * midway between them drags the source, and the span between them zooms it, the
+ * way every photo viewer on a phone behaves.
  */
-export function useStageGesture(now: () => number = defaultNow): StageGesture {
+export function useStageGesture(options: StageGestureOptions = {}): StageGesture {
   const panRef = useRef<Vector>({ x: 0, y: 0 });
   const turnRef = useRef(0);
   const originRef = useRef<Origin | null>(null);
   const lastSampleRef = useRef<Sample | null>(null);
-  const activePointers = useRef(new Set<number>());
+  const pinchRef = useRef<Pinch | null>(null);
+  // Which fingers have reported a new position since the pinch was last read.
+  // Pointer events arrive one finger at a time, so between two of them the span
+  // reflects one finger that has moved and one that has not — a transient the
+  // hand never made. Waiting for both keeps every reading a coherent pair.
+  const movedSincePinch = useRef(new Set<number>());
+  const activePointers = useRef(new Map<number, Vector>());
   const [mode, setMode] = useState<GestureMode | null>(null);
   const modeRef = useRef<GestureMode | null>(null);
+
+  // Held in a ref so a caller passing fresh closures every render — which is
+  // the normal way to write them — does not invalidate every handler. Synced
+  // after paint rather than during render; a pointer event cannot arrive before
+  // the frame it belongs to has been painted.
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+
+  const now = useCallback(() => (optionsRef.current.now ?? defaultNow)(), []);
 
   const setActiveMode = useCallback((next: GestureMode | null) => {
     modeRef.current = next;
     setMode(next);
+  }, []);
+
+  /**
+   * Re-anchors the drag to whatever is on the surface now.
+   *
+   * Called whenever a finger arrives or leaves mid-gesture: without it the
+   * origin still refers to a set of fingers that no longer exists, and the
+   * source jumps by however far the tracked point moved.
+   */
+  const anchor = useCallback(() => {
+    const middle = centroid(activePointers.current);
+
+    if (!middle) {
+      return;
+    }
+
+    originRef.current = {
+      x: middle.x,
+      y: middle.y,
+      startX: panRef.current.x,
+      startY: panRef.current.y,
+    };
+
+    const reach = span(activePointers.current);
+
+    pinchRef.current =
+      reach >= MIN_PINCH_SPAN ? { span: reach, zoom: optionsRef.current.zoom?.() ?? 1 } : null;
+    movedSincePinch.current.clear();
   }, []);
 
   const onPointerDown = useCallback(
@@ -116,25 +207,20 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
         return;
       }
 
-      activePointers.current.add(event.pointerId);
+      activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
-      // A second finger switches an in-flight turn into a pan, which is how
-      // two-finger gestures behave elsewhere.
+      // A second finger switches an in-flight turn into a pan-and-pinch, which
+      // is how two-finger gestures behave everywhere else.
       const wantsPan =
         activePointers.current.size > 1 || event.shiftKey || event.altKey || event.button === 2;
 
-      originRef.current = {
-        x: event.clientX,
-        y: event.clientY,
-        startX: panRef.current.x,
-        startY: panRef.current.y,
-      };
+      anchor();
       lastSampleRef.current = { x: event.clientX, y: event.clientY, time: now() };
       turnRef.current = 0;
       event.currentTarget.setPointerCapture(event.pointerId);
       setActiveMode(wantsPan ? 'pan' : 'turn');
     },
-    [now, setActiveMode],
+    [anchor, now, setActiveMode],
   );
 
   const onPointerMove = useCallback(
@@ -146,6 +232,10 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
         return;
       }
 
+      if (activePointers.current.has(event.pointerId)) {
+        activePointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      }
+
       const bounds = event.currentTarget.getBoundingClientRect();
 
       if (bounds.width === 0 || bounds.height === 0) {
@@ -153,14 +243,32 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
       }
 
       if (current === 'pan') {
+        // The point midway between the fingers, so squeezing symmetrically
+        // zooms without also shoving the source across the stage.
+        const middle = centroid(activePointers.current) ?? { x: event.clientX, y: event.clientY };
+
         panRef.current = {
-          x: clampUnit(
-            origin.startX + ((event.clientX - origin.x) / bounds.width) * PAN_SENSITIVITY,
-          ),
-          y: clampUnit(
-            origin.startY + ((event.clientY - origin.y) / bounds.height) * PAN_SENSITIVITY,
-          ),
+          x: clampUnit(origin.startX + ((middle.x - origin.x) / bounds.width) * PAN_SENSITIVITY),
+          y: clampUnit(origin.startY + ((middle.y - origin.y) / bounds.height) * PAN_SENSITIVITY),
         };
+
+        const pinch = pinchRef.current;
+        movedSincePinch.current.add(event.pointerId);
+
+        if (pinch && movedSincePinch.current.size >= 2) {
+          movedSincePinch.current.clear();
+
+          const reach = span(activePointers.current);
+          const scale = reach > 0 ? reach / pinch.span : 1;
+
+          // Outside the deadband the whole scale is applied, not the part past
+          // it: a pinch that snapped to 1.06 the moment it was recognised would
+          // read as a jolt.
+          if (Math.abs(scale - 1) > PINCH_DEADBAND) {
+            optionsRef.current.onZoom?.(pinch.zoom * scale);
+          }
+        }
+
         return;
       }
 
@@ -199,6 +307,9 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
       }
 
       if (activePointers.current.size > 0) {
+        // Lifting one finger of a pinch leaves the other still dragging, so the
+        // drag is re-anchored to it rather than jumping by the gap between them.
+        anchor();
         return;
       }
 
@@ -213,9 +324,11 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
 
       originRef.current = null;
       lastSampleRef.current = null;
+      pinchRef.current = null;
+      movedSincePinch.current.clear();
       setActiveMode(null);
     },
-    [now, setActiveMode],
+    [anchor, now, setActiveMode],
   );
 
   const reset = useCallback(() => {
@@ -223,6 +336,8 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
     turnRef.current = 0;
     originRef.current = null;
     lastSampleRef.current = null;
+    pinchRef.current = null;
+    movedSincePinch.current.clear();
     activePointers.current.clear();
     setActiveMode(null);
   }, [setActiveMode]);
@@ -264,6 +379,45 @@ export function useStageGesture(now: () => number = defaultNow): StageGesture {
 
 function defaultNow(): number {
   return performance.now();
+}
+
+/** The point midway between the fingers, or `null` if there are none. */
+function centroid(pointers: ReadonlyMap<number, Vector>): Vector | null {
+  if (pointers.size === 0) {
+    return null;
+  }
+
+  let x = 0;
+  let y = 0;
+
+  for (const point of pointers.values()) {
+    x += point.x;
+    y += point.y;
+  }
+
+  return { x: x / pointers.size, y: y / pointers.size };
+}
+
+/**
+ * How far apart the fingers are, in pixels. Zero for fewer than two.
+ *
+ * With more than two it is the widest pair, which is what the hand is doing:
+ * a third finger resting in the middle should not shrink the span.
+ */
+function span(pointers: ReadonlyMap<number, Vector>): number {
+  const points = [...pointers.values()];
+  let widest = 0;
+
+  for (let i = 0; i < points.length; i += 1) {
+    for (let j = i + 1; j < points.length; j += 1) {
+      widest = Math.max(
+        widest,
+        Math.hypot(points[j]!.x - points[i]!.x, points[j]!.y - points[i]!.y),
+      );
+    }
+  }
+
+  return widest;
 }
 
 function clampUnit(value: number): number {

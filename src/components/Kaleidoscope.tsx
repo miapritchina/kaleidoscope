@@ -24,6 +24,13 @@ export interface KaleidoscopeProps {
   media?: MediaElement | null;
   /** Photo or camera element to skin the pieces with, when `settings.skin` selects one. */
   skin?: MediaElement | null;
+  /**
+   * Applies a pinched zoom. Left out, pinching does nothing.
+   *
+   * Zoom is a setting rather than a piece of gesture state, so the clamping and
+   * the slider that has to agree with it both belong to the owner of it.
+   */
+  onZoom?: ((zoom: number) => void) | undefined;
   ref?: RefObject<KaleidoscopeHandle | null>;
 }
 
@@ -39,11 +46,18 @@ export function Kaleidoscope({
   paused = false,
   media = null,
   skin = null,
+  onZoom,
   ref,
 }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
-  const gesture = useStageGesture();
+  // The pinch reads the zoom when it starts, so it scales from wherever the
+  // zoom has got to rather than from whatever it was when this render ran.
+  const zoomRef = useRef(settings.zoom);
+  useEffect(() => {
+    zoomRef.current = settings.zoom;
+  }, [settings.zoom]);
+  const gesture = useStageGesture({ zoom: () => zoomRef.current, onZoom });
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
   // A new seed or shard count means a genuinely different scene; anything else
