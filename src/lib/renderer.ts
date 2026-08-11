@@ -2,7 +2,8 @@ import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { getPalette, rgbToCss, type Palette } from './palettes';
-import { DRAG_CELLS, drawChamber, type Scene } from './scene';
+import { DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
+import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
 
@@ -91,7 +92,12 @@ export class KaleidoscopeRenderer {
   #falloffSide = 0;
   #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
+  #spritesMetallic = false;
   #mode: WedgeMode | null = null;
+
+  #patches: SkinPatches | null = null;
+  #patchesFor: CanvasImageSource | null = null;
+  #patchesSize = '';
 
   /** This frame alone, before it is blended into the trail. */
   readonly #frame: HTMLCanvasElement;
@@ -168,8 +174,17 @@ export class KaleidoscopeRenderer {
    * @param media Photo or camera element to mirror instead of the shard field.
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
+   * @param skin Photo or camera element to cut the pieces' surfaces from.
+   *   Ignored unless `settings.skin` selects it. A separate element from
+   *   `media`, because skinning the objects with the camera while the mirrors
+   *   repeat a photo is a perfectly reasonable thing to ask for.
    */
-  render(scene: Scene, settings: Settings, media?: MediaElement | null): void {
+  render(
+    scene: Scene,
+    settings: Settings,
+    media?: MediaElement | null,
+    skin?: MediaElement | null,
+  ): void {
     if (this.#width === 0 || this.#height === 0) {
       return;
     }
@@ -177,15 +192,60 @@ export class KaleidoscopeRenderer {
     const triangle = this.#triangleSide(settings);
 
     const palette = getPalette(settings.paletteId);
-    const sprites = this.#sprites?.palette === palette ? this.#sprites : createChipSprites(palette);
+    // The finish is baked into the sprites, so a change of it rebuilds them
+    // just as a change of palette does.
+    const sprites =
+      this.#sprites?.palette === palette && this.#spritesMetallic === settings.metallic
+        ? this.#sprites
+        : createChipSprites(palette, { metallic: settings.metallic });
     this.#sprites = sprites;
+    this.#spritesMetallic = settings.metallic;
 
     const frame = settings.source === 'shards' ? null : media;
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    this.#paintWedge(scene, settings, palette, sprites, mode, frame ?? null, triangle);
+    // Until it has pixels there is nothing to cut a surface from, so the pieces
+    // fall back to their palette colours rather than to a blank rectangle.
+    const surface = settings.skin !== 'palette' && isMediaReady(skin) ? skin : null;
+    const patches = surface ? this.#patchesOf(surface) : null;
+
+    this.#paintWedge(
+      scene,
+      settings,
+      palette,
+      sprites,
+      mode,
+      frame ?? null,
+      surface,
+      patches,
+      triangle,
+    );
     this.#compositeTiling(palette, triangle);
+  }
+
+  /**
+   * Where in the skin each piece is cut from, scored once per picture.
+   *
+   * Kept until the picture itself changes. A camera frame changes every frame
+   * and is not rescored for each one: reading a canvas back is a pipeline stall,
+   * and a live feed is interesting all over anyway — the scoring is there for a
+   * still of a subject on a plain backdrop, which is what a picked photo
+   * usually is.
+   */
+  #patchesOf(skin: CanvasImageSource): SkinPatches | null {
+    const size = measureSource(skin);
+    const stamp = `${String(size.width)}x${String(size.height)}`;
+
+    if (this.#patchesFor === skin && this.#patchesSize === stamp) {
+      return this.#patches;
+    }
+
+    this.#patchesFor = skin;
+    this.#patchesSize = stamp;
+    this.#patches = createSkinPatches(skin, { patch: SKIN_PATCH });
+
+    return this.#patches;
   }
 
   /** Side of the mirror triangle in device pixels. */
@@ -215,6 +275,8 @@ export class KaleidoscopeRenderer {
     sprites: ChipSprites,
     mode: WedgeMode,
     media: MediaElement | null,
+    skin: MediaElement | null,
+    patches: SkinPatches | null,
     triangleSide: number,
   ): void {
     const ctx = this.#frameCtx;
@@ -274,7 +336,8 @@ export class KaleidoscopeRenderer {
           y: scene.drag.y * DRAG_CELLS,
         },
         sprites,
-        light: settings.light,
+        skin,
+        patches,
       });
       ctx.restore();
     }

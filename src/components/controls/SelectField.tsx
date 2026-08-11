@@ -12,6 +12,8 @@ export interface SelectFieldProps<T extends string> {
   value: T;
   options: readonly SelectOption<T>[];
   onChange: (value: T) => void;
+  /** Extra context announced with the control. */
+  description?: string;
 }
 
 export function SelectField<T extends string>({
@@ -19,8 +21,10 @@ export function SelectField<T extends string>({
   value,
   options,
   onChange,
+  description,
 }: SelectFieldProps<T>) {
   const id = useId();
+  const descriptionId = `${id}-description`;
 
   return (
     <div className={styles.field}>
@@ -31,6 +35,7 @@ export function SelectField<T extends string>({
         id={id}
         className={styles.select}
         value={value}
+        aria-describedby={description ? descriptionId : undefined}
         onChange={(event) => {
           onChange(event.currentTarget.value as T);
         }}
@@ -41,6 +46,11 @@ export function SelectField<T extends string>({
           </option>
         ))}
       </select>
+      {description ? (
+        <p id={descriptionId} className={styles.description}>
+          {description}
+        </p>
+      ) : null}
     </div>
   );
 }

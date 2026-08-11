@@ -1,6 +1,7 @@
 import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
-import { CHIP_VARIANTS, type ChipSprites } from './chips';
+import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
+import { measureSource, type SkinPatches } from './skin';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
@@ -28,7 +29,14 @@ export interface Shard {
   spin: number;
   /** Position along the palette ramp. Glass does not change colour. */
   colorStop: number;
-  alpha: number;
+  /**
+   * Where on a photograph this piece is cut from, each axis in `[0, 1]`.
+   *
+   * Fixed per piece rather than derived from where it currently lies, so a
+   * piece keeps its own patch of the picture as it tumbles instead of the
+   * image swimming about underneath the chamber.
+   */
+  skin: { x: number; y: number };
 }
 
 export interface Scene {
@@ -79,9 +87,6 @@ const MAX_STEP_SECONDS = 1 / 20;
 
 /** How far a full drag moves the chamber, in cell units. */
 export const DRAG_CELLS = 0.5;
-
-/** How much of the glass a strong light burns through. */
-const LIGHT_THINNING = 0.72;
 
 /**
  * How much larger a chip is drawn than the footprint it collides with.
@@ -141,9 +146,7 @@ export function createScene(seed: string, shardCount: number): Scene {
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
       colorStop: rng(),
-      // How much glass the light has to cross. Thin chips wash out against a
-      // bright backdrop, so none of them are very thin.
-      alpha: randomBetween(rng, 0.72, 1),
+      skin: { x: rng(), y: rng() },
     });
   }
 
@@ -207,10 +210,22 @@ export interface DrawChamberOptions {
   chipScale?: number;
   sprites: ChipSprites;
   /**
-   * A stronger light behind the glass: thinner-looking, more brilliant, less
-   * saturated — the difference between a window and a lamp.
+   * A photograph to skin the pieces with, instead of the palette.
+   *
+   * Each piece is cut from its own patch of it, so a chamber of them samples
+   * the picture all over rather than repeating one crop. Nothing about the
+   * lighting changes — a photographed surface is still a surface, and it gets
+   * the same shading and the same blaze as a coloured one.
    */
-  light: boolean;
+  skin?: CanvasImageSource | null;
+  /**
+   * Where in that photograph each piece is cut from.
+   *
+   * Left out, the pieces are cut at uniformly random spots, which is right for
+   * a picture that is interesting all over and wrong for one that is a subject
+   * on a plain backdrop. See `lib/skin.ts`.
+   */
+  patches?: SkinPatches | null;
 }
 
 /**
@@ -222,36 +237,164 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, rotation, pan, chipScale = 1, sprites, light }: DrawChamberOptions,
+  { scale, rotation, pan, chipScale = 1, sprites, skin = null, patches = null }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
   }
 
   ctx.save();
-  // Glass takes colour out of the light behind it rather than adding its own,
-  // and two chips over each other take out more than either alone. That is
-  // what multiply does, and it is why the gaps stay the colour of the light.
-  ctx.globalCompositeOperation = 'multiply';
+  // The pieces are solid, so each one covers what is behind it rather than
+  // tinting it.
+  ctx.globalCompositeOperation = 'source-over';
   ctx.translate(pan.x * scale, pan.y * scale);
   ctx.rotate(rotation);
 
   for (const shard of scene.shards) {
+    const radius = shard.radius * scale * chipScale * DEPTH_OVERLAP;
+
+    if (skin) {
+      drawSkinned(ctx, shard, sprites, skin, patches, scale, radius);
+      continue;
+    }
+
     const sprite = sprites.get(shard.kind, shard.colorStop, shard.variant);
 
     if (!sprite) {
       continue;
     }
 
-    const radius = shard.radius * scale * chipScale * DEPTH_OVERLAP;
-
     ctx.save();
     ctx.translate(shard.x * scale, shard.y * scale);
     ctx.rotate(shard.rotation);
-    ctx.globalAlpha = light ? shard.alpha * LIGHT_THINNING : shard.alpha;
     ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);
     ctx.restore();
   }
 
   ctx.restore();
 }
+
+/**
+ * One piece, cut from a photograph.
+ *
+ * Two ways round, depending on what the picture turned out to be.
+ *
+ * When it is a few separate things on a plain backdrop, the pieces *are* those
+ * things: each one is clipped to an object's own traced silhouette and filled
+ * from the rectangle that object occupies. Nothing is lit — the photograph
+ * arrived with its own light in it, and a second one laid over the top only
+ * argues with the first.
+ *
+ * When it is not — a landscape, a live camera, anything with no backdrop to
+ * separate objects from — there is nothing to cut out, so a piece falls back to
+ * a generated shape filled with a patch of the picture, and that shape is a
+ * solid, so it takes the lighting.
+ *
+ * Either way it happens here rather than in a cached sprite, which is what lets
+ * the camera skin the pieces: its picture is different every frame.
+ */
+function drawSkinned(
+  ctx: CanvasRenderingContext2D,
+  shard: Shard,
+  sprites: ChipSprites,
+  skin: CanvasImageSource,
+  patches: SkinPatches | null,
+  scale: number,
+  radius: number,
+): void {
+  const source = measureSource(skin);
+
+  if (source.width === 0 || source.height === 0) {
+    return;
+  }
+
+  const cut = patches?.cut(shard.skin) ?? null;
+
+  if (cut) {
+    ctx.save();
+    ctx.translate(shard.x * scale, shard.y * scale);
+    ctx.rotate(shard.rotation);
+
+    tracePolygon(
+      ctx,
+      cut.outline.map((point) => ({ x: point.x * radius, y: point.y * radius })),
+    );
+    ctx.clip();
+
+    // The object's own proportions, so a splinter stays a splinter instead of
+    // being stretched to fill a circle.
+    const width = cut.extent.x * radius;
+    const height = cut.extent.y * radius;
+
+    ctx.drawImage(
+      skin,
+      cut.source.x,
+      cut.source.y,
+      cut.source.width,
+      cut.source.height,
+      -width,
+      -height,
+      width * 2,
+      height * 2,
+    );
+    ctx.restore();
+
+    return;
+  }
+
+  drawPatched(ctx, shard, sprites, skin, source, patches, scale, radius);
+}
+
+/** A generated shape filled with a patch of the picture, and lit as a solid. */
+function drawPatched(
+  ctx: CanvasRenderingContext2D,
+  shard: Shard,
+  sprites: ChipSprites,
+  skin: CanvasImageSource,
+  source: { width: number; height: number },
+  patches: SkinPatches | null,
+  scale: number,
+  radius: number,
+): void {
+  const shading = sprites.shading(shard.kind, shard.variant);
+  const blaze = sprites.blaze(shard.kind, shard.variant);
+
+  if (!shading || !blaze) {
+    return;
+  }
+
+  // A square patch, so the picture is not stretched by the piece's proportions.
+  const patch = Math.min(source.width, source.height) * SKIN_PATCH;
+  const where = patches ? patches.pick(shard.skin) : shard.skin;
+  const left = where.x * (source.width - patch);
+  const top = where.y * (source.height - patch);
+
+  ctx.save();
+  ctx.translate(shard.x * scale, shard.y * scale);
+  ctx.rotate(shard.rotation);
+
+  tracePolygon(
+    ctx,
+    sprites.outline(shard.kind, shard.variant).map((point) => ({
+      x: point.x * radius,
+      y: point.y * radius,
+    })),
+  );
+  ctx.clip();
+
+  ctx.drawImage(skin, left, top, patch, patch, -radius, -radius, radius * 2, radius * 2);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.drawImage(shading, -radius, -radius, radius * 2, radius * 2);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.drawImage(blaze, -radius, -radius, radius * 2, radius * 2);
+  ctx.restore();
+}
+
+/**
+ * Fraction of a picture's shorter side that one piece is cut from.
+ *
+ * Small enough that neighbouring pieces are visibly different scraps rather
+ * than near-copies of the whole picture, and large enough that a piece carries
+ * a recognisable part of something rather than a swatch of one colour.
+ */
+export const SKIN_PATCH = 0.26;

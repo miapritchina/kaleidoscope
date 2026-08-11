@@ -31,6 +31,11 @@
   font-size: 0.73rem;
 }
 
+/* The label and its control share a row; the note sits under both. */
+.inline .description {
+  grid-column: 1 / -1;
+}
+
 .range {
   width: 100%;
   height: 1.25rem;

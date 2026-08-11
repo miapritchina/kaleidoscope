@@ -22,6 +22,15 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
+  /** Photo or camera element to skin the pieces with, when `settings.skin` selects one. */
+  skin?: MediaElement | null;
+  /**
+   * Applies a pinched zoom. Left out, pinching does nothing.
+   *
+   * Zoom is a setting rather than a piece of gesture state, so the clamping and
+   * the slider that has to agree with it both belong to the owner of it.
+   */
+  onZoom?: ((zoom: number) => void) | undefined;
   ref?: RefObject<KaleidoscopeHandle | null>;
 }
 
@@ -32,10 +41,23 @@ export interface KaleidoscopeProps {
  * lives in refs. React owns the settings; the animation loop owns the pixels.
  * Re-rendering this component never restarts the animation.
  */
-export function Kaleidoscope({ settings, paused = false, media = null, ref }: KaleidoscopeProps) {
+export function Kaleidoscope({
+  settings,
+  paused = false,
+  media = null,
+  skin = null,
+  onZoom,
+  ref,
+}: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
-  const gesture = useStageGesture();
+  // The pinch reads the zoom when it starts, so it scales from wherever the
+  // zoom has got to rather than from whatever it was when this render ran.
+  const zoomRef = useRef(settings.zoom);
+  useEffect(() => {
+    zoomRef.current = settings.zoom;
+  }, [settings.zoom]);
+  const gesture = useStageGesture({ zoom: () => zoomRef.current, onZoom });
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
   // A new seed or shard count means a genuinely different scene; anything else
@@ -76,8 +98,8 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media);
-  }, [size.width, size.height, scene, settings, media]);
+    renderer.render(scene, settings, media, skin);
+  }, [size.width, size.height, scene, settings, media, skin]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -99,7 +121,7 @@ export function Kaleidoscope({ settings, paused = false, media = null, ref }: Ka
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
       });
-      renderer.render(scene, settings, media);
+      renderer.render(scene, settings, media, skin);
     },
     !paused || gesture.mode !== null,
   );

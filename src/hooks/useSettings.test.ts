@@ -12,7 +12,8 @@ const CHANGES = [
   ['chipSize', 1.5],
   ['zoom', 2],
   ['trails', 0.5],
-  ['light', !DEFAULT_SETTINGS.light],
+  ['skin', 'photo'],
+  ['metallic', !DEFAULT_SETTINGS.metallic],
   ['paletteId', 'ember'],
   ['seed', 'changed'],
 ] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];

@@ -1,11 +1,12 @@
 # Kaleidoscope
 
 An interactive kaleidoscope, rendered on a 2D canvas. A triangular tube of three mirrors
-tiles the field with repeating hexagons, the way a real one does, and you look through the
-glass at a light. Feed it a generated chamber of glass chips, a photo of your own, or a
-live camera feed. Built with React 19, TypeScript and Vite.
+tiles the field with repeating hexagons, the way a real one does. Feed it a generated
+chamber of tumbling objects, a photo of your own, or a live camera feed — and skin the
+objects themselves with a photograph or the camera if you like. Built with React 19,
+TypeScript and Vite.
 
-Swipe across the artwork to turn the cell of glass. Every look is described by a small set of
+Swipe across the artwork to turn the cell. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
 
 ## Getting started
@@ -36,12 +37,15 @@ The dev server prints a local URL (http://localhost:5173 by default).
 A kaleidoscope is a small chamber of loose chips seen through mirrors, and the renderer
 works the same way:
 
-1. **The light.** The far end of a real tube is a frosted window, and everything you see is
-   that light with coloured glass in front of it. So the backdrop is the light source, not
-   a void, and the glass is stamped with `multiply`: it takes its colour out of the light
-   rather than adding light of its own, two chips over each other take out more than
-   either alone, and the gaps stay the colour of the light.
-2. **The source.** `lib/scene.ts` holds the object chamber — loose glass in a bounded cell,
+1. **The light.** It sits at your eye, the way a phone's torch does next to its lens. So
+   the pieces are opaque solids lit from the front: a facet turned towards you is the one
+   that comes back bright, a facet ground away from you goes dark, and the specular peaks
+   in the same place the shading does rather than off to one side. That arrangement is what
+   lets metal read as metal — a hard blaze on some facets and nothing at all on their
+   neighbours. Behind them the ground is white — the objects are the subject, and white is
+   what a photographer would stand them on. It is still a property of the palette rather
+   than a constant, so one can be given its own again, but every palette is white today.
+2. **The source.** `lib/scene.ts` holds the object chamber — loose pieces in a bounded cell,
    simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
    that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
 3. **The triangle.** Once per frame the source is painted from scratch into an offscreen
@@ -71,13 +75,13 @@ That count is what sets the falloff. Neighbouring cells sit one lattice step apa
 step is two reflections, so a point `r` out from the middle has been through about
 `2r / (side * sqrt(3))` of them — and the view is multiplied by a radial gradient whose
 stops are `reflectance ^ bounces` per channel. Brightest and truest on the axis, dimmer and
-greener towards the rim, and it applies to the light coming through the gaps as much as to
-the glass, because the mirrors do not know the difference.
+greener towards the rim, and it applies to the bare backdrop as much as to the pieces,
+because the mirrors do not know the difference.
 
 ### The joins, and the barrel
 
 Three mirrors meeting in a tube have edges, and you can see them: a hairline at every
-triangle boundary, where the silvering stops and the glass is cut. Without them the
+triangle boundary, where the silvering stops and the mirror is cut. Without them the
 reflections run into each other so cleanly that the figure reads as a printed pattern
 rather than something assembled out of parts.
 
@@ -86,7 +90,7 @@ and spaced `side * sqrt(3) / 2` — the height of the triangle. Drawing the thre
 straight is both exact and cheaper than outlining the triangles, which would stroke every
 edge twice, once from each side, and leave the joins twice as dark as the rest. They are
 part of the framework, so they hold still as the cell turns; drawn inside the turning cell
-they would sweep across the glass like a fan.
+they would sweep across the pieces like a fan.
 
 Over the top of all of it is the **barrel**. A kaleidoscope is a tube with an eyehole at one
 end, so the field of view is a circle and it does not end abruptly — the further off the
@@ -94,40 +98,34 @@ axis you look, the more of the barrel is in the way. That is a separate thing fr
 mirrors cost: those dim the light on its way through and are multiplied into it, while the
 barrel is in front of them and simply lies over the top.
 
-### The glass
+### The pieces
 
-A chip is not a lit object on a dark field — it is a hole in the light with a colour. Each
-one is drawn as absorption rather than paint:
+A piece is a cut solid, and it is built as a **mosaic of flat faces** rather than a shaded
+blob. Each face is filled at one level, worked out from how far its normal turns from the
+line of sight — which is also the line the light comes down. Airbrushing a soft falloff
+over the whole thing instead is exactly what makes a rendered solid read as moulded
+plastic.
 
-- **The body** takes the glass's transmission colour out of the light. Palette colours are
-  deep and saturated for the same reason stained glass is: a pale tint over a bright light
-  reads as no glass at all.
-- **The bevel** is the ring of ground faces between the flat top and the edge, shaded by
-  how far each face turns from the light. Its edges are hard, because a ground face is
-  flat; a smooth airbrushed falloff is what makes rendered glass read as moulded plastic.
-- **The rim** is darker still. Light entering there crosses the most glass and meets the
-  edge side-on, so the border of a piece of glass is always its darkest part.
-- **The catch-light** is one small hard white spark. Glass is specular, and that spark is
-  most of what separates it from a coloured shape.
-- **The cracks** are internal fractures. Glass broken down to this size is nearly always
-  cracked short of broken somewhere inside as well, and a fracture is a reflecting surface
-  in the middle of a transparent solid — so it reads as a bright hairline, not a dark one.
-  Each starts on an edge, wanders inwards, and stops where it ran out of energy.
-- **The bubbles** are trapped air. Cheap glass is full of seeds frozen in as it cooled, and
-  a bubble is a void: it bends light around its edge and lets it straight through the
-  middle, so it comes out as a dark ring with a bright centre. A plain dot would read as a
-  speck of dirt.
+Two layers are rendered per cut, and kept apart because they composite differently:
 
-The body is graded across the piece rather than laid down as one flat wash, because a
-fragment off a broken sheet is a wedge and not a slab. The bevel faces stay flat — that part
-is a solid with ground faces, and airbrushing them is exactly what makes rendered glass read
-as plastic.
+- **The shading** is how much of the light each facet returns, stamped with `multiply`.
+  The flat top faces you and comes back brightest; the ring of ground bevel faces is tilted
+  away and comes back darker, each face by its own amount. The rim is darkest of all — the
+  last sliver before the piece turns away from you entirely.
+- **The blaze** is the specular on top, stamped with `lighter`. Its sharpness is the whole
+  difference between the two finishes: raised to a low power it is a soft sheen across a
+  matte stone, and to a high one it is either blown out or absent, which is what a polished
+  metal actually does.
+
+That split is not only tidiness. The same two layers go over a **photograph** to skin a
+piece with it, so they have to exist apart from any colour. A finished palette-coloured
+piece is just the two of them composed over a flat fill, done once at build time because
+the colour never changes between frames.
 
 Colours are picked from the palette, never blended between two of its stops: a chamber is
-loaded from a handful of jars of coloured glass, and the halfway house between a green and
-a magenta is mud. Within a jar, each colour is rendered in a few shades — glass is coloured
-by metal oxides stirred into a melt and the melt is never quite even, so a chamber where
-every green is the identical green reads as printed.
+loaded from a handful of jars, and the halfway house between a green and a magenta is mud.
+Within a jar, each colour is rendered in a few shades — no melt is ever quite even, so a
+chamber where every green is the identical green reads as printed.
 
 Outlines are irregular polygons generated from a seed fixed by the shape and the cut, so
 every piece looks broken rather than stamped while staying identical between runs — the
@@ -138,8 +136,8 @@ the same trick the mirror triangle uses, one level down.
 
 Chips are drawn a little larger than the footprint they collide with. A real chamber is
 several pieces deep and the simulation is one layer, so at exactly the collision radius
-nothing ever overlaps anything, and the whole point of glass over glass — that it deepens,
-and that a green over a red goes nearly black — never once happens.
+nothing ever overlaps anything, and a heap of solids that never once occludes each other
+reads as a scatter of stickers rather than a pile.
 
 Everything under `src/lib/` is plain TypeScript with no React imports, which is what makes
 the interesting parts testable without a browser.
@@ -157,24 +155,26 @@ src/
 
 ## Settings
 
-| Setting      | Range               | Effect                                           |
-| ------------ | ------------------- | ------------------------------------------------ |
-| Input        | shards/photo/camera | What the mirrors repeat                          |
-| Zoom         | 0.5x–3x             | Magnification of the object cell                 |
-| Trails       | 0–95%               | How long each frame lingers                      |
-| Count        | 4–60                | Pieces of glass in the chamber                   |
-| Chip size    | 0.4x–2.5x           | How big each piece is, without changing how many |
-| Palette      | 5 presets           | The glass colours, and the light behind them     |
-| Bright light | on/off              | A lamp rather than a diffuse window              |
-| Seed         | any text            | Seeds the glass generator; same seed, same glass |
+| Setting   | Range                | Effect                                            |
+| --------- | -------------------- | ------------------------------------------------- |
+| Input     | shards/photo/camera  | What the mirrors repeat                           |
+| Zoom      | 0.5x–3x              | Magnification of the object cell                  |
+| Trails    | 0–95%                | How long each frame lingers                       |
+| Count     | 4–60                 | Pieces in the chamber                             |
+| Chip size | 0.4x–2.5x            | How big each piece is, without changing how many  |
+| Skin      | palette/photo/camera | What the pieces are surfaced with                 |
+| Palette   | 5 presets            | The piece colours                                 |
+| Metallic  | on/off               | Polished metal rather than matte stone            |
+| Seed      | any text             | Seeds the piece generator; same seed, same pieces |
 
-The last five apply to the glass only; the rest apply to every source. There is no mirror
+The last six apply to the shards only; the rest apply to every source. There is no mirror
 control — a tube has three — and no spin control: it is turned by swiping, as below.
 
-**Trails** blend whole frames rather than fading the surface each frame is painted on.
-`multiply` is not idempotent: a still pile stamped over its own remains every frame
-converges on something far darker than a single pass of it, so the surface is repainted
-from scratch and the previous frames are kept as a share of the blend instead.
+**Trails** blend whole frames rather than fading the surface each frame is painted on. The
+pieces are composited with `multiply` and `lighter`, neither of which is idempotent: a
+still pile stamped over its own remains every frame walks away from a single pass of it. So
+the frame is painted from scratch each time and the previous ones are kept as a share of
+the blend instead.
 
 ## The mirrors
 
@@ -194,7 +194,7 @@ reaches all three corners. Hung off the corner the six triangles are assembled a
 instead, most of the chamber sits outside the view and turning sweeps the pile clean out of
 it, emptying the field. The mirrors cut the chips at the triangle's edges and each one
 continues into its own reflection, which is what fills a real chamber. Cell size alone
-would set both the chip size and how many land in view, so **Chip size** scales the glass
+would set both the chip size and how many land in view, so **Chip size** scales the pieces
 on its own.
 
 Older links carried a mirror arrangement this app no longer offers. They still open, on
@@ -210,7 +210,7 @@ glass falling.
 
 Swipe across the artwork. Left-to-right or top-to-bottom turns it anticlockwise, and the
 swipe's speed sets how fast. Let go mid-swipe and it **coasts** to a stop within a second
-or so, the way a real barrel does. That matters more than it sounds: the glass only moves
+or so, the way a real barrel does. That matters more than it sounds: the pieces only move
 while the tube is turning, so a turn that ended with the finger gave the pile a fraction of
 a second to avalanche in — not long enough to see it happen at all. Measured on the built
 app, a thumb-flick now keeps the field changing for two to three seconds before it settles.
@@ -219,7 +219,7 @@ Hold still mid-swipe and it holds still; touch it again and the coast stops dead
 The cell turns and gravity does not, so gravity does not point "down" in the cell's
 coordinates — it points down in the **world**, and turning sweeps that direction around it.
 That is the whole mechanism: the pattern does not change because something is rotating, it
-changes because turning tips the glass, it avalanches, and it settles into a new pile.
+changes because turning tips the pile, it avalanches, and it settles into a new one.
 
 The renderer draws the cell rotated by its own angle, so world-down has to be turned back
 by that same angle to land in the cell's axes. Signing that the other way — the easy
@@ -255,8 +255,19 @@ A photo or camera frame has no physics of its own, so it simply turns with the c
 little behind it — a capped lag, which lets it evolve as it turns rather than revolving
 rigidly.
 
-Hold **Shift**, use a secondary button, or put a second finger down to pan the source
-instead of turning it.
+Hold **Shift**, use a secondary button, or put a second finger down to move the source
+instead of turning it. With two fingers down it is the pair that is tracked rather than
+either one: the point midway between them drags the source, and the span between them
+zooms it, the way a photo viewer on a phone behaves. Tracking the first finger alone would
+shove the source sideways every time the other one squeezed.
+
+Two things make the pinch behave on a real hand. Pointer events arrive one finger at a
+time, so between two of them the span reflects one finger that has moved and one that has
+not — a transient the hand never made — and the pinch is only read once both have reported
+in. And fingers dragging together are never quite parallel, so a change under 6% is left
+alone, which is what keeps a two-finger drag from creeping the zoom along with it. The
+pinch scales from wherever the zoom already is, so a spread, a lift and another spread
+compound rather than starting over, and the Zoom slider follows along live.
 
 Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
 link wins over stored settings on load. Both are treated as untrusted input and clamped to
@@ -273,18 +284,57 @@ point at the world, and a phone's front camera points at your face. It is asked 
 preference rather than a requirement, so a laptop with only a front camera still gets that
 one instead of failing outright.
 
-Pointing either at real glass is worth doing. The mirrors do not care where their pixels
-came from, so a photograph of coloured glass beads gives you genuinely photographic glass —
-which no amount of drawing chips will match.
+Pointing either at something with real surface is worth doing. The mirrors do not care
+where their pixels came from, so a photograph of polished stone or beaten metal gives you a
+genuinely photographic material, which no amount of drawing will match.
+
+**Skin** is the other way round, and a separate setting: the mirrors go on repeating
+whatever **Input** says, and the photograph or camera frame becomes _the objects themselves_
+instead. What tumbles in the chamber and piles up is cut out of the picture, rather than the
+picture being flattened onto the mirrors. Which part each piece gets is fixed, so it keeps
+its own scrap while it turns rather than swimming through the image. The camera is
+requested, and a photo asked for, whenever either the input or the skin wants it.
+
+When the picture is a few separate things on a plain backdrop — which is what a stock shot
+of gemstones or minerals is — the pieces stop being generated shapes altogether and _become
+those things_ (`lib/skin.ts`). The picture is sampled to 96x96, the backdrop taken as the
+median of the border pixels, and everything far enough from that colour flood-filled into
+separate objects. Each object is traced by casting rays out from its own middle and taking
+the furthest pixel along each: a star-shaped approximation, exact for the compact things
+this is for and incapable of the self-intersecting mess a contour walk gives on a ragged
+edge. What comes back is a silhouette and the rectangle it occupies, in a shared frame, so
+clipping to one and drawing the other lines them up. The silhouette is pulled in 7%, because
+at that sample size the ring where an object meets the backdrop is a blend of the two and
+reads as a halo drawn round it.
+
+Objects keep their own proportions, so a splinter stays a splinter rather than being
+stretched to fill a circle — and nothing is lit. The photograph arrived with its own light
+in it, and a second one laid over the top only argues with the first. On the gemstone photo
+this takes the picture's backdrop from 28% of the frame down to 0.7%, and what tumbles in
+the chamber is the crystals.
+
+Three guards decide whether a picture is that kind at all: an object covering more than 55%
+of the frame is not an object but a picture with no backdrop, one under 0.2% is a speck, and
+fewer than three of them is not worth switching for. Failing any of those, a piece falls
+back to a generated shape filled with a patch of the picture, and that shape _is_ a solid,
+so it takes the lighting. Where that patch is cut from is still chosen rather than taken at
+random: each candidate is weighted by how much of it sits away from the backdrop colour,
+which on the same photograph takes the backdrop from 28% down to 16%. A picture with no
+plain backdrop scores flat, and the choice reduces to the uniform one it replaced.
+
+None of this is per frame. A camera feed is not rescored as it plays: reading a canvas back
+is a pipeline stall, and a live feed is interesting all over anyway. A cross-origin picture
+taints the canvas and cannot be read at all, which is a reason to cut it at random, not a
+reason to refuse to draw it.
 
 Both stay on the device. The photo is read through an object URL, drawn to a canvas, and
 the URL revoked; the camera is a `getUserMedia` stream drawn frame by frame. Nothing is
 uploaded, and no frame is stored. The camera is requested only while it is the selected
-source, and its tracks are stopped the moment you switch away, so the camera light does
-not stay on behind your back.
+source or the chosen skin, and its tracks are stopped the moment you switch away from both,
+so the camera light does not stay on behind your back.
 
-Shift-drag (or two-finger drag) moves the source around. It follows the pointer and stays
-where it is let go.
+Shift-drag, or a two-finger drag, moves the source around; pinching those two fingers
+zooms it. It follows the pointer and stays where it is let go.
 
 A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
 its edges would show inside the wedge — and its travel is bounded by however much of the

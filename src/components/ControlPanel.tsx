@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { CameraStatus } from '../hooks/useCamera';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type Settings, type SourceId } from '../lib/settings';
+import { LIMITS, type Settings, type SkinId, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -38,6 +38,12 @@ const PALETTE_OPTIONS = PALETTES.map((palette) => ({
 const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'shards', label: 'Shards' },
   { value: 'image', label: 'Photo' },
+  { value: 'camera', label: 'Camera' },
+];
+
+const SKIN_OPTIONS: { value: SkinId; label: string }[] = [
+  { value: 'palette', label: 'Palette' },
+  { value: 'photo', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
 ];
 
@@ -105,7 +111,9 @@ export function ControlPanel({
           }}
         />
 
-        {settings.source === 'image' && (
+        {/* A photo is wanted either to mirror or to cut the pieces' surfaces
+            from, so the picker follows whichever is asking for it. */}
+        {(settings.source === 'image' || settings.skin === 'photo') && (
           <>
             <FileField
               label="Photo"
@@ -130,7 +138,7 @@ export function ControlPanel({
           </>
         )}
 
-        {settings.source === 'camera' && (
+        {(settings.source === 'camera' || settings.skin === 'camera') && (
           <>
             <SelectField
               label="Camera"
@@ -200,7 +208,16 @@ export function ControlPanel({
             onChange={(value) => {
               onChange('chipSize', value);
             }}
-            description="How big each piece of glass is, without changing how many there are."
+            description="How big each piece is, without changing how many there are."
+          />
+          <SelectField
+            label="Skin"
+            value={settings.skin}
+            options={SKIN_OPTIONS}
+            onChange={(value) => {
+              onChange('skin', value);
+            }}
+            description="What the pieces are. Given a photo of a few things on a plain background, they become those things."
           />
           <SelectField
             label="Palette"
@@ -209,13 +226,17 @@ export function ControlPanel({
             onChange={(value) => {
               onChange('paletteId', value);
             }}
+            {...(settings.skin === 'palette'
+              ? {}
+              : { description: 'Only the shard colours, which a skin replaces.' })}
           />
           <ToggleField
-            label="Bright light"
-            checked={settings.light}
+            label="Metallic"
+            checked={settings.metallic}
             onChange={(checked) => {
-              onChange('light', checked);
+              onChange('metallic', checked);
             }}
+            description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
           />
           <TextField
             label="Seed"

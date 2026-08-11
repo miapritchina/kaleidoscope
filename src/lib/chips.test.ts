@@ -7,6 +7,15 @@ import { SHARD_KINDS } from './scene';
 
 const palette = getPalette('aurora');
 
+/** Canvases rendered per finished piece: the shading, the blaze, the piece. */
+const LAYERS = 3;
+
+/** How each kind is cut. Mirrors the table in `chips.ts`. */
+const CUTS = {
+  triangle: { faces: 3, tableFaces: 3 },
+  bead: { faces: 6, tableFaces: 3 },
+} as const;
+
 /** Mean channel of an `rgb(r g b / a)` string, for comparing two paints. */
 function brightness(style: unknown): number {
   const channels = /rgb\((\d+) (\d+) (\d+)/.exec(String(style));
@@ -44,7 +53,8 @@ describe('createChipSprites', () => {
       expect(sprites.get(kind, 0.5)).not.toBeNull();
     }
 
-    expect(createCanvas).toHaveBeenCalledTimes(SHARD_KINDS.length);
+    // The piece itself, plus the two lighting layers it is composed from.
+    expect(createCanvas).toHaveBeenCalledTimes(SHARD_KINDS.length * LAYERS);
   });
 
   // Chips are drawn hundreds of times a frame; rendering the gradient each time
@@ -57,7 +67,7 @@ describe('createChipSprites', () => {
     const again = sprites.get('bead', 0.25);
 
     expect(again).toBe(first);
-    expect(createCanvas).toHaveBeenCalledOnce();
+    expect(createCanvas).toHaveBeenCalledTimes(LAYERS);
   });
 
   it('quantises nearby colours onto the same sprite', () => {
@@ -65,7 +75,7 @@ describe('createChipSprites', () => {
     const sprites = createChipSprites(palette, { steps: 8, createCanvas });
 
     expect(sprites.get('bead', 0.26)).toBe(sprites.get('bead', 0.24));
-    expect(createCanvas).toHaveBeenCalledOnce();
+    expect(createCanvas).toHaveBeenCalledTimes(LAYERS);
   });
 
   it('separates distinct colours', () => {
@@ -73,7 +83,9 @@ describe('createChipSprites', () => {
     const sprites = createChipSprites(palette, { steps: 8, createCanvas });
 
     expect(sprites.get('bead', 0.1)).not.toBe(sprites.get('bead', 0.6));
-    expect(createCanvas).toHaveBeenCalledTimes(2);
+    // The lighting depends on the cut rather than the colour, so the second
+    // colour costs one more canvas rather than another three.
+    expect(createCanvas).toHaveBeenCalledTimes(LAYERS + 1);
   });
 
   it('wraps colour positions outside [0, 1]', () => {
@@ -85,46 +97,92 @@ describe('createChipSprites', () => {
   });
 
   // A chip is a solid with flat faces, and each face turns the light a
-  // different way. Airbrushing a single soft gradient over it is what makes
-  // rendered glass read as plastic.
-  it('paints a body, the faces of a bevel, a catch-light and a rim', () => {
+  // different way. Airbrushing a single soft gradient over it is what makes a
+  // rendered solid read as plastic.
+  it('paints the piece as a mosaic of flat faces rather than one dome', () => {
     const { contexts, createCanvas } = recordingCanvases();
     const sprites = createChipSprites(palette, { createCanvas });
 
     sprites.get('triangle', 0.5);
 
-    const [chip] = contexts;
-    // The body, three bevel faces and the spark, plus a fill per bubble.
-    expect(chip!.countOf('fill')).toBeGreaterThanOrEqual(5);
-    // The rim, plus a stroke per crack and per bubble.
-    expect(chip!.countOf('stroke')).toBeGreaterThanOrEqual(2);
-    // Two clips: the spark, and the flaws. Both would otherwise be able to
-    // spill over an edge of an irregular cut and show outside the glass.
-    expect(chip!.countOf('clip')).toBe(2);
+    // Built shading first, then the blaze, then the piece composed from them.
+    const [shading] = contexts;
+    const faces = CUTS.triangle.faces + CUTS.triangle.tableFaces;
+
+    expect(shading!.countOf('fill')).toBe(faces);
+    // Every face is filled with its own level, not all with one.
+    expect(
+      new Set(shading!.stylesOf('fill').map((style) => String(style.fillStyle))).size,
+    ).toBeGreaterThan(1);
+    // The rim: the last sliver before the piece turns away from you entirely.
+    expect(shading!.countOf('stroke')).toBe(1);
   });
 
-  // Glass broken down to this size is nearly always cracked short of broken
-  // somewhere inside as well, and a fracture reflects, so it reads as a bright
-  // hairline rather than a dark one.
-  it('cracks every piece, and draws the fractures light against a dark rim', () => {
-    for (const kind of SHARD_KINDS) {
+  // The light is at the eye, so a face turned towards you returns the most and
+  // one tilted away returns less. Getting that backwards inverts the solid.
+  it('shades the flat top brighter than the faces ground away from you', () => {
+    const { contexts, createCanvas } = recordingCanvases();
+
+    createChipSprites(palette, { createCanvas }).shading('bead');
+
+    const fills = contexts[0]!.stylesOf('fill').map((style) => brightness(style.fillStyle));
+    const table = fills.slice(0, CUTS.bead.tableFaces);
+    const bevel = fills.slice(CUTS.bead.tableFaces);
+
+    expect(Math.min(...table)).toBeGreaterThan(Math.max(...bevel));
+  });
+
+  // Metal is either blazing or black; stone shades gently between. That
+  // difference, and not the colour, is what reads as polished.
+  it('blazes harder off metal than off stone, and shadows it deeper', () => {
+    const build = (metallic: boolean) => {
       const { contexts, createCanvas } = recordingCanvases();
+      const sprites = createChipSprites(palette, { createCanvas, metallic });
 
-      createChipSprites(palette, { createCanvas }).get(kind, 0.5);
+      sprites.shading('bead');
+      sprites.blaze('bead');
 
-      const strokes = contexts[0]!.stylesOf('stroke');
-      // At least one fracture, then the rim. Bubbles may add more between.
-      expect(strokes.length, kind).toBeGreaterThan(1);
+      return {
+        shading: contexts[0]!.stylesOf('fill').map((style) => brightness(style.fillStyle)),
+        // The first fill is the black ground the specular is added over.
+        blaze: contexts[1]!
+          .stylesOf('fill')
+          .slice(1)
+          .map((style) => brightness(style.fillStyle)),
+      };
+    };
 
-      // A fracture is a surface inside a transparent solid, so it reflects:
-      // it comes out as a bright hairline. The rim is the opposite — the light
-      // crosses the most glass there — and it is drawn last.
-      const rim = strokes.at(-1)!;
-      const inside = strokes.slice(0, -1).map((style) => brightness(style.strokeStyle));
+    const stone = build(false);
+    const metal = build(true);
 
-      expect(Math.max(...inside), kind).toBeGreaterThan(200);
-      expect(brightness(rim.strokeStyle), kind).toBeLessThan(120);
+    expect(Math.max(...metal.blaze)).toBeGreaterThan(Math.max(...stone.blaze));
+    expect(Math.min(...metal.shading)).toBeLessThan(Math.min(...stone.shading));
+    // Either blazing or black: most faces of a metal piece catch nothing.
+    expect(metal.blaze.filter((level) => level < 1).length).toBeGreaterThan(metal.blaze.length / 2);
+  });
+
+  // The two layers go over a photograph as well as over a palette colour, so
+  // they have to be usable apart from the finished piece.
+  it('offers the lighting on its own, and the outline to clip a photo to', () => {
+    const { createCanvas } = recordingCanvases();
+    const sprites = createChipSprites(palette, { createCanvas });
+
+    expect(sprites.shading('shard')).not.toBeNull();
+    expect(sprites.blaze('shard')).not.toBeNull();
+
+    const outline = sprites.outline('shard');
+    expect(outline.length).toBeGreaterThan(2);
+    // On the unit circle, so the caller scales it to whatever the piece is.
+    for (const point of outline) {
+      expect(Math.hypot(point.x, point.y)).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('gives the same cut the same outline every time', () => {
+    const sprites = createChipSprites(palette, { createCanvas: recordingCanvases().createCanvas });
+
+    expect(sprites.outline('bead', 1)).toEqual(sprites.outline('bead', 1));
+    expect(sprites.outline('bead', 1)).not.toEqual(sprites.outline('bead', 0));
   });
 
   // The palette is a handful of jars, but a melt is never quite even, and a
@@ -148,7 +206,8 @@ describe('createChipSprites', () => {
 
     expect(sprites.get('shard', 0.5, 0)).not.toBe(sprites.get('shard', 0.5, 1));
     expect(sprites.get('shard', 0.5, CHIP_VARIANTS)).toBe(sprites.get('shard', 0.5, 0));
-    expect(createCanvas).toHaveBeenCalledTimes(2);
+    // A different cut is a different shape, so it needs its own lighting too.
+    expect(createCanvas).toHaveBeenCalledTimes(LAYERS * 2);
   });
 
   it('survives a canvas that cannot give a context', () => {
