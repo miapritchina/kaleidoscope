@@ -121,6 +121,17 @@ const OUTLINE_TRIM = 0.93;
  */
 const CONTENT_DISTANCE = 78;
 
+/** Alpha at which a pixel counts as part of an object rather than its fringe. */
+const ALPHA_SOLID = 128;
+
+/**
+ * How much of a picture must be transparent before its alpha is trusted alone.
+ *
+ * A photograph has none, and a stray transparent corner is not a cut-out. A
+ * genuine one is mostly nothing.
+ */
+const ALPHA_SHARE = 0.05;
+
 /**
  * How sharply the choice favours the better patches.
  *
@@ -388,19 +399,52 @@ function borderColor(pixels: ImageData): [number, number, number] {
   return [median(edge[0]), median(edge[1]), median(edge[2])];
 }
 
-/** 1 where a pixel carries something, 0 where it is backdrop. */
+/**
+ * 1 where a pixel carries something, 0 where it is backdrop.
+ *
+ * A cut-out PNG has already been segmented by whoever made it, and its alpha
+ * channel says exactly what is object and what is nothing. Where there is one,
+ * it is used on its own and the colour is not consulted at all — a diamond with
+ * near-black facets against a transparent ground reads as backdrop by colour,
+ * which punches holes through the middle of it and breaks one gem into several.
+ *
+ * Only where there is no useful alpha does the backdrop colour decide, which is
+ * the case for a photograph.
+ */
 function contentMask(pixels: ImageData, backdrop: [number, number, number]): Float32Array {
   const { width, height, data } = pixels;
   const mask = new Float32Array(width * height);
+  let clear = 0;
+
+  for (let p = 0; p < mask.length; p += 1) {
+    if (data[p * 4 + 3]! < ALPHA_SOLID) {
+      clear += 1;
+    }
+  }
+
+  const keyed = clear / mask.length >= ALPHA_SHARE;
 
   for (let p = 0; p < mask.length; p += 1) {
     const i = p * 4;
+
+    // Half-covered edge pixels — which is what downsampling a cut-out makes of
+    // its outline — count as backdrop, so the silhouette lands inside the fringe.
+    if (data[i + 3]! < ALPHA_SOLID) {
+      mask[p] = 0;
+      continue;
+    }
+
+    if (keyed) {
+      mask[p] = 1;
+      continue;
+    }
+
     const distance =
       Math.abs(data[i]! - backdrop[0]) +
       Math.abs(data[i + 1]! - backdrop[1]) +
       Math.abs(data[i + 2]! - backdrop[2]);
-    // Fully transparent pixels are backdrop whatever colour they claim to be.
-    mask[p] = data[i + 3]! < 128 || distance < CONTENT_DISTANCE ? 0 : 1;
+
+    mask[p] = distance < CONTENT_DISTANCE ? 0 : 1;
   }
 
   return mask;

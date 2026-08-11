@@ -12,7 +12,6 @@ const CHANGES = [
   ['chipSize', 1.5],
   ['zoom', 2],
   ['trails', 0.5],
-  ['skin', 'photo'],
   ['metallic', !DEFAULT_SETTINGS.metallic],
   ['paletteId', 'ember'],
   ['seed', 'changed'],

@@ -174,10 +174,11 @@ export class KaleidoscopeRenderer {
    * @param media Photo or camera element to mirror instead of the shard field.
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
-   * @param skin Photo or camera element to cut the pieces' surfaces from.
-   *   Ignored unless `settings.skin` selects it. A separate element from
-   *   `media`, because skinning the objects with the camera while the mirrors
-   *   repeat a photo is a perfectly reasonable thing to ask for.
+   * @param skin A picture to cut the pieces themselves out of, in place of the
+   *   generated shapes — see `lib/skin.ts`. Separate from `media`, which the
+   *   mirrors repeat: the two are independent, and the objects can come out of
+   *   one picture while the mirrors repeat another. Nothing supplies one today;
+   *   this is where the built-in object collection plugs in.
    */
   render(
     scene: Scene,
@@ -205,9 +206,9 @@ export class KaleidoscopeRenderer {
     const mode: WedgeMode =
       settings.source === 'shards' ? 'shards' : isMediaReady(frame) ? 'media' : 'empty';
 
-    // Until it has pixels there is nothing to cut a surface from, so the pieces
+    // Until it has pixels there is nothing to cut objects out of, so the pieces
     // fall back to their palette colours rather than to a blank rectangle.
-    const surface = settings.skin !== 'palette' && isMediaReady(skin) ? skin : null;
+    const surface = isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
 
     this.#paintWedge(

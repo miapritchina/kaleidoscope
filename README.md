@@ -2,9 +2,8 @@
 
 An interactive kaleidoscope, rendered on a 2D canvas. A triangular tube of three mirrors
 tiles the field with repeating hexagons, the way a real one does. Feed it a generated
-chamber of tumbling objects, a photo of your own, or a live camera feed — and skin the
-objects themselves with a photograph or the camera if you like. Built with React 19,
-TypeScript and Vite.
+chamber of tumbling objects, a photo of your own, or a live camera feed. Built with React
+19, TypeScript and Vite.
 
 Swipe across the artwork to turn the cell. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
@@ -117,8 +116,8 @@ Two layers are rendered per cut, and kept apart because they composite different
   matte stone, and to a high one it is either blown out or absent, which is what a polished
   metal actually does.
 
-That split is not only tidiness. The same two layers go over a **photograph** to skin a
-piece with it, so they have to exist apart from any colour. A finished palette-coloured
+That split is not only tidiness. The same two layers go over a **photograph** where a piece
+is cut from one, so they have to exist apart from any colour. A finished palette-coloured
 piece is just the two of them composed over a flat fill, done once at build time because
 the colour never changes between frames.
 
@@ -126,6 +125,48 @@ Colours are picked from the palette, never blended between two of its stops: a c
 loaded from a handful of jars, and the halfway house between a green and a magenta is mud.
 Within a jar, each colour is rendered in a few shades — no melt is ever quite even, so a
 chamber where every green is the identical green reads as printed.
+
+### Cutting the pieces out of a picture
+
+`lib/skin.ts` turns a photograph into the pieces themselves, rather than into a surface laid
+over generated ones. **Nothing in the app reaches it today** — the built-in object collection
+is what will drive it — but the engine and the drawing path are here and tested, and
+`KaleidoscopeRenderer.render` takes the picture as its fourth argument.
+
+When a picture is a few separate things on a plain backdrop, which is what a set of cut-out
+gemstones is, it comes apart cleanly. The picture is sampled to 96x96 and everything that is
+not backdrop is flood-filled into separate objects. What counts as backdrop depends on what
+the picture is: an image with meaningful transparency — at least a twentieth of it clear —
+has already been segmented by whoever made it, so its alpha decides and the colour is never
+consulted. Judging a cut-out by colour instead punches holes through a diamond with
+near-black facets, because near-black is near the transparent ground's own colour. Failing
+that, the backdrop is the median of the border pixels and a pixel belongs to an object when
+it sits far enough from it.
+
+Each object is traced by casting rays out from its own middle and taking the furthest pixel
+along each: a star-shaped approximation, exact for the compact things this is for and
+incapable of the self-intersecting mess a contour walk gives on a ragged edge. What comes
+back is a silhouette and the rectangle the object occupies, in a shared frame, so clipping
+to one and drawing the other lines them up. The silhouette is pulled in 7%, because at that
+sample size the ring where an object meets the backdrop is a blend of the two and reads as a
+halo drawn round it. Objects keep their own proportions, so a splinter stays a splinter
+rather than being stretched to fill a circle.
+
+Nothing on this path is lit. The photograph arrived with its own light in it, and a second
+one laid over the top only argues with the first.
+
+Three guards decide whether a picture is that kind at all: an object covering more than 55%
+of the frame is not an object but a picture with no backdrop, one under 0.2% is a speck, and
+fewer than three of them is not worth switching for. Failing any of those — a landscape, a
+live camera — a piece falls back to a generated shape filled with a patch of the picture,
+and that shape _is_ a solid, so it takes the lighting. Where that patch comes from is
+weighted by how much of it sits away from the backdrop colour, so a picture that is mostly
+empty does not give a chamber of empty pieces.
+
+None of it is per frame. A camera feed is not rescored as it plays: reading a canvas back is
+a pipeline stall, and a live feed is interesting all over anyway. A cross-origin picture
+taints the canvas and cannot be read at all, which is a reason to cut it at random, not a
+reason to refuse to draw it.
 
 Outlines are irregular polygons generated from a seed fixed by the shape and the cut, so
 every piece looks broken rather than stamped while staying identical between runs — the
@@ -155,19 +196,18 @@ src/
 
 ## Settings
 
-| Setting   | Range                | Effect                                            |
-| --------- | -------------------- | ------------------------------------------------- |
-| Input     | shards/photo/camera  | What the mirrors repeat                           |
-| Zoom      | 0.5x–3x              | Magnification of the object cell                  |
-| Trails    | 0–95%                | How long each frame lingers                       |
-| Count     | 4–60                 | Pieces in the chamber                             |
-| Chip size | 0.4x–2.5x            | How big each piece is, without changing how many  |
-| Skin      | palette/photo/camera | What the pieces are surfaced with                 |
-| Palette   | 5 presets            | The piece colours                                 |
-| Metallic  | on/off               | Polished metal rather than matte stone            |
-| Seed      | any text             | Seeds the piece generator; same seed, same pieces |
+| Setting   | Range               | Effect                                            |
+| --------- | ------------------- | ------------------------------------------------- |
+| Input     | shards/photo/camera | What the mirrors repeat                           |
+| Zoom      | 0.5x–3x             | Magnification of the object cell                  |
+| Trails    | 0–95%               | How long each frame lingers                       |
+| Count     | 4–60                | Pieces in the chamber                             |
+| Chip size | 0.4x–2.5x           | How big each piece is, without changing how many  |
+| Palette   | 5 presets           | The piece colours                                 |
+| Metallic  | on/off              | Polished metal rather than matte stone            |
+| Seed      | any text            | Seeds the piece generator; same seed, same pieces |
 
-The last six apply to the shards only; the rest apply to every source. There is no mirror
+The last five apply to the shards only; the rest apply to every source. There is no mirror
 control — a tube has three — and no spin control: it is turned by swiping, as below.
 
 **Trails** blend whole frames rather than fading the surface each frame is painted on. The
@@ -288,50 +328,11 @@ Pointing either at something with real surface is worth doing. The mirrors do no
 where their pixels came from, so a photograph of polished stone or beaten metal gives you a
 genuinely photographic material, which no amount of drawing will match.
 
-**Skin** is the other way round, and a separate setting: the mirrors go on repeating
-whatever **Input** says, and the photograph or camera frame becomes _the objects themselves_
-instead. What tumbles in the chamber and piles up is cut out of the picture, rather than the
-picture being flattened onto the mirrors. Which part each piece gets is fixed, so it keeps
-its own scrap while it turns rather than swimming through the image. The camera is
-requested, and a photo asked for, whenever either the input or the skin wants it.
-
-When the picture is a few separate things on a plain backdrop — which is what a stock shot
-of gemstones or minerals is — the pieces stop being generated shapes altogether and _become
-those things_ (`lib/skin.ts`). The picture is sampled to 96x96, the backdrop taken as the
-median of the border pixels, and everything far enough from that colour flood-filled into
-separate objects. Each object is traced by casting rays out from its own middle and taking
-the furthest pixel along each: a star-shaped approximation, exact for the compact things
-this is for and incapable of the self-intersecting mess a contour walk gives on a ragged
-edge. What comes back is a silhouette and the rectangle it occupies, in a shared frame, so
-clipping to one and drawing the other lines them up. The silhouette is pulled in 7%, because
-at that sample size the ring where an object meets the backdrop is a blend of the two and
-reads as a halo drawn round it.
-
-Objects keep their own proportions, so a splinter stays a splinter rather than being
-stretched to fill a circle — and nothing is lit. The photograph arrived with its own light
-in it, and a second one laid over the top only argues with the first. On the gemstone photo
-this takes the picture's backdrop from 28% of the frame down to 0.7%, and what tumbles in
-the chamber is the crystals.
-
-Three guards decide whether a picture is that kind at all: an object covering more than 55%
-of the frame is not an object but a picture with no backdrop, one under 0.2% is a speck, and
-fewer than three of them is not worth switching for. Failing any of those, a piece falls
-back to a generated shape filled with a patch of the picture, and that shape _is_ a solid,
-so it takes the lighting. Where that patch is cut from is still chosen rather than taken at
-random: each candidate is weighted by how much of it sits away from the backdrop colour,
-which on the same photograph takes the backdrop from 28% down to 16%. A picture with no
-plain backdrop scores flat, and the choice reduces to the uniform one it replaced.
-
-None of this is per frame. A camera feed is not rescored as it plays: reading a canvas back
-is a pipeline stall, and a live feed is interesting all over anyway. A cross-origin picture
-taints the canvas and cannot be read at all, which is a reason to cut it at random, not a
-reason to refuse to draw it.
-
 Both stay on the device. The photo is read through an object URL, drawn to a canvas, and
 the URL revoked; the camera is a `getUserMedia` stream drawn frame by frame. Nothing is
 uploaded, and no frame is stored. The camera is requested only while it is the selected
-source or the chosen skin, and its tracks are stopped the moment you switch away from both,
-so the camera light does not stay on behind your back.
+source, and its tracks are stopped the moment you switch away, so the camera light does not
+stay on behind your back.
 
 Shift-drag, or a two-finger drag, moves the source around; pinching those two fingers
 zooms it. It follows the pointer and stays where it is let go.

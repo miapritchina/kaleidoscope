@@ -31,7 +31,6 @@ export function App() {
 
   const { isPlaying } = resolvePlayback({
     source: settings.source,
-    skin: settings.skin,
     prefersReducedMotion,
     override: playOverride,
   });
@@ -40,24 +39,17 @@ export function App() {
   // The video element lives here so it can sit in the document — Safari will
   // not play a detached one — while the hook owns the stream bound to it.
   const [video, setVideo] = useState<HTMLVideoElement | null>(null);
-  // Requesting the camera is a permission prompt, so it only happens while
-  // something actually wants the frames: either the mirrors repeat them, or the
-  // pieces in the chamber are skinned with them.
-  const wantsCamera = settings.source === 'camera' || settings.skin === 'camera';
-  const camera = useCamera(wantsCamera, video, settings.cameraFacing);
+  // Requesting the camera is a permission prompt, so it only happens while the
+  // camera is actually the selected source.
+  const camera = useCamera(settings.source === 'camera', video, settings.cameraFacing);
 
   const media =
     settings.source === 'image' ? image.image : settings.source === 'camera' ? video : null;
-  const skin = settings.skin === 'photo' ? image.image : settings.skin === 'camera' ? video : null;
-
-  const wantsPhoto = settings.source === 'image' || settings.skin === 'photo';
 
   const emptyState =
-    wantsPhoto && !image.image
-      ? settings.source === 'image'
-        ? 'Choose or drop a photo to mirror it.'
-        : 'Choose or drop a photo to skin the pieces with it.'
-      : wantsCamera && camera.status !== 'active'
+    settings.source === 'image' && !image.image
+      ? 'Choose or drop a photo to mirror it.'
+      : settings.source === 'camera' && camera.status !== 'active'
         ? (camera.message ?? 'Starting the camera…')
         : null;
 
@@ -121,13 +113,7 @@ export function App() {
 
           event.preventDefault();
           image.select(file);
-
-          // A photo dropped while the pieces are being skinned with one is
-          // meant for them, so the mirrors are left alone.
-          if (settings.skin !== 'photo') {
-            set('source', 'image');
-          }
-
+          set('source', 'image');
           announce(`Loaded ${file.name}.`);
         }}
       >
@@ -136,7 +122,6 @@ export function App() {
           settings={settings}
           paused={!isPlaying}
           media={media}
-          skin={skin}
           onZoom={handleZoom}
         />
 
