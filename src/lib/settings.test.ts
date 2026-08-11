@@ -20,7 +20,6 @@ describe('clampToLimit', () => {
   it('snaps to the step without overshooting the maximum', () => {
     expect(clampToLimit(5.4, LIMITS.shards)).toBe(5);
     expect(clampToLimit(59.9, LIMITS.shards)).toBe(LIMITS.shards.max);
-    expect(clampToLimit(0.94, LIMITS.trails)).toBe(0.95);
   });
 
   it('falls back to the minimum for non-finite input', () => {
@@ -48,7 +47,6 @@ describe('sanitizeSettings', () => {
     const result = sanitizeSettings({
       shards: '30',
       zoom: 1.5,
-      trails: -4,
       metallic: 'yes',
       paletteId: 'unknown-palette',
       seed: '  drifting  ',
@@ -59,9 +57,8 @@ describe('sanitizeSettings', () => {
       cameraFacing: DEFAULT_SETTINGS.cameraFacing,
       shards: 30,
       chipSize: DEFAULT_SETTINGS.chipSize,
-      skin: DEFAULT_SETTINGS.skin,
+      objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,
-      trails: 0,
       metallic: DEFAULT_SETTINGS.metallic,
       paletteId: DEFAULT_SETTINGS.paletteId,
       seed: 'drifting',
@@ -98,6 +95,8 @@ describe('hasSettingsParams', () => {
     expect(hasSettingsParams(new URLSearchParams('segments=12'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('mirrors=4'))).toBe(true);
     expect(hasSettingsParams(new URLSearchParams('geometry=rosette'))).toBe(true);
+    // The motion trail, back when each frame lingered into the next.
+    expect(hasSettingsParams(new URLSearchParams('trails=0.5'))).toBe(true);
   });
 
   it('ignores unrelated query strings', () => {
@@ -114,7 +113,7 @@ describe('search param round trip', () => {
   });
 
   it('sanitises hand-edited links', () => {
-    const params = new URLSearchParams('shards=9999&palette=hax&seed=&trails=abc');
+    const params = new URLSearchParams('shards=9999&palette=hax&seed=&objects=nope');
 
     expect(settingsFromSearchParams(params)).toEqual({
       ...DEFAULT_SETTINGS,

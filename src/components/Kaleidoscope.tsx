@@ -11,6 +11,14 @@ import type { Settings } from '../lib/settings';
 
 import styles from './Kaleidoscope.module.css';
 
+/**
+ * How much one notch of wheel changes the zoom, as an exponent.
+ *
+ * Exponential rather than linear, so a notch is the same proportion of the zoom
+ * wherever it starts — the way a pinch is.
+ */
+const WHEEL_ZOOM = 0.0015;
+
 export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
@@ -143,6 +151,17 @@ export function Kaleidoscope({
       ref={containerRef}
       className={cx(styles.stage, gesture.mode === 'pan' && styles.panning)}
       {...gesture.handlers}
+      onWheel={(event) => {
+        if (!onZoom) {
+          return;
+        }
+
+        // What a pinch does, for a hand that has not got two fingers on glass.
+        // A trackpad's pinch arrives here as a ctrl-wheel, so the two paths are
+        // the same gesture and take the same sensitivity.
+        event.preventDefault();
+        onZoom(zoomRef.current * Math.exp(-event.deltaY * WHEEL_ZOOM));
+      }}
       onContextMenu={(event) => {
         // A secondary-button drag pans; the menu would interrupt it.
         event.preventDefault();

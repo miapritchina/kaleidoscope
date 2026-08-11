@@ -8,12 +8,10 @@ import { DEFAULT_SETTINGS } from './settings';
 interface Harness {
   renderer: KaleidoscopeRenderer;
   main: FakeContext;
-  /** The surface the mirrors sample, where the trail accumulates. */
+  /** The surface the mirrors sample, which the source is painted onto. */
   wedge: FakeContext;
   /** Where the six mirrored triangles are assembled into one stamp. */
   hexagon: FakeContext;
-  /** Where the source is painted, one frame at a time. */
-  source: FakeContext;
   canvas: { width: number; height: number };
   /** Backing store of the hexagon stamp, which the triangle's side sets. */
   hexagonCanvas: { width: number; height: number };
@@ -54,7 +52,6 @@ function createRenderer(): Harness {
     main,
     wedge: offscreen[0]!,
     hexagon: offscreen[1]!,
-    source: offscreen[2]!,
     canvas,
     hexagonCanvas: canvases[1]!,
   };
@@ -148,7 +145,7 @@ describe('KaleidoscopeRenderer', () => {
   // corner the six triangles are assembled around instead, most of the chamber
   // sits outside the view and turning sweeps the pile clean out of it.
   it('inscribes the mirror triangle in the object cell', () => {
-    const { renderer, source, hexagonCanvas } = createRenderer();
+    const { renderer, wedge, hexagonCanvas } = createRenderer();
 
     renderer.resize(240, 240, 1);
     renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
@@ -157,7 +154,7 @@ describe('KaleidoscopeRenderer', () => {
     // plus the seam bleed, which is what gives the side back.
     const side = hexagonCanvas.width / 2 - 2;
     // First the margin, then the cell. Anything after that is per-chip.
-    const [, cell] = source.argsOf('translate') as [unknown, [number, number]];
+    const [, cell] = wedge.argsOf('translate') as [unknown, [number, number]];
 
     // The centroid lies along the triangle's 30-degree bisector, one
     // circumradius out — so the cell reaches all three corners and no further.
@@ -171,7 +168,7 @@ describe('KaleidoscopeRenderer', () => {
   // framework instead sweeps the figure around the screen, which reads as a
   // picture being spun rather than an instrument being worked.
   it('turns the cell and leaves the mirror framework where it is', () => {
-    const { renderer, main, source } = createRenderer();
+    const { renderer, main, wedge } = createRenderer();
     const scene = createScene('seed', 6);
     scene.cell = 0.77;
     scene.contents = 0.77;
@@ -179,7 +176,7 @@ describe('KaleidoscopeRenderer', () => {
     renderer.resize(200, 200, 1);
     renderer.render(scene, DEFAULT_SETTINGS);
 
-    expect(source.argsOf('rotate')).toContainEqual([0.77]);
+    expect(wedge.argsOf('rotate')).toContainEqual([0.77]);
     expect(main.argsOf('rotate')).not.toContainEqual([0.77]);
   });
 
@@ -257,35 +254,18 @@ describe('KaleidoscopeRenderer', () => {
     expect(hexagon.countOf('save')).toBe(hexagon.countOf('restore'));
   });
 
-  // The glass is stamped subtractively, and `multiply` is not idempotent: a
-  // still pile painted over its own remains every frame converges on something
-  // far darker than one pass of it. So the trail is a blend of whole frames
-  // rather than a fade of the surface they are painted on.
-  it('keeps a share of the previous frames when trails are on', () => {
-    const smeared = createRenderer();
-    const crisp = createRenderer();
-
-    smeared.renderer.resize(200, 200, 1);
-    smeared.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0.6 });
-    // The second frame: the first goes on opaque, having nothing to blend with.
-    smeared.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0.6 });
-
-    crisp.renderer.resize(200, 200, 1);
-    crisp.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0 });
-    crisp.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0 });
-
-    expect(smeared.wedge.globalAlpha).toBeCloseTo(0.4, 6);
-    expect(crisp.wedge.globalAlpha).toBe(1);
-    // The source is repainted from scratch either way, never faded in place.
-    expect(smeared.source.countOf('fillRect')).toBe(2);
-  });
-
-  it('lays the first frame down opaque, so nothing shows through it', () => {
+  // The pieces composite with `multiply` and `lighter`, neither of which is
+  // idempotent, so a still pile stamped over its own remains walks away from a
+  // single pass of it. Every frame is painted from scratch.
+  it('repaints the source rather than drawing over what is there', () => {
     const { renderer, wedge } = createRenderer();
 
     renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, trails: 0.9 });
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
 
+    // The ground laid down afresh each time, and never at part opacity.
+    expect(wedge.countOf('fillRect')).toBe(2);
     expect(wedge.globalAlpha).toBe(1);
   });
 

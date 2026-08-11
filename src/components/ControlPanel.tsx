@@ -3,7 +3,8 @@ import { useState } from 'react';
 import type { CameraStatus } from '../hooks/useCamera';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type Settings, type SkinId, type SourceId } from '../lib/settings';
+import { CUSTOM, GENERATED, OBJECT_SETS } from '../lib/objectSets';
+import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -43,10 +44,7 @@ const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'camera', label: 'Camera' },
 ];
 
-const SKIN_OPTIONS: { value: SkinId; label: string }[] = [
-  { value: 'palette', label: 'Generated' },
-  { value: 'photo', label: 'From a photo' },
-];
+const OBJECT_OPTIONS = OBJECT_SETS.map((set) => ({ value: set.id, label: set.name }));
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
   environment: 'Back',
@@ -58,6 +56,10 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
   label: CAMERA_LABELS[facing],
 }));
 
+/**
+ * Pointing it at the world is a kaleidoscope with an open end — a teleidoscope,
+ * which has a lens or a glass ball where this one has a chamber of objects.
+ */
 const CAMERA_HINTS: Record<CameraStatus, string> = {
   idle: 'The camera is off.',
   starting: 'Waiting for camera permission…',
@@ -115,6 +117,15 @@ export function ControlPanel({
 
         {settings.source === 'shards' && (
           <>
+            <SelectField
+              label="Objects"
+              value={settings.objects}
+              options={OBJECT_OPTIONS}
+              onChange={(value) => {
+                onChange('objects', value);
+              }}
+              description="What the chamber is loaded with. The pieces are the things in the picture, cut out one per object."
+            />
             <RangeField
               label="Count"
               value={settings.shards}
@@ -133,20 +144,11 @@ export function ControlPanel({
               }}
               description="How big each piece is, without changing how many there are."
             />
-            <SelectField
-              label="Pieces"
-              value={settings.skin}
-              options={SKIN_OPTIONS}
-              onChange={(value) => {
-                onChange('skin', value);
-              }}
-              description="From a photo, the pieces are the things in it — cut out of it, one per object. Give it a PNG of objects on a transparent background."
-            />
           </>
         )}
 
         {/* One photo, wanted either to mirror or to cut the pieces out of. */}
-        {(settings.source === 'image' || settings.skin === 'photo') && (
+        {(settings.source === 'image' || settings.objects === CUSTOM) && (
           <>
             <FileField
               label="Photo"
@@ -156,7 +158,9 @@ export function ControlPanel({
               onSelect={onSelectImage}
             />
             <p className={styles.hint}>
-              Or drop a photo onto the artwork. It stays in this browser — nothing is uploaded.
+              {settings.objects === CUSTOM
+                ? 'A PNG of a few objects on a transparent background. It stays in this browser — nothing is uploaded.'
+                : 'Or drop a photo onto the artwork. It stays in this browser — nothing is uploaded.'}
             </p>
             {imageName ? (
               <button type="button" className={styles.ghost} onClick={onClearImage}>
@@ -196,18 +200,23 @@ export function ControlPanel({
               onChange={(value) => {
                 onChange('paletteId', value);
               }}
-              {...(settings.skin === 'palette'
+              {...(settings.objects === GENERATED
                 ? {}
-                : { description: 'The ground behind the pieces, which a photo does not replace.' })}
+                : {
+                    description:
+                      'The ground behind the objects. Their own colours come from the picture.',
+                  })}
             />
-            <ToggleField
-              label="Metallic"
-              checked={settings.metallic}
-              onChange={(checked) => {
-                onChange('metallic', checked);
-              }}
-              description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
-            />
+            {settings.objects === GENERATED && (
+              <ToggleField
+                label="Metallic"
+                checked={settings.metallic}
+                onChange={(checked) => {
+                  onChange('metallic', checked);
+                }}
+                description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
+              />
+            )}
             <TextField
               label="Seed"
               value={seedDraft}
@@ -227,32 +236,12 @@ export function ControlPanel({
 
         <p className={styles.hint}>
           A triangular tube of three mirrors. Six triangles meet at every corner to make a hexagon,
-          and those hexagons repeat across the field — which is what a real one does. Swipe across
-          the artwork to turn it.
+          and those hexagons repeat across the field — which is what a real one does.
         </p>
-
-        <RangeField
-          label="Zoom"
-          value={settings.zoom}
-          limit={LIMITS.zoom}
-          format={(value) => `${value.toFixed(2)}x`}
-          onChange={(value) => {
-            onChange('zoom', value);
-          }}
-          {...(settings.source === 'shards'
-            ? {}
-            : { description: 'A photo cannot zoom below 1x without exposing its edges.' })}
-        />
-        <RangeField
-          label="Trails"
-          value={settings.trails}
-          limit={LIMITS.trails}
-          format={(value) => `${String(Math.round(value * 100))}%`}
-          onChange={(value) => {
-            onChange('trails', value);
-          }}
-          description="How long each frame lingers."
-        />
+        <p className={styles.hint}>
+          Swipe across the artwork to turn it. Pinch, or scroll, to zoom; drag with two fingers to
+          move the source.
+        </p>
       </fieldset>
 
       <div className={styles.actions}>

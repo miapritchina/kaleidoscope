@@ -5,9 +5,11 @@ import { ControlPanel } from './components/ControlPanel';
 import { Kaleidoscope, type KaleidoscopeHandle } from './components/Kaleidoscope';
 import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
+import { useImageUrl } from './hooks/useImageUrl';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { cx } from './lib/cx';
+import { CUSTOM, GENERATED, objectSetUrl } from './lib/objectSets';
 import { resolvePlayback } from './lib/playback';
 import { clampToLimit, LIMITS, settingsToSearchParams } from './lib/settings';
 
@@ -53,19 +55,26 @@ export function App() {
 
   const media =
     settings.source === 'image' ? image.image : settings.source === 'camera' ? video : null;
-  // The picture the pieces are cut out of, which is a different question from
-  // what the mirrors repeat: the objects can come out of a photo while the
-  // mirrors go on repeating the shard field.
-  const skin = settings.skin === 'photo' ? image.image : null;
+  // The chosen set's picture, if it is one of the bundled ones.
+  const preset = useImageUrl(
+    settings.objects === CUSTOM || settings.objects === GENERATED
+      ? null
+      : objectSetUrl(settings.objects),
+  );
+
+  // What the pieces are cut out of, which is a different question from what the
+  // mirrors repeat: the objects can come out of one picture while the mirrors
+  // go on repeating another.
+  const skin = settings.objects === CUSTOM ? image.image : preset;
 
   // One picker, wanted by either. Whichever asks, the same photo answers.
-  const wantsPhoto = settings.source === 'image' || settings.skin === 'photo';
+  const wantsPhoto = settings.source === 'image' || settings.objects === CUSTOM;
 
   const emptyState =
     wantsPhoto && !image.image
       ? settings.source === 'image'
         ? 'Choose or drop a photo to mirror it.'
-        : 'Choose or drop a cut-out photo — objects on a transparent background.'
+        : 'Choose or drop a PNG of objects on a transparent background.'
       : settings.source === 'camera' && camera.status !== 'active'
         ? (camera.message ?? 'Starting the camera…')
         : null;
@@ -181,7 +190,7 @@ export function App() {
 
           // Dropped while the pieces are being cut out of a photo, it is meant
           // for them, so the mirrors are left on whatever they were repeating.
-          if (settings.skin !== 'photo') {
+          if (settings.objects !== CUSTOM) {
             set('source', 'image');
           }
 

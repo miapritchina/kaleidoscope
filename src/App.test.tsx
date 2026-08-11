@@ -30,7 +30,7 @@ describe('App', () => {
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'true');
     expect(drawer()).not.toHaveAttribute('inert');
-    expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
+    expect(screen.getByLabelText('Objects')).toBeInTheDocument();
 
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'false');

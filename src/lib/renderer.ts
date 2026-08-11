@@ -96,7 +96,6 @@ export class KaleidoscopeRenderer {
   #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
   #spritesMetallic = false;
-  #mode: WedgeMode | null = null;
 
   readonly #createCanvas: () => HTMLCanvasElement;
   #tile: HTMLCanvasElement | null = null;
@@ -105,10 +104,6 @@ export class KaleidoscopeRenderer {
   #patches: SkinPatches | null = null;
   #patchesFor: CanvasImageSource | null = null;
   #patchesSize = '';
-
-  /** This frame alone, before it is blended into the trail. */
-  readonly #frame: HTMLCanvasElement;
-  readonly #frameCtx: CanvasRenderingContext2D | null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -129,8 +124,6 @@ export class KaleidoscopeRenderer {
     this.#createCanvas = createWedgeCanvas;
     this.#hexagon = createWedgeCanvas();
     this.#hexagonCtx = this.#hexagon.getContext('2d');
-    this.#frame = createWedgeCanvas();
-    this.#frameCtx = this.#frame.getContext('2d');
   }
 
   /** Backing-store size in device pixels. */
@@ -169,8 +162,6 @@ export class KaleidoscopeRenderer {
     const surface = Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2;
     this.#wedge.width = surface;
     this.#wedge.height = surface;
-    this.#frame.width = surface;
-    this.#frame.height = surface;
 
     this.#falloff = null;
     this.#vignetteCache = null;
@@ -182,11 +173,11 @@ export class KaleidoscopeRenderer {
    * @param media Photo or camera element to mirror instead of the shard field.
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
-   * @param skin A picture to cut the pieces themselves out of, in place of the
-   *   generated shapes — see `lib/skin.ts`. Ignored unless `settings.skin` asks
-   *   for it. Separate from `media`, which the mirrors repeat: the two are
-   *   independent, so the objects can come out of one picture while the mirrors
-   *   repeat another.
+   * @param skin The object set's picture, which the pieces are cut out of in
+   *   place of the drawn shapes — see `lib/skin.ts`. Left out, or not yet
+   *   loaded, the pieces are drawn. Separate from `media`, which the mirrors
+   *   repeat: the two are independent, so the objects can come out of one
+   *   picture while the mirrors repeat another.
    */
   render(
     scene: Scene,
@@ -216,7 +207,7 @@ export class KaleidoscopeRenderer {
 
     // Until it has pixels there is nothing to cut objects out of, so the pieces
     // fall back to their palette colours rather than to a blank rectangle.
-    const surface = settings.skin === 'photo' && isMediaReady(skin) ? skin : null;
+    const surface = isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
 
     this.#paintWedge(
@@ -349,21 +340,16 @@ export class KaleidoscopeRenderer {
     patches: SkinPatches | null,
     triangleSide: number,
   ): void {
-    const ctx = this.#frameCtx;
+    const ctx = this.#wedgeCtx;
     // Only the triangle is ever sampled, so the source is painted over its side
     // rather than the whole surface, which is sized for the largest zoom.
     const reach = Math.ceil(triangleSide);
     const size = reach + SEAM_BLEED * 2;
 
-    if (!ctx) {
-      return;
-    }
-
-    // This frame on its own, painted from scratch over the light. The trail
-    // cannot be made by fading this surface part-way back and painting over it
-    // again, the way it could when the glass was drawn additively: `multiply`
-    // is not idempotent, so the same still pile stamped over its own remains
-    // every frame converges on something far darker than one pass of it.
+    // Painted from scratch every frame. It cannot be built up by fading what is
+    // already there and drawing over it: the pieces composite with `multiply`
+    // and `lighter`, neither of which is idempotent, so a still pile stamped
+    // over its own remains walks away from a single pass of it.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
@@ -411,20 +397,6 @@ export class KaleidoscopeRenderer {
       });
       ctx.restore();
     }
-
-    // Blend it into the surface the mirrors sample. Each frame keeps a share of
-    // the ones before it, which is the whole of the trail; at `trails: 0` this
-    // is a plain copy. The first frame after a switch of source goes on opaque,
-    // since there is nothing underneath worth keeping — and blending onto a
-    // surface that has never been painted would leave it half transparent.
-    const wedge = this.#wedgeCtx;
-    const fresh = mode !== this.#mode;
-    this.#mode = mode;
-
-    wedge.setTransform(1, 0, 0, 1, 0, 0);
-    wedge.globalCompositeOperation = 'source-over';
-    wedge.globalAlpha = fresh ? 1 : 1 - settings.trails;
-    wedge.drawImage(this.#frame, 0, 0);
   }
 
   /**

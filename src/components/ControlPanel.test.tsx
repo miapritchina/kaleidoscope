@@ -27,21 +27,17 @@ describe('ControlPanel', () => {
   it('labels every control', () => {
     renderPanel();
 
-    expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
+    expect(screen.getByLabelText('Objects')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trails')).toBeInTheDocument();
     expect(screen.getByLabelText('Palette')).toBeInTheDocument();
-    expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
-    expect(screen.getByLabelText('Metallic')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
 
   it('shows the current values next to their labels', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, zoom: 2, trails: 0.5 } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, chipSize: 1.5 } });
 
-    expect(screen.getByText('2.00x')).toBeInTheDocument();
-    expect(screen.getByText('50%')).toBeInTheDocument();
+    expect(screen.getByText('1.50x')).toBeInTheDocument();
   });
 
   it('tells the viewer how to turn the tube, now that no slider does', () => {
@@ -56,9 +52,19 @@ describe('ControlPanel', () => {
 
     // jsdom does not implement arrow-key stepping on range inputs, so the
     // change event is dispatched directly.
-    fireEvent.change(screen.getByLabelText('Zoom'), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('Count'), { target: { value: '20' } });
 
-    expect(props.onChange).toHaveBeenCalledWith('zoom', 2);
+    expect(props.onChange).toHaveBeenCalledWith('shards', 20);
+  });
+
+  // Zoom is a pinch, or a scroll over the artwork. A slider for it was one more
+  // thing in a panel that is now behind a button.
+  it('offers no zoom or trail sliders', () => {
+    renderPanel();
+
+    expect(screen.queryByLabelText('Zoom')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Trails')).not.toBeInTheDocument();
+    expect(screen.getByText(/pinch, or scroll, to zoom/i)).toBeInTheDocument();
   });
 
   // A real tube has three mirrors and nothing else. There is no arrangement to
@@ -82,9 +88,9 @@ describe('ControlPanel', () => {
   });
 
   it('describes slider values to assistive tech', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, zoom: 2 } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, chipSize: 2 } });
 
-    expect(screen.getByLabelText('Zoom')).toHaveAttribute('aria-valuetext', '2.00x');
+    expect(screen.getByLabelText('Chip size')).toHaveAttribute('aria-valuetext', '2.00x');
   });
 
   it('reports palette changes', async () => {
@@ -133,19 +139,19 @@ describe('ControlPanel', () => {
     expect(props.onReset).toHaveBeenCalledOnce();
   });
 
-  it('reports a change of what the pieces are', async () => {
+  it('reports a change of which objects the chamber holds', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.selectOptions(screen.getByLabelText('Pieces'), 'photo');
+    await user.selectOptions(screen.getByLabelText('Objects'), 'custom');
 
-    expect(props.onChange).toHaveBeenCalledWith('skin', 'photo');
+    expect(props.onChange).toHaveBeenCalledWith('objects', 'custom');
   });
 
   // The pieces can be cut out of a photo while the mirrors go on repeating the
   // shard field, so the picker follows whichever setting is asking for one.
   it('offers the photo picker when the pieces are cut out of one', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, skin: 'photo' } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'custom' } });
 
     expect(screen.getByLabelText('Photo')).toBeInTheDocument();
     expect(screen.getByLabelText('Input')).toHaveValue('shards');
@@ -159,6 +165,7 @@ describe('ControlPanel', () => {
     const groups = screen.getAllByRole('group').map((group) => group.textContent);
     const source = groups.find((text) => text.includes('Input'))!;
 
+    expect(source).toContain('Objects');
     expect(source).toContain('Count');
     expect(source).toContain('Palette');
     expect(source).toContain('Seed');
@@ -189,15 +196,16 @@ describe('ControlPanel', () => {
   it('hides shard-only controls when a photo is the source', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
 
-    // Shard-specific
+    // Chamber-specific
+    expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Palette')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
-    expect(screen.getByLabelText('Zoom')).toBeInTheDocument();
-    expect(screen.getByLabelText('Trails')).toBeInTheDocument();
+    expect(screen.getByLabelText('Input')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save pattern' })).toBeInTheDocument();
   });
 
   it('shows the photo picker only for the photo source', () => {
