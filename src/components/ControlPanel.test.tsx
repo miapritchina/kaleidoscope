@@ -16,6 +16,7 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onSelectImage: vi.fn(),
     onClearImage: vi.fn(),
     cameraStatus: 'idle',
+    tiltStatus: 'idle',
     ...overrides,
   };
 
@@ -115,6 +116,23 @@ describe('ControlPanel', () => {
     expect(props.onSave).toHaveBeenCalledOnce();
     expect(props.onShare).toHaveBeenCalledOnce();
     expect(props.onReset).toHaveBeenCalledOnce();
+  });
+
+  // A real one is held and turned, and that is the whole point of the setting:
+  // gravity stays where it is while the tube does not.
+  it('reports turning the tube by tilting the device', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.click(screen.getByLabelText('Turn by tilting'));
+
+    expect(props.onChange).toHaveBeenCalledWith('tilt', true);
+  });
+
+  it('says why tilting is unavailable rather than offering it silently', () => {
+    renderPanel({ tiltStatus: 'denied' });
+
+    expect(screen.getByText(/motion access was blocked/i)).toBeInTheDocument();
   });
 
   it('reports a change of which objects the chamber holds', async () => {

@@ -23,10 +23,10 @@ export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
   /**
-   * Returns a square tile that repeats without a seam, as a PNG data URL.
-   * `null` before the first paint, or if the surfaces cannot be made.
+   * Returns a square PNG that repeats without a seam. `null` before the first
+   * paint, or if the surfaces cannot be made.
    */
-  capturePattern: () => string | null;
+  capturePattern: () => Promise<Blob | null>;
 }
 
 export interface KaleidoscopeProps {
@@ -37,6 +37,11 @@ export interface KaleidoscopeProps {
   media?: MediaElement | null;
   /** Picture to cut the pieces out of, when `settings.skin` asks for one. */
   skin?: MediaElement | null;
+  /**
+   * Where the instrument is being held, in radians, or `null` for none. Given
+   * one, the tube is at that angle rather than wherever swiping has left it.
+   */
+  tiltRef?: { current: number | null };
   /**
    * Applies a pinched zoom. Left out, pinching does nothing.
    *
@@ -59,6 +64,7 @@ export function Kaleidoscope({
   paused = false,
   media = null,
   skin = null,
+  tiltRef,
   onZoom,
   ref,
 }: KaleidoscopeProps) {
@@ -87,7 +93,7 @@ export function Kaleidoscope({
     ref,
     () => ({
       capture: () => rendererRef.current?.toDataUrl() ?? null,
-      capturePattern: () => rendererRef.current?.toPatternUrl(settings) ?? null,
+      capturePattern: async () => (await rendererRef.current?.toPatternBlob(settings)) ?? null,
     }),
     [settings],
   );
@@ -139,14 +145,16 @@ export function Kaleidoscope({
       // A finger held still fires no move events, so the rate has to be expired
       // here rather than waiting for one — and a flick coasts down here too.
       gesture.settle(deltaSeconds);
+      const held = tiltRef?.current;
       updateScene(scene, {
         dt: paused ? 0 : deltaSeconds,
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
+        cell: held ?? undefined,
       });
       renderer.render(scene, settings, media, skin);
     },
-    !paused || gesture.mode !== null,
+    !paused || gesture.mode !== null || tiltRef !== undefined,
   );
 
   return (

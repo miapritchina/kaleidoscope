@@ -48,6 +48,14 @@ export interface Settings {
   objects: string;
   /** Magnification of the source cell. */
   zoom: number;
+  /**
+   * Turn the tube by turning the phone.
+   *
+   * Off by default, and not carried in a shared link: whether a device has the
+   * sensor, and whether its owner has allowed it, is about the recipient rather
+   * than about the look being shared.
+   */
+  tilt: boolean;
   /** Seed for the shard generator. */
   seed: string;
 }
@@ -76,6 +84,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chipSize: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
+  tilt: false,
   seed: 'kaleido',
 };
 
@@ -113,6 +122,7 @@ export function sanitizeSettings(input: unknown): Settings {
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
+    tilt: typeof raw.tilt === 'boolean' ? raw.tilt : DEFAULT_SETTINGS.tilt,
     seed: toSeed(raw.seed),
   };
 }
@@ -125,8 +135,8 @@ export function randomizeSeed(settings: Settings): Settings {
 /**
  * Encodes settings into a query string suitable for sharing.
  *
- * `source` is deliberately left out: a link cannot carry the recipient's photo
- * or camera, so it always opens on the shard field.
+ * `source` and `tilt` are deliberately left out: a link cannot carry the
+ * recipient's photo or camera, nor say anything useful about their hardware.
  */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({

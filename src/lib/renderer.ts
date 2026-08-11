@@ -253,7 +253,7 @@ export class KaleidoscopeRenderer {
   }
 
   /**
-   * Serialises a square tile that repeats without a seam.
+   * Renders a square tile that repeats without a seam.
    *
    * A three-mirror kaleidoscope tiles the plane on a hexagonal lattice, and a
    * hexagonal lattice has no square period — `k` steps across can never equal
@@ -271,7 +271,7 @@ export class KaleidoscopeRenderer {
    * @param size Side of the tile in pixels. Rounded up to an even number, since
    *   it is built from four quarters.
    */
-  toPatternUrl(settings: Settings, size = TILE_SIZE, type = 'image/png'): string | null {
+  toPatternBlob(settings: Settings, size = TILE_SIZE, type = 'image/png'): Promise<Blob | null> {
     const side = this.#triangleSide(settings);
     const half = Math.max(1, Math.ceil(size / 2));
 
@@ -290,7 +290,7 @@ export class KaleidoscopeRenderer {
     const tileCtx = tile.getContext('2d');
 
     if (!quadrantCtx || !tileCtx) {
-      return null;
+      return Promise.resolve(null);
     }
 
     this.#stampField(quadrantCtx, half, half, side);
@@ -309,7 +309,11 @@ export class KaleidoscopeRenderer {
 
     tileCtx.setTransform(1, 0, 0, 1, 0, 0);
 
-    return tile.toDataURL(type);
+    // A blob rather than a data URL: it is what the share sheet wants, and it
+    // saves encoding a megabyte of base64 only to decode it again.
+    return new Promise((resolve) => {
+      tile.toBlob(resolve, type);
+    });
   }
 
   /** Paints the chosen source into the offscreen wedge surface. */
@@ -350,7 +354,6 @@ export class KaleidoscopeRenderer {
         // a little behind it.
         rotation: scene.contents,
         pan: scene.drag,
-        alpha: 1,
       });
       ctx.restore();
     } else if (mode === 'shards') {

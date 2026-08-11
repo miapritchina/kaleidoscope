@@ -57,6 +57,7 @@ describe('sanitizeSettings', () => {
       chipSize: DEFAULT_SETTINGS.chipSize,
       objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,
+      tilt: DEFAULT_SETTINGS.tilt,
       seed: 'drifting',
     });
   });

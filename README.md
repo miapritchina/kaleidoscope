@@ -372,10 +372,43 @@ rather than in the drawer, since the drawer is not always on screen; and so is t
 region, so that a message — a photo dropped on the artwork, say — still reaches a screen
 reader with the panel closed.
 
+## Turning it by turning the phone
+
+A real kaleidoscope is held and rotated, and the chips fall because gravity stays where it
+is while the tube does not. **Tilt** does that: the phone's own rotation becomes the cell's
+angle, and the chamber — which already puts gravity down in the world rather than down the
+screen — does the rest. The tube is then wherever the instrument is, so a swipe cannot add
+to it.
+
+`lib/tilt.ts` holds the arithmetic and nothing else. The orientation event gives the
+front-to-back tilt and the left-to-right one; held upright and facing you those are about 90
+and about 0, and rotating the phone clockwise in its own plane takes the first towards 0 and
+the second towards -90, so `atan2` of the pair is the angle directly. Two details matter as
+much as the formula. The reading wraps at half a turn, so a hand turning steadily past the
+top sends it from just under to just over — taken as read that is a whole turn in one frame,
+which flings the pile round and leaves the contents unwinding for seconds; each reading is
+carried on from the last by the shorter way instead. And the sensor is noisy at rest, so the
+angle is smoothed, after the unwrap rather than before it: smoothing towards a number that
+has just wrapped sends the tube the long way round slowly.
+
+iOS will not report orientation until it has been asked from a user gesture, which is what
+the toggle is. Refused, it says so and stays refused; nothing asks twice. The arithmetic is
+unit-tested and the wiring is checked in a browser with synthesised events — **but it has
+not been tried on a real iPhone**, and the sign convention comes from the specification
+rather than from a device.
+
 ## Saving a pattern
 
 **Save PNG** writes the frame as you see it. **Save pattern** writes a 1024px square that
 repeats without a seam.
+
+It goes to the **share sheet** rather than straight to a download. On a phone a download
+lands in Files, and it is the sheet that offers "Save Image" and puts it in the photo
+library, which is where a picture belongs. A browser with no sheet saves the file instead.
+Dismissing the sheet does nothing at all: that is a rejection rather than a return value,
+and taking it for a failure would mean downloading the file behind the back of someone who
+just declined. `lib/share.ts` holds that decision, away from the component, because the
+branch nobody thinks about is the one worth testing.
 
 The square is not a period of the figure, and it cannot be. A three-mirror kaleidoscope tiles
 the plane on a hexagonal lattice, and a hexagonal lattice has no square period: `k` steps

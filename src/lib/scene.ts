@@ -27,8 +27,6 @@ export interface Shard {
   rotation: number;
   /** Angular velocity in radians per second. */
   spin: number;
-  /** Position along the palette ramp. Glass does not change colour. */
-  colorStop: number;
   /**
    * Where on a photograph this piece is cut from, each axis in `[0, 1]`.
    *
@@ -80,6 +78,11 @@ export interface SceneUpdate {
   turn: number;
   /** Current drag position, each axis in `[-1, 1]`. */
   drag: { x: number; y: number };
+  /**
+   * Where the cell is, outright, in radians — the instrument being held at an
+   * angle rather than swiped. Left out, `turn` integrates as before.
+   */
+  cell?: number | undefined;
 }
 
 /** Largest step the simulation will take, so a backgrounded tab cannot jump. */
@@ -149,7 +152,6 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
       radius: randomBetween(rng, 0.08, 0.26) * Math.max(0.05, chipScale),
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
-      colorStop: rng(),
       skin: { x: rng(), y: rng() },
     });
   }
@@ -176,11 +178,18 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
  * Mutation is deliberate: this runs every frame and the scene is owned by the
  * renderer, never by React state, so there is nothing to diff.
  */
-export function updateScene(scene: Scene, { dt, turn, drag }: SceneUpdate): Scene {
+export function updateScene(scene: Scene, { dt, turn, drag, cell }: SceneUpdate): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
   scene.elapsed += step;
-  scene.cell += turn * step;
+
+  // An angle given outright is the tube being held and turned, so it wins: a
+  // swipe cannot add to where the instrument actually is.
+  if (cell === undefined) {
+    scene.cell += turn * step;
+  } else {
+    scene.cell = cell;
+  }
   // Exponential approach, clamped so a long frame cannot overshoot past the
   // tube and swing back.
   scene.contents += (scene.cell - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);

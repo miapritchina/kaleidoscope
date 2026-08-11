@@ -6,10 +6,12 @@ import { Kaleidoscope, type KaleidoscopeHandle } from './components/Kaleidoscope
 import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
 import { useImageUrl } from './hooks/useImageUrl';
+import { useDeviceTilt } from './hooks/useDeviceTilt';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { cx } from './lib/cx';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
+import { sharePicture } from './lib/share';
 import { resolvePlayback } from './lib/playback';
 import { clampToLimit, LIMITS, settingsToSearchParams } from './lib/settings';
 
@@ -26,12 +28,9 @@ export function App() {
   const controlsRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
-  const { isPlaying } = resolvePlayback({
-    source: settings.source,
-    prefersReducedMotion,
-    override: null,
-  });
+  const { isPlaying } = resolvePlayback({ source: settings.source, prefersReducedMotion });
 
+  const tilt = useDeviceTilt(settings.tilt);
   const image = useImageSource();
   // The video element lives here so it can sit in the document — Safari will
   // not play a detached one — while the hook owns the stream bound to it.
@@ -126,18 +125,29 @@ export function App() {
   }, [announce, settings.seed, settings.source]);
 
   const handleSavePattern = useCallback(() => {
-    const dataUrl = kaleidoscopeRef.current?.capturePattern();
+    const name = `kaleidoscope-pattern-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
 
-    if (!dataUrl) {
-      announce('Nothing to save yet.');
-      return;
-    }
+    void (async () => {
+      const blob = await kaleidoscopeRef.current?.capturePattern();
 
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = `kaleidoscope-pattern-${settings.source === 'shards' ? settings.seed : settings.source}.png`;
-    link.click();
-    announce('Saved a square tile that repeats without a seam.');
+      if (!blob) {
+        announce('Nothing to save yet.');
+        return;
+      }
+
+      const outcome = await sharePicture(new File([blob], name, { type: blob.type }));
+
+      // Dismissing the sheet is an answer, not an event worth narrating.
+      if (outcome === 'dismissed') {
+        return;
+      }
+
+      announce(
+        outcome === 'failed'
+          ? 'Could not save the pattern.'
+          : 'A square tile that repeats without a seam.',
+      );
+    })();
   }, [announce, settings.seed, settings.source]);
 
   const handleShare = useCallback(() => {
@@ -193,6 +203,7 @@ export function App() {
           paused={!isPlaying}
           media={media}
           skin={skin}
+          {...(settings.tilt ? { tiltRef: tilt.angleRef } : {})}
           onZoom={handleZoom}
         />
 
@@ -277,6 +288,7 @@ export function App() {
           onClearImage={image.clear}
           cameraStatus={camera.status}
           cameraMessage={camera.message}
+          tiltStatus={tilt.status}
         />
 
         {prefersReducedMotion && (

@@ -48,8 +48,6 @@ export interface DrawMediaOptions {
   rotation: number;
   /** Drag position, each axis in `[-1, 1]`. */
   pan: { x: number; y: number };
-  /** Opacity of this frame; below 1 the previous frames show through as trails. */
-  alpha: number;
 }
 
 /**
@@ -66,7 +64,7 @@ export interface DrawMediaOptions {
 export function drawMedia(
   ctx: CanvasRenderingContext2D,
   media: MediaElement,
-  { size, zoom, rotation, pan, alpha }: DrawMediaOptions,
+  { size, zoom, rotation, pan }: DrawMediaOptions,
 ): void {
   const { width, height } = getMediaSize(media);
 
@@ -104,7 +102,6 @@ export function drawMedia(
   const offset = rotate(allowed, rotation);
 
   ctx.save();
-  ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
   ctx.globalCompositeOperation = 'source-over';
   ctx.translate(offset.x, offset.y);
   // Rotating about the apex still covers the wedge: the covered square's

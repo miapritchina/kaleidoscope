@@ -16,30 +16,6 @@ export interface Rgb {
   b: number;
 }
 
-/** Parses `#rgb` / `#rrggbb` into channel values. Throws on malformed input. */
-export function hexToRgb(hex: string): Rgb {
-  const normalized = hex.trim().replace(/^#/, '');
-  const expanded =
-    normalized.length === 3
-      ? normalized
-          .split('')
-          .map((char) => char + char)
-          .join('')
-      : normalized;
-
-  if (!/^[0-9a-f]{6}$/i.test(expanded)) {
-    throw new TypeError(`Invalid hex colour: ${hex}`);
-  }
-
-  const value = Number.parseInt(expanded, 16);
-
-  return {
-    r: (value >> 16) & 0xff,
-    g: (value >> 8) & 0xff,
-    b: value & 0xff,
-  };
-}
-
 /** Formats a colour as a CSS `rgb()` / `rgba()` string. */
 export function rgbToCss({ r, g, b }: Rgb, alpha = 1): string {
   const round = (channel: number) => Math.round(clamp(channel, 0, 255));

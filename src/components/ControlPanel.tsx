@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
+import type { TiltStatus } from '../hooks/useDeviceTilt';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
 import { LIMITS, type Settings, type SourceId } from '../lib/settings';
@@ -9,6 +10,7 @@ import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
 import { SelectField } from './controls/SelectField';
 import { TextField } from './controls/TextField';
+import { ToggleField } from './controls/ToggleField';
 import styles from './ControlPanel.module.css';
 
 export interface ControlPanelProps {
@@ -27,6 +29,7 @@ export interface ControlPanelProps {
   onClearImage: () => void;
   cameraStatus: CameraStatus;
   cameraMessage?: string | null;
+  tiltStatus: TiltStatus;
 }
 
 const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
@@ -51,6 +54,14 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
  * Pointing it at the world is a kaleidoscope with an open end — a teleidoscope,
  * which has a lens or a glass ball where this one has a chamber of objects.
  */
+const TILT_HINTS: Record<TiltStatus, string> = {
+  unsupported: 'This device does not report which way up it is, so the tube turns by swiping.',
+  idle: 'Hold the phone like the instrument it is: turn it, and the tube turns with it while the pieces keep falling downwards.',
+  asking: 'Waiting for permission to read the device’s position…',
+  active: 'On. Turn the phone and the tube turns with it, and the pieces fall the way they would.',
+  denied: 'Motion access was blocked. Allow it in your browser settings, then switch this back on.',
+};
+
 const CAMERA_HINTS: Record<CameraStatus, string> = {
   idle: 'The camera is off.',
   starting: 'Waiting for camera permission…',
@@ -74,6 +85,7 @@ export function ControlPanel({
   onClearImage,
   cameraStatus,
   cameraMessage,
+  tiltStatus,
 }: ControlPanelProps) {
   // The seed input keeps its own draft so the field can be emptied while typing
   // without the sanitiser snapping it back mid-keystroke. When the seed changes
@@ -208,6 +220,18 @@ export function ControlPanel({
           Swipe across the artwork to turn it. Pinch, or scroll, to zoom; drag with two fingers to
           move the source.
         </p>
+
+        {/* The state is the description rather than a line of its own: one
+            control, one thing said about it, and nothing announcing itself from
+            inside a panel that is usually off screen. */}
+        <ToggleField
+          label="Turn by tilting"
+          checked={settings.tilt}
+          onChange={(checked) => {
+            onChange('tilt', checked);
+          }}
+          description={TILT_HINTS[tiltStatus]}
+        />
       </fieldset>
 
       <div className={styles.actions}>

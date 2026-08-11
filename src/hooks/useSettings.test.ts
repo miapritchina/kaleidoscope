@@ -12,6 +12,7 @@ const CHANGES = [
   ['chipSize', 1.5],
   ['objects', 'custom'],
   ['zoom', 2],
+  ['tilt', true],
   ['seed', 'changed'],
 ] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];
 
