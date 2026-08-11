@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { CameraStatus } from '../hooks/useCamera';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { PALETTES } from '../lib/palettes';
-import { LIMITS, type Settings, type SourceId } from '../lib/settings';
+import { LIMITS, type Settings, type SkinId, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
@@ -18,6 +18,8 @@ export interface ControlPanelProps {
   onRandomize: () => void;
   onReset: () => void;
   onSave: () => void;
+  /** Saves a square tile that repeats without a seam. */
+  onSavePattern: () => void;
   onShare: () => void;
   /** Feedback for the most recent action, announced politely. */
   status?: string;
@@ -39,6 +41,11 @@ const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
   { value: 'shards', label: 'Shards' },
   { value: 'image', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
+];
+
+const SKIN_OPTIONS: { value: SkinId; label: string }[] = [
+  { value: 'palette', label: 'Generated' },
+  { value: 'photo', label: 'From a photo' },
 ];
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
@@ -66,6 +73,7 @@ export function ControlPanel({
   onRandomize,
   onReset,
   onSave,
+  onSavePattern,
   onShare,
   status,
   imageName,
@@ -105,7 +113,40 @@ export function ControlPanel({
           }}
         />
 
-        {settings.source === 'image' && (
+        {settings.source === 'shards' && (
+          <>
+            <RangeField
+              label="Count"
+              value={settings.shards}
+              limit={LIMITS.shards}
+              onChange={(value) => {
+                onChange('shards', value);
+              }}
+            />
+            <RangeField
+              label="Chip size"
+              value={settings.chipSize}
+              limit={LIMITS.chipSize}
+              format={(value) => `${value.toFixed(2)}x`}
+              onChange={(value) => {
+                onChange('chipSize', value);
+              }}
+              description="How big each piece is, without changing how many there are."
+            />
+            <SelectField
+              label="Pieces"
+              value={settings.skin}
+              options={SKIN_OPTIONS}
+              onChange={(value) => {
+                onChange('skin', value);
+              }}
+              description="From a photo, the pieces are the things in it — cut out of it, one per object. Give it a PNG of objects on a transparent background."
+            />
+          </>
+        )}
+
+        {/* One photo, wanted either to mirror or to cut the pieces out of. */}
+        {(settings.source === 'image' || settings.skin === 'photo') && (
           <>
             <FileField
               label="Photo"
@@ -145,6 +186,40 @@ export function ControlPanel({
             </p>
           </>
         )}
+
+        {settings.source === 'shards' && (
+          <>
+            <SelectField
+              label="Palette"
+              value={settings.paletteId}
+              options={PALETTE_OPTIONS}
+              onChange={(value) => {
+                onChange('paletteId', value);
+              }}
+              {...(settings.skin === 'palette'
+                ? {}
+                : { description: 'The ground behind the pieces, which a photo does not replace.' })}
+            />
+            <ToggleField
+              label="Metallic"
+              checked={settings.metallic}
+              onChange={(checked) => {
+                onChange('metallic', checked);
+              }}
+              description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
+            />
+            <TextField
+              label="Seed"
+              value={seedDraft}
+              maxLength={32}
+              placeholder="kaleido"
+              onChange={(value) => {
+                setSeedDraft(value);
+                onChange('seed', value);
+              }}
+            />
+          </>
+        )}
       </fieldset>
 
       <fieldset className={styles.group}>
@@ -180,57 +255,6 @@ export function ControlPanel({
         />
       </fieldset>
 
-      {settings.source === 'shards' && (
-        <fieldset className={styles.group}>
-          <legend className={styles.legend}>Shards</legend>
-
-          <RangeField
-            label="Count"
-            value={settings.shards}
-            limit={LIMITS.shards}
-            onChange={(value) => {
-              onChange('shards', value);
-            }}
-          />
-          <RangeField
-            label="Chip size"
-            value={settings.chipSize}
-            limit={LIMITS.chipSize}
-            format={(value) => `${value.toFixed(2)}x`}
-            onChange={(value) => {
-              onChange('chipSize', value);
-            }}
-            description="How big each piece is, without changing how many there are."
-          />
-          <SelectField
-            label="Palette"
-            value={settings.paletteId}
-            options={PALETTE_OPTIONS}
-            onChange={(value) => {
-              onChange('paletteId', value);
-            }}
-          />
-          <ToggleField
-            label="Metallic"
-            checked={settings.metallic}
-            onChange={(checked) => {
-              onChange('metallic', checked);
-            }}
-            description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
-          />
-          <TextField
-            label="Seed"
-            value={seedDraft}
-            maxLength={32}
-            placeholder="kaleido"
-            onChange={(value) => {
-              setSeedDraft(value);
-              onChange('seed', value);
-            }}
-          />
-        </fieldset>
-      )}
-
       <div className={styles.actions}>
         {settings.source === 'shards' && (
           <button type="button" className={styles.primary} onClick={onRandomize}>
@@ -240,6 +264,9 @@ export function ControlPanel({
         <button type="button" className={styles.secondary} onClick={onSave}>
           Save PNG
         </button>
+        <button type="button" className={styles.secondary} onClick={onSavePattern}>
+          Save pattern
+        </button>
         <button type="button" className={styles.secondary} onClick={onShare}>
           Copy link
         </button>
@@ -248,7 +275,9 @@ export function ControlPanel({
         </button>
       </div>
 
-      <p className={styles.status} role="status">
+      {/* Shown, but not announced: the app owns a live region of its own, so
+          that a message still reaches a viewer with this panel closed. */}
+      <p className={styles.status} aria-hidden="true">
         {status}
       </p>
     </form>

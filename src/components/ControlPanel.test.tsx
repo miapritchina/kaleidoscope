@@ -12,6 +12,7 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onRandomize: vi.fn(),
     onReset: vi.fn(),
     onSave: vi.fn(),
+    onSavePattern: vi.fn(),
     onShare: vi.fn(),
     onSelectImage: vi.fn(),
     onClearImage: vi.fn(),
@@ -31,6 +32,7 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
     expect(screen.getByLabelText('Trails')).toBeInTheDocument();
     expect(screen.getByLabelText('Palette')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
     expect(screen.getByLabelText('Metallic')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
@@ -120,13 +122,46 @@ describe('ControlPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Randomize' }));
     await user.click(screen.getByRole('button', { name: 'Save PNG' }));
+    await user.click(screen.getByRole('button', { name: 'Save pattern' }));
     await user.click(screen.getByRole('button', { name: 'Copy link' }));
     await user.click(screen.getByRole('button', { name: 'Reset' }));
 
     expect(props.onRandomize).toHaveBeenCalledOnce();
     expect(props.onSave).toHaveBeenCalledOnce();
+    expect(props.onSavePattern).toHaveBeenCalledOnce();
     expect(props.onShare).toHaveBeenCalledOnce();
     expect(props.onReset).toHaveBeenCalledOnce();
+  });
+
+  it('reports a change of what the pieces are', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.selectOptions(screen.getByLabelText('Pieces'), 'photo');
+
+    expect(props.onChange).toHaveBeenCalledWith('skin', 'photo');
+  });
+
+  // The pieces can be cut out of a photo while the mirrors go on repeating the
+  // shard field, so the picker follows whichever setting is asking for one.
+  it('offers the photo picker when the pieces are cut out of one', () => {
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, skin: 'photo' } });
+
+    expect(screen.getByLabelText('Photo')).toBeInTheDocument();
+    expect(screen.getByLabelText('Input')).toHaveValue('shards');
+  });
+
+  // One group now, not two: the input and what it is made of are the same
+  // question asked twice.
+  it('keeps the source and the pieces in one group', () => {
+    renderPanel();
+
+    const groups = screen.getAllByRole('group').map((group) => group.textContent);
+    const source = groups.find((text) => text.includes('Input'))!;
+
+    expect(source).toContain('Count');
+    expect(source).toContain('Palette');
+    expect(source).toContain('Seed');
   });
 
   it('offers the three input sources', () => {
@@ -222,9 +257,13 @@ describe('ControlPanel', () => {
     expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
   });
 
-  it('announces status messages politely', () => {
+  // Shown, but not announced from here. The panel can be off screen, so the app
+  // keeps the live region and this is only the visible copy of it — left in the
+  // accessibility tree it would be read out twice.
+  it('shows the latest status without announcing it a second time', () => {
     renderPanel({ status: 'Link copied to the clipboard.' });
 
-    expect(screen.getByRole('status')).toHaveTextContent('Link copied to the clipboard.');
+    expect(screen.getByText('Link copied to the clipboard.')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });

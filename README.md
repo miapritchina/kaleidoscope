@@ -129,9 +129,9 @@ chamber where every green is the identical green reads as printed.
 ### Cutting the pieces out of a picture
 
 `lib/skin.ts` turns a photograph into the pieces themselves, rather than into a surface laid
-over generated ones. **Nothing in the app reaches it today** — the built-in object collection
-is what will drive it — but the engine and the drawing path are here and tested, and
-`KaleidoscopeRenderer.render` takes the picture as its fourth argument.
+over generated ones. **Pieces → From a photo** selects it, and what it wants is a cut-out
+PNG: objects on a transparent background, the way a set of gemstones downloaded off a stock
+site comes.
 
 When a picture is a few separate things on a plain backdrop, which is what a set of cut-out
 gemstones is, it comes apart cleanly. The picture is sampled to 96x96 and everything that is
@@ -207,7 +207,7 @@ src/
 | Metallic  | on/off              | Polished metal rather than matte stone            |
 | Seed      | any text            | Seeds the piece generator; same seed, same pieces |
 
-The last five apply to the shards only; the rest apply to every source. There is no mirror
+The last six apply to the shards only; the rest apply to every source. There is no mirror
 control — a tube has three — and no spin control: it is turned by swiping, as below.
 
 **Trails** blend whole frames rather than fading the surface each frame is painted on. The
@@ -343,6 +343,41 @@ image hangs outside the mirrored area.
 
 The camera draws a fresh frame into the mirrors on every animation frame, so what you see
 is live rather than a snapshot.
+
+## The screen
+
+The artwork has the whole window. The controls are behind a button in the corner and start
+out of the way, because the point of the thing is the picture rather than the panel; Play
+and Pause is the only other thing on it.
+
+The panel slides in from the right, or up from the bottom on a narrow screen, and lies over
+the artwork rather than squeezing it — the canvas keeps its size, so opening the panel costs
+no re-render and no reflow of the pattern. Off screen it is `inert` as well as invisible,
+which is what keeps a keyboard from tabbing into a panel nobody can see; `visibility` in the
+stylesheet does the same thing, but only once a stylesheet has loaded. Escape closes it from
+anywhere and hands the focus back to the button.
+
+Two things live outside the panel for that reason. The document's `<h1>` is in the layout
+rather than in the drawer, since the drawer is not always on screen; and so is the live
+region, so that a message — a photo dropped on the artwork, say — still reaches a screen
+reader with the panel closed.
+
+## Saving a pattern
+
+**Save PNG** writes the frame as you see it. **Save pattern** writes a 1024px square that
+repeats without a seam.
+
+The square is not a period of the figure, and it cannot be. A three-mirror kaleidoscope tiles
+the plane on a hexagonal lattice, and a hexagonal lattice has no square period: `k` steps
+across can never equal `m` steps up, because the ratio is `sqrt(3)`. So the tile is built the
+way the figure itself is — a quarter of it is drawn once, then mirrored across and down.
+Every edge of the result is a mirror line, so a copy laid beside it matches along the join
+exactly. Measured on the built app, the mean step in brightness across the join between two
+tiles is **0**, against 9–12 for an ordinary boundary inside the tile.
+
+The barrel and the mirror falloff are left off it. Both are radial — they describe looking
+down a tube, not the pattern — and baked in they would put a dark blot at every repeat. That
+is why `lib/renderer.ts` keeps the field and the optics in front of it as separate steps.
 
 ## Accessibility
 

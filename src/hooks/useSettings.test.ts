@@ -10,6 +10,7 @@ const CHANGES = [
   ['cameraFacing', 'user'],
   ['shards', 40],
   ['chipSize', 1.5],
+  ['skin', 'photo'],
   ['zoom', 2],
   ['trails', 0.5],
   ['metallic', !DEFAULT_SETTINGS.metallic],

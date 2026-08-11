@@ -14,6 +14,11 @@ import styles from './Kaleidoscope.module.css';
 export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
+  /**
+   * Returns a square tile that repeats without a seam, as a PNG data URL.
+   * `null` before the first paint, or if the surfaces cannot be made.
+   */
+  capturePattern: () => string | null;
 }
 
 export interface KaleidoscopeProps {
@@ -22,6 +27,8 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
+  /** Picture to cut the pieces out of, when `settings.skin` asks for one. */
+  skin?: MediaElement | null;
   /**
    * Applies a pinched zoom. Left out, pinching does nothing.
    *
@@ -43,6 +50,7 @@ export function Kaleidoscope({
   settings,
   paused = false,
   media = null,
+  skin = null,
   onZoom,
   ref,
 }: KaleidoscopeProps) {
@@ -64,7 +72,14 @@ export function Kaleidoscope({
     [settings.seed, settings.shards],
   );
 
-  useImperativeHandle(ref, () => ({ capture: () => rendererRef.current?.toDataUrl() ?? null }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      capture: () => rendererRef.current?.toDataUrl() ?? null,
+      capturePattern: () => rendererRef.current?.toPatternUrl(settings) ?? null,
+    }),
+    [settings],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -95,8 +110,8 @@ export function Kaleidoscope({
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media);
-  }, [size.width, size.height, scene, settings, media]);
+    renderer.render(scene, settings, media, skin);
+  }, [size.width, size.height, scene, settings, media, skin]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -118,7 +133,7 @@ export function Kaleidoscope({
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
       });
-      renderer.render(scene, settings, media);
+      renderer.render(scene, settings, media, skin);
     },
     !paused || gesture.mode !== null,
   );

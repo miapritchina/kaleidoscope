@@ -55,6 +55,9 @@ const VIGNETTE_CLEAR = 0.16;
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
 
+/** Side of the exported pattern tile, in pixels. */
+const TILE_SIZE = 1024;
+
 /**
  * Side of the mirror triangle, as a fraction of the smaller viewport edge.
  *
@@ -95,6 +98,10 @@ export class KaleidoscopeRenderer {
   #spritesMetallic = false;
   #mode: WedgeMode | null = null;
 
+  readonly #createCanvas: () => HTMLCanvasElement;
+  #tile: HTMLCanvasElement | null = null;
+  #quadrant: HTMLCanvasElement | null = null;
+
   #patches: SkinPatches | null = null;
   #patchesFor: CanvasImageSource | null = null;
   #patchesSize = '';
@@ -119,6 +126,7 @@ export class KaleidoscopeRenderer {
     this.#ctx = ctx;
     this.#wedge = wedge;
     this.#wedgeCtx = wedgeCtx;
+    this.#createCanvas = createWedgeCanvas;
     this.#hexagon = createWedgeCanvas();
     this.#hexagonCtx = this.#hexagon.getContext('2d');
     this.#frame = createWedgeCanvas();
@@ -175,10 +183,10 @@ export class KaleidoscopeRenderer {
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
    * @param skin A picture to cut the pieces themselves out of, in place of the
-   *   generated shapes — see `lib/skin.ts`. Separate from `media`, which the
-   *   mirrors repeat: the two are independent, and the objects can come out of
-   *   one picture while the mirrors repeat another. Nothing supplies one today;
-   *   this is where the built-in object collection plugs in.
+   *   generated shapes — see `lib/skin.ts`. Ignored unless `settings.skin` asks
+   *   for it. Separate from `media`, which the mirrors repeat: the two are
+   *   independent, so the objects can come out of one picture while the mirrors
+   *   repeat another.
    */
   render(
     scene: Scene,
@@ -208,7 +216,7 @@ export class KaleidoscopeRenderer {
 
     // Until it has pixels there is nothing to cut objects out of, so the pieces
     // fall back to their palette colours rather than to a blank rectangle.
-    const surface = isMediaReady(skin) ? skin : null;
+    const surface = settings.skin === 'photo' && isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
 
     this.#paintWedge(
@@ -266,6 +274,67 @@ export class KaleidoscopeRenderer {
   /** Serialises the current frame, e.g. for a download link. */
   toDataUrl(type = 'image/png'): string {
     return this.#canvas.toDataURL(type);
+  }
+
+  /**
+   * Serialises a square tile that repeats without a seam.
+   *
+   * A three-mirror kaleidoscope tiles the plane on a hexagonal lattice, and a
+   * hexagonal lattice has no square period — `k` steps across can never equal
+   * `m` steps up, because the ratio is `sqrt(3)`. So the tile is not a period
+   * of the figure. It is built the way the figure itself is: a quarter of it is
+   * drawn once, then mirrored across and down. Every edge of the result is a
+   * mirror line, so a copy laid beside it matches along the join exactly —
+   * which is what seamless has to mean here, and is a fair thing for a
+   * kaleidoscope to hand you.
+   *
+   * The barrel and the mirror falloff are left off. Both are radial — they
+   * describe looking down a tube, not the pattern — and baked in they would put
+   * a dark blot at every repeat.
+   *
+   * @param size Side of the tile in pixels. Rounded up to an even number, since
+   *   it is built from four quarters.
+   */
+  toPatternUrl(settings: Settings, size = TILE_SIZE, type = 'image/png'): string | null {
+    const side = this.#triangleSide(settings);
+    const half = Math.max(1, Math.ceil(size / 2));
+    const palette = getPalette(settings.paletteId);
+
+    this.#quadrant ??= this.#createCanvas();
+    this.#tile ??= this.#createCanvas();
+
+    const quadrant = this.#quadrant;
+    const tile = this.#tile;
+
+    quadrant.width = half;
+    quadrant.height = half;
+    tile.width = half * 2;
+    tile.height = half * 2;
+
+    const quadrantCtx = quadrant.getContext('2d');
+    const tileCtx = tile.getContext('2d');
+
+    if (!quadrantCtx || !tileCtx) {
+      return null;
+    }
+
+    this.#stampField(quadrantCtx, half, half, palette, side);
+
+    // The quarter, then its reflection across, down, and both — the same four
+    // ways round the mirrors themselves work.
+    for (const [flipX, flipY] of [
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ] as const) {
+      tileCtx.setTransform(flipX, 0, 0, flipY, flipX < 0 ? half * 2 : 0, flipY < 0 ? half * 2 : 0);
+      tileCtx.drawImage(quadrant, 0, 0);
+    }
+
+    tileCtx.setTransform(1, 0, 0, 1, 0, 0);
+
+    return tile.toDataURL(type);
   }
 
   /** Paints the chosen source into the offscreen wedge surface. */
@@ -368,49 +437,8 @@ export class KaleidoscopeRenderer {
    */
   #compositeTiling(palette: Palette, side: number): void {
     const ctx = this.#ctx;
-    const hexagon = this.#buildHexagon(palette, side);
 
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = palette.background;
-    ctx.fillRect(0, 0, this.#width, this.#height);
-
-    if (!hexagon) {
-      return;
-    }
-
-    ctx.save();
-    // The mirror framework does not move. Plenty of real kaleidoscopes are built
-    // this way: the mirrors are fixed in the barrel and the chamber of glass
-    // turns against them on its own bearing. Rotating the whole tiling instead
-    // sweeps the figure around the screen, which reads as a picture being spun
-    // and drowns the thing actually worth watching — the glass falling.
-    ctx.translate(this.#width / 2, this.#height / 2);
-
-    const lattice = hexLattice(side);
-    // A rotated rectangle fits inside the circle through its corners, so cover
-    // that: cheaper than re-deriving the bounds for every angle.
-    const reach = Math.hypot(this.#width, this.#height) / 2;
-    const centres = coverWithHexagons(
-      { minX: -reach, maxX: reach, minY: -reach, maxY: reach },
-      lattice,
-    );
-    const offset = hexagon.width / 2;
-
-    for (const centre of centres) {
-      // And each hexagon differs from its neighbours as well, or the field
-      // would be exactly periodic — six distinct cells, repeated verbatim
-      // forever, which is the same tell one step up. Laid down a little
-      // transparent lets that cell's share of the light behind it through.
-      ctx.globalAlpha = 1 - cellNoise(centre.i, centre.j) * CELL_EXPOSURE;
-      ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
-    }
-
-    ctx.globalAlpha = 1;
-
-    this.#drawSeams(side);
-    ctx.restore();
+    this.#stampField(ctx, this.#width, this.#height, palette, side);
 
     // What the mirrors themselves cost, applied last because it applies to the
     // whole view — the light coming through the gaps as much as the glass.
@@ -434,6 +462,66 @@ export class KaleidoscopeRenderer {
   }
 
   /**
+   * Lays the hexagons across a surface, with their joins. The field itself,
+   * without the optics in front of it.
+   *
+   * Taken apart from {@link #compositeTiling} because the seamless tile wants
+   * the field and nothing else: the barrel and the mirror falloff are radial,
+   * so baking either into a tile puts a dark blot at every repeat.
+   */
+  #stampField(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    palette: Palette,
+    side: number,
+  ): void {
+    const hexagon = this.#buildHexagon(palette, side);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = palette.background;
+    ctx.fillRect(0, 0, width, height);
+
+    if (!hexagon) {
+      return;
+    }
+
+    ctx.save();
+    // The mirror framework does not move. Plenty of real kaleidoscopes are built
+    // this way: the mirrors are fixed in the barrel and the chamber of glass
+    // turns against them on its own bearing. Rotating the whole tiling instead
+    // sweeps the figure around the screen, which reads as a picture being spun
+    // and drowns the thing actually worth watching — the glass falling.
+    ctx.translate(width / 2, height / 2);
+
+    const lattice = hexLattice(side);
+    // A rotated rectangle fits inside the circle through its corners, so cover
+    // that: cheaper than re-deriving the bounds for every angle.
+    const reach = Math.hypot(width, height) / 2;
+    const centres = coverWithHexagons(
+      { minX: -reach, maxX: reach, minY: -reach, maxY: reach },
+      lattice,
+    );
+    const offset = hexagon.width / 2;
+
+    for (const centre of centres) {
+      // And each hexagon differs from its neighbours as well, or the field
+      // would be exactly periodic — six distinct cells, repeated verbatim
+      // forever, which is the same tell one step up. Laid down a little
+      // transparent lets that cell's share of the light behind it through.
+      ctx.globalAlpha = 1 - cellNoise(centre.i, centre.j) * CELL_EXPOSURE;
+      ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
+    }
+
+    ctx.globalAlpha = 1;
+
+    this.#drawSeams(ctx, width, height, side);
+    ctx.restore();
+  }
+
+  /**
    * The joins between the mirrors.
    *
    * Three mirrors meeting in a tube have edges, and you can see them: a hairline
@@ -449,15 +537,14 @@ export class KaleidoscopeRenderer {
    *
    * Called inside the tiling's own transform, so the joins turn with it.
    */
-  #drawSeams(side: number): void {
-    const ctx = this.#ctx;
+  #drawSeams(ctx: CanvasRenderingContext2D, width: number, height: number, side: number): void {
     const spacing = (side * Math.sqrt(3)) / 2;
 
     if (spacing <= 0) {
       return;
     }
 
-    const reach = Math.hypot(this.#width, this.#height) / 2 + spacing;
+    const reach = Math.hypot(width, height) / 2 + spacing;
     const lines = Math.ceil(reach / spacing);
 
     ctx.save();

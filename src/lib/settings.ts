@@ -11,6 +11,21 @@ export function isSourceId(value: unknown): value is SourceId {
   return typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
 }
 
+/**
+ * What the pieces in the chamber are.
+ *
+ * `palette` generates them, coloured from the chosen palette. `photo` cuts them
+ * out of a picture you supply — see `lib/skin.ts`, which assumes a cut-out with
+ * an alpha channel, the way a set of objects on a transparent background is.
+ */
+export const SKINS = ['palette', 'photo'] as const;
+
+export type SkinId = (typeof SKINS)[number];
+
+export function isSkinId(value: unknown): value is SkinId {
+  return typeof value === 'string' && (SKINS as readonly string[]).includes(value);
+}
+
 /** Everything that describes a kaleidoscope. Serialisable by design. */
 export interface Settings {
   /**
@@ -37,6 +52,14 @@ export interface Settings {
    * as how big they are — so growing that to enlarge them thins them out.
    */
   chipSize: number;
+  /**
+   * What the pieces are.
+   *
+   * A picture cannot travel in a shared link any more than a photo source can,
+   * so a restored `photo` only means "offer the picker", not "reopen that
+   * picture" — until one is chosen the pieces fall back to the palette.
+   */
+  skin: SkinId;
   /** Magnification of the source cell. */
   zoom: number;
   /** Motion-trail persistence, `0` = none, `0.95` = long smear. */
@@ -78,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cameraFacing: 'environment',
   shards: 30,
   chipSize: 1,
+  skin: 'palette',
   zoom: 1.2,
   trails: 0.35,
   metallic: false,
@@ -117,6 +141,7 @@ export function sanitizeSettings(input: unknown): Settings {
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
+    skin: isSkinId(raw.skin) ? raw.skin : DEFAULT_SETTINGS.skin,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     trails: clampToLimit(toNumber(raw.trails, DEFAULT_SETTINGS.trails), LIMITS.trails),
     metallic: typeof raw.metallic === 'boolean' ? raw.metallic : DEFAULT_SETTINGS.metallic,
@@ -140,6 +165,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     shards: String(settings.shards),
     chipSize: String(settings.chipSize),
+    skin: settings.skin,
     zoom: String(settings.zoom),
     trails: String(settings.trails),
     metallic: settings.metallic ? '1' : '0',
@@ -160,15 +186,13 @@ const KNOWN_PARAMS: readonly string[] = [
   // Settings this app once offered, tolerated so an old link still opens: the
   // mirror arrangement, back when there was a choice of one; the two names this
   // flag had while the pieces were transparent and lit from behind; and the
-  // control that let a viewer skin the pieces with a picture of their own,
-  // which the built-in collection replaces.
+  // camera as a source for the pieces themselves, which is not offered.
   'segments',
   'mirrors',
   'geometry',
   'speed',
   'glow',
   'light',
-  'skin',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -187,6 +211,7 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
   return sanitizeSettings({
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
+    skin: params.get('skin'),
     zoom: params.get('zoom'),
     trails: params.get('trails'),
     metallic: metallic === null ? undefined : metallic === '1' || metallic === 'true',
