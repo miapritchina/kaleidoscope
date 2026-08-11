@@ -5,7 +5,7 @@ import { resolvePlayback } from './playback';
 describe('resolvePlayback', () => {
   describe('with no reduced-motion preference', () => {
     it('plays every source', () => {
-      for (const source of ['shards', 'image', 'camera'] as const) {
+      for (const source of ['objects', 'image', 'camera'] as const) {
         expect(resolvePlayback({ source, prefersReducedMotion: false })).toEqual({
           isPlaying: true,
         });
@@ -15,7 +15,7 @@ describe('resolvePlayback', () => {
 
   describe('with a reduced-motion preference', () => {
     it('pauses a generated shard field', () => {
-      expect(resolvePlayback({ source: 'shards', prefersReducedMotion: true })).toEqual({
+      expect(resolvePlayback({ source: 'objects', prefersReducedMotion: true })).toEqual({
         isPlaying: false,
       });
     });

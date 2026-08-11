@@ -89,8 +89,8 @@ function readInitialSettings(): Settings {
 
       // A photo and a camera stream cannot be restored: the file is gone and
       // reopening on `camera` would fire a permission prompt nobody asked for
-      // on page load. Start on the shard field and let them choose again.
-      return restored.source === 'shards' ? restored : { ...restored, source: 'shards' };
+      // on page load. Open on the chamber and let them choose again.
+      return restored.source === 'objects' ? restored : { ...restored, source: 'objects' };
     }
   } catch {
     // Corrupt or unreadable storage falls back to the defaults below.

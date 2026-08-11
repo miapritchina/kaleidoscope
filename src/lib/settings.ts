@@ -3,7 +3,7 @@ import { DEFAULT_OBJECTS, isObjectSetId } from './objectSets';
 import { createSeedString } from './random';
 
 /** What the mirrors repeat. */
-export const SOURCES = ['shards', 'image', 'camera'] as const;
+export const SOURCES = ['objects', 'image', 'camera'] as const;
 
 export type SourceId = (typeof SOURCES)[number];
 
@@ -78,7 +78,7 @@ export const LIMITS = {
 } as const satisfies Record<string, NumericLimit>;
 
 export const DEFAULT_SETTINGS: Settings = {
-  source: 'shards',
+  source: 'objects',
   cameraFacing: 'environment',
   shards: 30,
   chipSize: 1,
