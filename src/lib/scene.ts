@@ -120,7 +120,7 @@ const CONTENTS_CATCHUP = 4;
 const MAX_LAG = 0.3;
 
 /** Builds a deterministic chamber of glass for the given seed. */
-export function createScene(seed: string, shardCount: number): Scene {
+export function createScene(seed: string, shardCount: number, chipScale = 1): Scene {
   const rng = mulberry32(hashSeed(seed));
   const count = Math.max(1, Math.floor(shardCount));
   const shards: Shard[] = [];
@@ -142,7 +142,11 @@ export function createScene(seed: string, shardCount: number): Scene {
       // a real cell is full, so tipping it rearranges the pile rather than
       // emptying most of the view. The range is wide because a real one holds
       // everything from a splinter to a bead.
-      radius: randomBetween(rng, 0.08, 0.26),
+      // Scaled here rather than at draw time, because a bigger piece is a
+      // bigger piece: it displaces its neighbours, packs differently and piles
+      // differently. Scaling only the sprite leaves every arrangement identical
+      // and just draws it smaller, which is a picture of the same chamber.
+      radius: randomBetween(rng, 0.08, 0.26) * Math.max(0.05, chipScale),
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
       colorStop: rng(),
@@ -207,10 +211,9 @@ export interface DrawChamberOptions {
   /** Offset of the chamber from the apex, in cell units. */
   pan: { x: number; y: number };
   /** Multiplies chip size without changing how many there are. */
-  chipScale?: number;
   sprites: ChipSprites;
   /**
-   * A photograph to skin the pieces with, instead of the palette.
+   * The picture the pieces are cut out of.
    *
    * Each piece is cut from its own patch of it, so a chamber of them samples
    * the picture all over rather than repeating one crop. Nothing about the
@@ -237,7 +240,7 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, rotation, pan, chipScale = 1, sprites, skin = null, patches = null }: DrawChamberOptions,
+  { scale, rotation, pan, sprites, skin = null, patches = null }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
@@ -251,24 +254,14 @@ export function drawChamber(
   ctx.rotate(rotation);
 
   for (const shard of scene.shards) {
-    const radius = shard.radius * scale * chipScale * DEPTH_OVERLAP;
+    const radius = shard.radius * scale * DEPTH_OVERLAP;
 
+    // Nothing is drawn without a picture to cut it out of. There is no
+    // generated piece to fall back to any more, and a chamber of nothing is a
+    // truer answer than one full of shapes nobody asked for.
     if (skin) {
       drawSkinned(ctx, shard, sprites, skin, patches, scale, radius);
-      continue;
     }
-
-    const sprite = sprites.get(shard.kind, shard.colorStop, shard.variant);
-
-    if (!sprite) {
-      continue;
-    }
-
-    ctx.save();
-    ctx.translate(shard.x * scale, shard.y * scale);
-    ctx.rotate(shard.rotation);
-    ctx.drawImage(sprite, -radius, -radius, radius * 2, radius * 2);
-    ctx.restore();
   }
 
   ctx.restore();

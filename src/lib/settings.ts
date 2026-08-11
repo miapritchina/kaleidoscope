@@ -1,6 +1,5 @@
 import { isCameraFacing, type CameraFacing } from './camera';
 import { DEFAULT_OBJECTS, isObjectSetId } from './objectSets';
-import { DEFAULT_PALETTE_ID, isPaletteId, type PaletteId } from './palettes';
 import { createSeedString } from './random';
 
 /** What the mirrors repeat. */
@@ -49,16 +48,6 @@ export interface Settings {
   objects: string;
   /** Magnification of the source cell. */
   zoom: number;
-  /**
-   * A polished metal finish rather than a matte stone one.
-   *
-   * The light sits at the viewer's eye, so a facet turned towards you is the
-   * one that blazes. How hard that blaze is — a blown-out white on some facets
-   * and nothing on their neighbours, against an even shading across all of
-   * them — is the whole difference between metal and stone.
-   */
-  metallic: boolean;
-  paletteId: PaletteId;
   /** Seed for the shard generator. */
   seed: string;
 }
@@ -87,8 +76,6 @@ export const DEFAULT_SETTINGS: Settings = {
   chipSize: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
-  metallic: false,
-  paletteId: DEFAULT_PALETTE_ID,
   seed: 'kaleido',
 };
 
@@ -126,8 +113,6 @@ export function sanitizeSettings(input: unknown): Settings {
     chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
     objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
-    metallic: typeof raw.metallic === 'boolean' ? raw.metallic : DEFAULT_SETTINGS.metallic,
-    paletteId: isPaletteId(raw.paletteId) ? raw.paletteId : DEFAULT_SETTINGS.paletteId,
     seed: toSeed(raw.seed),
   };
 }
@@ -149,8 +134,6 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     chipSize: String(settings.chipSize),
     objects: settings.objects,
     zoom: String(settings.zoom),
-    metallic: settings.metallic ? '1' : '0',
-    palette: settings.paletteId,
     seed: settings.seed,
   });
 }
@@ -167,9 +150,10 @@ const KNOWN_PARAMS: readonly string[] = [
   // Settings this app once offered, tolerated so an old link still opens: the
   // mirror arrangement, back when there was a choice of one; the two names this
   // flag had while the pieces were transparent and lit from behind; and the
-  // camera as a source for the pieces themselves, which is not offered; the
-  // motion trail, back when each frame lingered into the next; and the name the
-  // object set had while it was a choice of three.
+  // camera as a source for the pieces themselves; the motion trail, back when
+  // each frame lingered into the next; the name the object set had while it was
+  // a choice of three; the finish, under all three of its names, and the
+  // palette — both of which described drawn pieces, which are gone.
   'segments',
   'mirrors',
   'geometry',
@@ -178,6 +162,8 @@ const KNOWN_PARAMS: readonly string[] = [
   'light',
   'trails',
   'skin',
+  'metallic',
+  'palette',
   'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
@@ -188,18 +174,11 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 
 /** Decodes a query string produced by {@link settingsToSearchParams}. */
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
-  // `glow` and then `light` are what this flag was called while the pieces were
-  // transparent. All three ask for the more brilliant of the two finishes, so
-  // an old link still opens on the one it was shared for.
-  const metallic = params.get('metallic') ?? params.get('light') ?? params.get('glow');
-
   return sanitizeSettings({
     shards: params.get('shards'),
     chipSize: params.get('chipSize'),
     objects: params.get('objects'),
     zoom: params.get('zoom'),
-    metallic: metallic === null ? undefined : metallic === '1' || metallic === 'true',
-    paletteId: params.get('palette'),
     seed: params.get('seed'),
   });
 }

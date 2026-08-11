@@ -73,11 +73,14 @@ export function Kaleidoscope({
   const gesture = useStageGesture({ zoom: () => zoomRef.current, onZoom });
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
-  // A new seed or shard count means a genuinely different scene; anything else
-  // is applied to the running simulation without resetting it.
+  // A new seed, count or piece size means a genuinely different scene; anything
+  // else is applied to the running simulation without resetting it. Size counts
+  // because it is geometry: bigger pieces displace their neighbours and settle
+  // into a different pile, which cannot be done by scaling what is already
+  // there.
   const scene = useMemo(
-    () => createScene(settings.seed, settings.shards),
-    [settings.seed, settings.shards],
+    () => createScene(settings.seed, settings.shards, settings.chipSize),
+    [settings.seed, settings.shards, settings.chipSize],
   );
 
   useImperativeHandle(

@@ -34,10 +34,20 @@ html,
 body,
 #root {
   height: 100%;
+  /* The dynamic viewport, where it is understood. On iOS Safari `100%`
+     resolves against the *large* viewport — the one without the address bar —
+     so the page is taller than what is on screen and anything anchored to its
+     bottom, like the control drawer, hangs below the fold until a scroll
+     collapses the bar and brings the two into line. */
+  height: 100dvh;
 }
 
 body {
   margin: 0;
+  /* Nothing on this page scrolls but the drawer's own contents. Left scrollable
+     the whole layout can be dragged about under the address bar. */
+  overflow: hidden;
+  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
 }
 

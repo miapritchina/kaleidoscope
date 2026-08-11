@@ -12,8 +12,6 @@ const CHANGES = [
   ['chipSize', 1.5],
   ['objects', 'custom'],
   ['zoom', 2],
-  ['metallic', !DEFAULT_SETTINGS.metallic],
-  ['paletteId', 'ember'],
   ['seed', 'changed'],
 ] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];
 
@@ -55,8 +53,8 @@ describe('settingsReducer', () => {
   it('resets to the defaults', () => {
     const changed = settingsReducer(DEFAULT_SETTINGS, {
       type: 'set',
-      key: 'paletteId',
-      value: 'ember',
+      key: 'seed',
+      value: 'changed',
     });
 
     expect(settingsReducer(changed, { type: 'reset' })).toEqual(DEFAULT_SETTINGS);
@@ -79,13 +77,13 @@ describe('useSettings', () => {
     const first = renderHook(() => useSettings());
 
     act(() => {
-      first.result.current.set('paletteId', 'lagoon');
+      first.result.current.set('seed', 'lagoon');
     });
     first.unmount();
 
     const second = renderHook(() => useSettings());
 
-    expect(second.result.current.settings.paletteId).toBe('lagoon');
+    expect(second.result.current.settings.seed).toBe('lagoon');
   });
 
   it('ignores corrupt storage', () => {
@@ -109,12 +107,12 @@ describe('useSettings', () => {
       'kaleidoscope:settings',
       JSON.stringify({ ...DEFAULT_SETTINGS, seed: 'stored' }),
     );
-    window.history.replaceState(null, '', '/?seed=shared&palette=ember');
+    window.history.replaceState(null, '', '/?seed=shared&chipSize=1.5');
 
     const { result } = renderHook(() => useSettings());
 
     expect(result.current.settings.seed).toBe('shared');
-    expect(result.current.settings.paletteId).toBe('ember');
+    expect(result.current.settings.chipSize).toBe(1.5);
   });
 
   it('resets back to the defaults', () => {

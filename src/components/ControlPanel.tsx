@@ -2,15 +2,13 @@ import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
-import { PALETTES } from '../lib/palettes';
-import { CUSTOM, GENERATED, OBJECT_SETS } from '../lib/objectSets';
+import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
 import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
 import { SelectField } from './controls/SelectField';
 import { TextField } from './controls/TextField';
-import { ToggleField } from './controls/ToggleField';
 import styles from './ControlPanel.module.css';
 
 export interface ControlPanelProps {
@@ -19,8 +17,6 @@ export interface ControlPanelProps {
   onRandomize: () => void;
   onReset: () => void;
   onSave: () => void;
-  /** Saves a square tile that repeats without a seam. */
-  onSavePattern: () => void;
   onShare: () => void;
   /** Feedback for the most recent action, announced politely. */
   status?: string;
@@ -33,13 +29,8 @@ export interface ControlPanelProps {
   cameraMessage?: string | null;
 }
 
-const PALETTE_OPTIONS = PALETTES.map((palette) => ({
-  value: palette.id,
-  label: palette.name,
-}));
-
 const SOURCE_OPTIONS: { value: SourceId; label: string }[] = [
-  { value: 'shards', label: 'Shards' },
+  { value: 'shards', label: 'Objects' },
   { value: 'image', label: 'Photo' },
   { value: 'camera', label: 'Camera' },
 ];
@@ -75,7 +66,6 @@ export function ControlPanel({
   onRandomize,
   onReset,
   onSave,
-  onSavePattern,
   onShare,
   status,
   imageName,
@@ -142,7 +132,7 @@ export function ControlPanel({
               onChange={(value) => {
                 onChange('chipSize', value);
               }}
-              description="How big each piece is, without changing how many there are."
+              description="How big each piece is. Bigger pieces crowd each other, so the pile settles differently."
             />
           </>
         )}
@@ -193,30 +183,6 @@ export function ControlPanel({
 
         {settings.source === 'shards' && (
           <>
-            <SelectField
-              label="Palette"
-              value={settings.paletteId}
-              options={PALETTE_OPTIONS}
-              onChange={(value) => {
-                onChange('paletteId', value);
-              }}
-              {...(settings.objects === GENERATED
-                ? {}
-                : {
-                    description:
-                      'The ground behind the objects. Their own colours come from the picture.',
-                  })}
-            />
-            {settings.objects === GENERATED && (
-              <ToggleField
-                label="Metallic"
-                checked={settings.metallic}
-                onChange={(checked) => {
-                  onChange('metallic', checked);
-                }}
-                description="Polished metal rather than matte stone: a hard blaze off whichever facets face you."
-              />
-            )}
             <TextField
               label="Seed"
               value={seedDraft}
@@ -252,9 +218,6 @@ export function ControlPanel({
         )}
         <button type="button" className={styles.secondary} onClick={onSave}>
           Save PNG
-        </button>
-        <button type="button" className={styles.secondary} onClick={onSavePattern}>
-          Save pattern
         </button>
         <button type="button" className={styles.secondary} onClick={onShare}>
           Copy link

@@ -2,14 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import { createChipSprites } from './chips';
-import { getPalette } from './palettes';
 import { CHAMBER_RADIUS } from './chamber';
 import { createScene, drawChamber, SHARD_KINDS, updateScene } from './scene';
 
 // jsdom has no canvas backend, so chip sprites are rendered onto recorders
 // instead. They still come back as drawable images, which is all drawCell needs
 // in order to exercise its tiling and culling.
-const sprites = createChipSprites(getPalette('aurora'), {
+const sprites = createChipSprites({
   createCanvas: () =>
     ({
       width: 0,
@@ -242,13 +241,24 @@ describe('updateScene', () => {
 });
 
 describe('drawChamber', () => {
-  it('stamps one sprite per chip', () => {
-    const scene = createScene('draw', 7);
+  // There is no drawn piece to fall back to any more. Without a picture to cut
+  // them out of, a chamber of nothing is a truer answer than one full of shapes
+  // nobody chose.
+  it('draws nothing without a picture to cut the pieces from', () => {
     const context = createFakeContext();
 
-    drawChamber(asContext(context), scene, { ...BASE, scale: 100 });
+    drawChamber(asContext(context), createScene('draw', 7), { ...BASE, scale: 100 });
 
-    expect(context.countOf('drawImage')).toBe(7);
+    expect(context.countOf('drawImage')).toBe(0);
+  });
+
+  it('stamps one piece per chip once it has a picture', () => {
+    const context = createFakeContext();
+    const skin = { width: 400, height: 300 } as unknown as CanvasImageSource;
+
+    drawChamber(asContext(context), createScene('draw', 7), { ...BASE, scale: 100, skin });
+
+    expect(context.countOf('clip')).toBe(7);
   });
 
   it('draws nothing at a degenerate scale', () => {
@@ -328,19 +338,24 @@ describe('drawChamber', () => {
     ).toBe(true);
   });
 
-  it('scales the glass without moving it', () => {
-    const scene = createScene('scale', 4);
-    const small = createFakeContext();
-    const large = createFakeContext();
+  // Chip size is geometry, not a scale applied at draw time: a bigger piece
+  // displaces its neighbours and piles differently. Scaling only the sprite
+  // leaves every arrangement identical and just draws it smaller.
+  it('gives bigger pieces a bigger footprint, not just a bigger picture', () => {
+    const small = createScene('scale', 12, 1);
+    const large = createScene('scale', 12, 2);
 
-    drawChamber(asContext(small), scene, { ...BASE, scale: 100, chipScale: 1 });
-    drawChamber(asContext(large), scene, { ...BASE, scale: 100, chipScale: 2 });
+    for (const [index, shard] of large.shards.entries()) {
+      expect(shard.radius).toBeCloseTo(small.shards[index]!.radius * 2, 6);
+    }
 
-    expect(large.argsOf('translate')).toEqual(small.argsOf('translate'));
-    expect(large.argsOf('drawImage')[0]![3] as number).toBeCloseTo(
-      (small.argsOf('drawImage')[0]![3] as number) * 2,
-      6,
+    // And they have been settled at that size, so the pile is a different pile.
+    const moved = large.shards.filter(
+      (shard, index) =>
+        Math.hypot(shard.x - small.shards[index]!.x, shard.y - small.shards[index]!.y) > 0.05,
     );
+
+    expect(moved.length).toBeGreaterThan(large.shards.length / 3);
   });
 
   it('balances every save with a restore', () => {

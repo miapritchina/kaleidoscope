@@ -30,7 +30,7 @@ describe('App', () => {
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'true');
     expect(drawer()).not.toHaveAttribute('inert');
-    expect(screen.getByLabelText('Objects')).toBeInTheDocument();
+    expect(screen.getByLabelText('Count')).toBeInTheDocument();
 
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'false');
@@ -89,11 +89,12 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Kaleidoscope' })).toBeInTheDocument();
   });
 
-  it('leaves the play control on the artwork, not behind the button', () => {
+  // The one action worth reaching without opening anything.
+  it('leaves saving the pattern on the artwork, not behind the button', () => {
     render(<App />);
 
-    const play = screen.getByRole('button', { name: /play|pause/i });
+    const save = screen.getByRole('button', { name: /save pattern/i });
 
-    expect(drawer().contains(play)).toBe(false);
+    expect(drawer().contains(save)).toBe(false);
   });
 });

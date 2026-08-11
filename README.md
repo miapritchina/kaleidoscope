@@ -39,11 +39,9 @@ works the same way:
 1. **The light.** It sits at your eye, the way a phone's torch does next to its lens. So
    the pieces are opaque solids lit from the front: a facet turned towards you is the one
    that comes back bright, a facet ground away from you goes dark, and the specular peaks
-   in the same place the shading does rather than off to one side. That arrangement is what
-   lets metal read as metal — a hard blaze on some facets and nothing at all on their
-   neighbours. Behind them the ground is white — the objects are the subject, and white is
-   what a photographer would stand them on. It is still a property of the palette rather
-   than a constant, so one can be given its own again, but every palette is white today.
+   in the same place the shading does rather than off to one side. Behind them the ground is
+   white — the objects are the subject, and white is what a photographer would stand them
+   on, which is also what the pictures they come from were cut from.
 2. **The source.** `lib/scene.ts` holds the object chamber — loose pieces in a bounded cell,
    simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
    that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
@@ -112,20 +110,13 @@ Two layers are rendered per cut, and kept apart because they composite different
   The flat top faces you and comes back brightest; the ring of ground bevel faces is tilted
   away and comes back darker, each face by its own amount. The rim is darkest of all — the
   last sliver before the piece turns away from you entirely.
-- **The blaze** is the specular on top, stamped with `lighter`. Its sharpness is the whole
-  difference between the two finishes: raised to a low power it is a soft sheen across a
-  matte stone, and to a high one it is either blown out or absent, which is what a polished
-  metal actually does.
+- **The blaze** is the specular on top, stamped with `lighter`: a soft sheen across the
+  facets that face you, and nothing on their neighbours.
 
-That split is not only tidiness. The same two layers go over a **photograph** where a piece
-is cut from one, so they have to exist apart from any colour. A finished palette-coloured
-piece is just the two of them composed over a flat fill, done once at build time because
-the colour never changes between frames.
-
-Colours are picked from the palette, never blended between two of its stops: a chamber is
-loaded from a handful of jars, and the halfway house between a green and a magenta is mud.
-Within a jar, each colour is rendered in a few shades — no melt is ever quite even, so a
-chamber where every green is the identical green reads as printed.
+Neither says anything about what a piece is made of, and there is nothing here that does.
+The colour comes from the picture; these two only say how much of the light each facet
+returns. They are used where a picture yields no separable objects and a piece falls back to
+a generated shape with a patch of it inside — see below.
 
 ### Cutting the pieces out of a picture
 
@@ -137,10 +128,10 @@ what is left when there is no picture.
 bundled ones are discovered from the files rather than listed anywhere: dropping one into
 `src/assets/objects/` adds a preset to the **Objects** control and removing it takes one
 away, with no registry to keep in step and no way for the list and the files to disagree
-(`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). Two
-entries in that list are not files — **Upload a photo** takes one of your own, and
-**Generated shapes** is the drawn field. The app opens on the first bundled set when the
-build has any.
+(`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). One
+entry is not a file — **Upload a photo** takes one of your own. There is nothing else: a
+chamber is loaded with objects out of a picture, or it is empty. Without one, nothing is
+drawn at all, which is a truer answer than a chamber full of shapes nobody chose.
 
 The two that ship — **Bright gems** and **Cut stones** — are stand-ins, keyed back out of
 flattened stock previews and not cleared for redistribution. Replacing them is a matter of
@@ -203,21 +194,19 @@ src/
   components/    Canvas surface and the control panel
     controls/    Small labelled form fields
   hooks/         Animation frame, element size, media queries, settings, gestures, photo, camera
-  lib/           Rendering engine, chamber physics, tiling, chips, palettes, settings — no React
+  lib/           Rendering engine, chamber physics, tiling, object sets, settings — no React
   test/          Vitest setup and a fake 2D context
 ```
 
 ## Settings
 
-| Setting   | Range                | Effect                                              |
-| --------- | -------------------- | --------------------------------------------------- |
-| Input     | shards/photo/camera  | What the mirrors repeat                             |
-| Objects   | a set, or upload one | What the chamber is loaded with                     |
-| Count     | 4–60                 | Pieces in the chamber                               |
-| Chip size | 0.4x–2.5x            | How big each piece is, without changing how many    |
-| Palette   | 5 presets            | The ground, and the colours of the generated shapes |
-| Metallic  | on/off               | Polished metal rather than matte stone              |
-| Seed      | any text             | Seeds the chamber; same seed, same arrangement      |
+| Setting   | Range                | Effect                                           |
+| --------- | -------------------- | ------------------------------------------------ |
+| Input     | shards/photo/camera  | What the mirrors repeat                          |
+| Objects   | a set, or upload one | What the chamber is loaded with                  |
+| Count     | 4–60                 | Pieces in the chamber                            |
+| Chip size | 0.4x–2.5x            | How big each piece is, and so how the pile packs |
+| Seed      | any text             | Seeds the chamber; same seed, same arrangement   |
 
 Everything but Input applies to the chamber; Input applies to every source. There is no
 mirror control — a tube has three — no spin control, and no zoom control: those are the
@@ -244,7 +233,10 @@ instead, most of the chamber sits outside the view and turning sweeps the pile c
 it, emptying the field. The mirrors cut the chips at the triangle's edges and each one
 continues into its own reflection, which is what fills a real chamber. Cell size alone
 would set both the chip size and how many land in view, so **Chip size** scales the pieces
-on its own.
+on its own — and it scales them in the simulation rather than at draw time, so a bigger
+piece displaces its neighbours and the pile settles differently. Scaling only the sprite
+leaves every arrangement identical and merely draws it larger, which is a picture of the
+same chamber rather than a different one.
 
 Older links carried a mirror arrangement this app no longer offers. They still open, on
 whichever of their settings still mean something.
@@ -357,8 +349,16 @@ is live rather than a snapshot.
 ## The screen
 
 The artwork has the whole window. The controls are behind a button in the corner and start
-out of the way, because the point of the thing is the picture rather than the panel; Play
-and Pause is the only other thing on it.
+out of the way, because the point of the thing is the picture rather than the panel; **Save
+pattern** is the only other thing on it, being the one action worth reaching without opening
+anything.
+
+The window is measured in `dvh`, not `%`. On iOS Safari a percentage height resolves against
+the _large_ viewport — the one without the address bar — so the page comes out taller than
+what is on screen, and anything anchored to its bottom hangs below the fold until a scroll
+collapses the bar and brings the two into line. That is exactly how the drawer used to open:
+half off the bottom, and correct after a scroll. The body does not scroll at all; the only
+thing that does is the drawer's own contents, and it opens at the top of them.
 
 The panel slides in from the right, or up from the bottom on a narrow screen, and lies over
 the artwork rather than squeezing it — the canvas keeps its size, so opening the panel costs
@@ -391,11 +391,9 @@ is why `lib/renderer.ts` keeps the field and the optics in front of it as separa
 
 ## Accessibility
 
-- Motion is paused by default when the system asks for reduced motion, and changing that
-  preference mid-session hands control back to it. A live camera is the exception: it keeps
-  drawing and the mirrors are held still instead, because freezing a feed on its first
-  frame does not reduce motion, it just breaks what the viewer asked for. An explicit Pause
-  still freezes it.
+- Motion is held still when the system asks for reduced motion. A live camera is the
+  exception: it keeps drawing and the mirrors are held still instead, because freezing a
+  feed on its first frame does not reduce motion, it just breaks what the viewer asked for.
 - Every control is labelled; sliders expose formatted values via `aria-valuetext`.
 - The canvas carries a text description, and action feedback is announced politely.
 

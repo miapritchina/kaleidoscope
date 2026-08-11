@@ -7,12 +7,10 @@
  * `src/assets/objects/` adds a preset, and removing it takes one away. No
  * registry to keep in step, and no way for the list and the files to disagree.
  *
- * Two entries are not files. `generated` is the drawn shard field, which needs
- * no picture; `custom` is whatever picture the viewer supplies.
+ * One entry is not a file: `custom`, whatever picture the viewer supplies.
+ * There is nothing else — a chamber is loaded with objects out of a picture or
+ * it is empty.
  */
-
-/** The drawn shard field, coloured from the palette. */
-export const GENERATED = 'generated';
 
 /** A picture the viewer supplies. */
 export const CUSTOM = 'custom';
@@ -20,7 +18,7 @@ export const CUSTOM = 'custom';
 export interface ObjectSet {
   readonly id: string;
   readonly name: string;
-  /** Where the picture is, or `null` for the two that are not pictures. */
+  /** Where the picture is, or `null` for the one that is not a file. */
   readonly url: string | null;
 }
 
@@ -53,18 +51,17 @@ export const PRESET_SETS: readonly ObjectSet[] = Object.entries(files)
 export const OBJECT_SETS: readonly ObjectSet[] = [
   ...PRESET_SETS,
   { id: CUSTOM, name: 'Upload a photo…', url: null },
-  { id: GENERATED, name: 'Generated shapes', url: null },
 ];
 
 const BY_ID = new Map(OBJECT_SETS.map((set) => [set.id, set]));
 
 /**
- * What a chamber opens on.
+ * What a chamber opens on: the first bundled set.
  *
- * The first bundled set when there is one: the drawn shapes are a fallback for
- * a build with no pictures in it, not the thing on show.
+ * A build with no pictures in it opens on the upload prompt, because there is
+ * nothing else it could honestly show.
  */
-export const DEFAULT_OBJECTS: string = PRESET_SETS[0]?.id ?? GENERATED;
+export const DEFAULT_OBJECTS: string = PRESET_SETS[0]?.id ?? CUSTOM;
 
 export function isObjectSetId(value: unknown): value is string {
   return typeof value === 'string' && BY_ID.has(value);

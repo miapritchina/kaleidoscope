@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CUSTOM,
   DEFAULT_OBJECTS,
-  GENERATED,
   isObjectSetId,
   OBJECT_SETS,
   objectSetUrl,
@@ -11,13 +10,18 @@ import {
 } from './objectSets';
 
 describe('object sets', () => {
-  // The two that are not pictures. Everything else is discovered from the
+  // The one that is not a picture. Everything else is discovered from the
   // files, so there is nothing here to assert about which ones exist.
-  it('always offers a set to upload and a set to generate', () => {
+  it('always offers a set to upload', () => {
     expect(isObjectSetId(CUSTOM)).toBe(true);
-    expect(isObjectSetId(GENERATED)).toBe(true);
     expect(objectSetUrl(CUSTOM)).toBeNull();
-    expect(objectSetUrl(GENERATED)).toBeNull();
+  });
+
+  // There is no drawn field any more: a chamber is loaded with objects out of
+  // a picture, or it is empty.
+  it('offers nothing that is not a picture but the upload', () => {
+    expect(isObjectSetId('generated')).toBe(false);
+    expect(OBJECT_SETS.filter((set) => set.url === null)).toHaveLength(1);
   });
 
   it('rejects anything else, so a hand-edited link cannot name one', () => {
@@ -27,10 +31,9 @@ describe('object sets', () => {
     expect(objectSetUrl('nonsense')).toBeNull();
   });
 
-  it('lists every bundled set, and those two after them', () => {
-    expect(OBJECT_SETS).toHaveLength(PRESET_SETS.length + 2);
-    expect(OBJECT_SETS.at(-2)?.id).toBe(CUSTOM);
-    expect(OBJECT_SETS.at(-1)?.id).toBe(GENERATED);
+  it('lists every bundled set, and the upload after them', () => {
+    expect(OBJECT_SETS).toHaveLength(PRESET_SETS.length + 1);
+    expect(OBJECT_SETS.at(-1)?.id).toBe(CUSTOM);
   });
 
   // A picture dropped into the folder is the whole of adding a preset, so the
@@ -50,10 +53,8 @@ describe('object sets', () => {
     expect(new Set(OBJECT_SETS.map((set) => set.id)).size).toBe(OBJECT_SETS.length);
   });
 
-  // The drawn shapes are a fallback for a build with no pictures in it, not the
-  // thing on show: a bundled set opens the app when there is one.
-  it('opens on a bundled set when the build has any', () => {
-    expect(DEFAULT_OBJECTS).toBe(PRESET_SETS[0]?.id ?? GENERATED);
+  it('opens on a bundled set, or on the upload prompt when there are none', () => {
+    expect(DEFAULT_OBJECTS).toBe(PRESET_SETS[0]?.id ?? CUSTOM);
     expect(isObjectSetId(DEFAULT_OBJECTS)).toBe(true);
   });
 });

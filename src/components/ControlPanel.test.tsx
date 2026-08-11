@@ -12,7 +12,6 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onRandomize: vi.fn(),
     onReset: vi.fn(),
     onSave: vi.fn(),
-    onSavePattern: vi.fn(),
     onShare: vi.fn(),
     onSelectImage: vi.fn(),
     onClearImage: vi.fn(),
@@ -30,7 +29,6 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Objects')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
-    expect(screen.getByLabelText('Palette')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
 
@@ -93,33 +91,6 @@ describe('ControlPanel', () => {
     expect(screen.getByLabelText('Chip size')).toHaveAttribute('aria-valuetext', '2.00x');
   });
 
-  it('reports palette changes', async () => {
-    const user = userEvent.setup();
-    const { props } = renderPanel();
-
-    await user.selectOptions(screen.getByLabelText('Palette'), 'ember');
-
-    expect(props.onChange).toHaveBeenCalledWith('paletteId', 'ember');
-  });
-
-  // Metallic describes how a drawn facet returns the light. A photograph
-  // brought its own, so the toggle is only offered for the drawn shapes.
-  it('reports finish toggles, which only the drawn shapes have', async () => {
-    const user = userEvent.setup();
-    const { props } = renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'generated' } });
-
-    expect(screen.getByLabelText('Metallic')).toBeInTheDocument();
-    await user.click(screen.getByLabelText('Metallic'));
-
-    expect(props.onChange).toHaveBeenCalledWith('metallic', !DEFAULT_SETTINGS.metallic);
-  });
-
-  it('hides the finish toggle when the pieces come out of a picture', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'custom' } });
-
-    expect(screen.queryByLabelText('Metallic')).not.toBeInTheDocument();
-  });
-
   it('lets the seed field be cleared while typing', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
@@ -137,13 +108,11 @@ describe('ControlPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Randomize' }));
     await user.click(screen.getByRole('button', { name: 'Save PNG' }));
-    await user.click(screen.getByRole('button', { name: 'Save pattern' }));
     await user.click(screen.getByRole('button', { name: 'Copy link' }));
     await user.click(screen.getByRole('button', { name: 'Reset' }));
 
     expect(props.onRandomize).toHaveBeenCalledOnce();
     expect(props.onSave).toHaveBeenCalledOnce();
-    expect(props.onSavePattern).toHaveBeenCalledOnce();
     expect(props.onShare).toHaveBeenCalledOnce();
     expect(props.onReset).toHaveBeenCalledOnce();
   });
@@ -176,7 +145,6 @@ describe('ControlPanel', () => {
 
     expect(source).toContain('Objects');
     expect(source).toContain('Count');
-    expect(source).toContain('Palette');
     expect(source).toContain('Seed');
   });
 
@@ -208,13 +176,12 @@ describe('ControlPanel', () => {
     // Chamber-specific
     expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Palette')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
     expect(screen.getByLabelText('Input')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save pattern' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save PNG' })).toBeInTheDocument();
   });
 
   it('shows the photo picker only for the photo source', () => {
