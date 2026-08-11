@@ -23,8 +23,21 @@ files by `src/lib/objectSets.ts`.
 The filename is the preset's name: `rough-quartz.png` shows up as "Rough
 quartz". Keep it lowercase with hyphens.
 
+## Prefer WebP
+
+Both are read the same way, but a photographic cut-out is several times smaller
+as WebP than as PNG for no visible loss — the two sets here went from 730 KB to
+152 KB together. Each set is a separate asset, fetched only when it is chosen,
+so the weight of one is not paid by someone who never picks it.
+
+If a picture arrives with its transparency flattened onto a checkerboard, as
+stock previews usually do, key it back out by flood-filling from the edges
+rather than by colour: the background is the region connected to the border, so
+a white diamond in the middle keeps its middle.
+
 ## Licensing
 
-Only put files in here that this repository is allowed to redistribute. Stock
-site previews are not — several of them are watermarked, and the watermark ends
-up on the pieces.
+Only put files in here that this repository is allowed to redistribute. The two
+sets here came from stock previews at the owner's request, as a stand-in until
+the real collection is ready; they are not cleared for redistribution and should
+be replaced.

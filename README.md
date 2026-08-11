@@ -142,6 +142,10 @@ entries in that list are not files — **Upload a photo** takes one of your own,
 **Generated shapes** is the drawn field. The app opens on the first bundled set when the
 build has any.
 
+The two that ship — **Bright gems** and **Cut stones** — are stand-ins, keyed back out of
+flattened stock previews and not cleared for redistribution. Replacing them is a matter of
+putting different files in the folder.
+
 A picture comes apart cleanly when it is a few separate things on a plain backdrop, which is
 what a set of cut-out gemstones is. The picture is sampled to 96x96 and everything that is
 not backdrop is flood-filled into separate objects. What counts as backdrop depends on what

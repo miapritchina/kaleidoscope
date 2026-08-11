@@ -23,25 +23,28 @@ export function useImageUrl(url: string | null): HTMLImageElement | null {
 
     let live = true;
     const element = new Image();
+
+    // `load` rather than `decode()`: the promise is the nicer of the two, but
+    // it is missing in older Safari and in jsdom, and this only has to know
+    // that `drawImage` will find pixels.
+    const onLoad = () => {
+      if (live) {
+        setLoaded({ url, image: element });
+      }
+    };
+
+    element.addEventListener('load', onLoad);
+    // A missing or corrupt file is not worth breaking the app over: nothing is
+    // set, and the pieces fall back to the drawn shapes.
+    element.addEventListener('error', () => undefined);
     // Bundled alongside the app, so same-origin; set anyway, since the cut-out
     // finder reads the pixels back and a tainted canvas cannot be read.
     element.crossOrigin = 'anonymous';
     element.src = url;
 
-    element
-      .decode()
-      .then(() => {
-        if (live) {
-          setLoaded({ url, image: element });
-        }
-      })
-      .catch(() => {
-        // A missing or corrupt file is not worth breaking the app over: the
-        // pieces fall back to the drawn shapes.
-      });
-
     return () => {
       live = false;
+      element.removeEventListener('load', onLoad);
     };
   }, [url]);
 

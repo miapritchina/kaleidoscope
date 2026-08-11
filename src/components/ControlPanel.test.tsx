@@ -102,13 +102,22 @@ describe('ControlPanel', () => {
     expect(props.onChange).toHaveBeenCalledWith('paletteId', 'ember');
   });
 
-  it('reports finish toggles', async () => {
+  // Metallic describes how a drawn facet returns the light. A photograph
+  // brought its own, so the toggle is only offered for the drawn shapes.
+  it('reports finish toggles, which only the drawn shapes have', async () => {
     const user = userEvent.setup();
-    const { props } = renderPanel();
+    const { props } = renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'generated' } });
 
+    expect(screen.getByLabelText('Metallic')).toBeInTheDocument();
     await user.click(screen.getByLabelText('Metallic'));
 
     expect(props.onChange).toHaveBeenCalledWith('metallic', !DEFAULT_SETTINGS.metallic);
+  });
+
+  it('hides the finish toggle when the pieces come out of a picture', () => {
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'custom' } });
+
+    expect(screen.queryByLabelText('Metallic')).not.toBeInTheDocument();
   });
 
   it('lets the seed field be cleared while typing', async () => {
