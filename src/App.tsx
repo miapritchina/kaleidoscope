@@ -9,7 +9,6 @@ import { useImageUrl } from './hooks/useImageUrl';
 import { useDeviceTilt } from './hooks/useDeviceTilt';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
-import { cx } from './lib/cx';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
 import { sharePicture } from './lib/share';
 import { resolvePlayback } from './lib/playback';
@@ -245,60 +244,53 @@ export function App() {
         {status}
       </p>
 
-      <aside
-        id="controls"
-        ref={controlsRef}
-        tabIndex={-1}
-        // Off screen it is out of the tab order and out of the accessibility
-        // tree. The stylesheet's `visibility` does the same thing, but only
-        // once a stylesheet has loaded and only in a browser that applied it.
-        inert={!controlsOpen}
-        className={cx(styles.drawer, controlsOpen && styles.drawerOpen)}
-      >
-        <div className={styles.drawerHeader}>
-          <h2 className={styles.title}>Controls</h2>
-          <button
-            type="button"
-            className={styles.close}
-            onClick={() => {
-              setControlsOpen(false);
-              toggleRef.current?.focus();
-            }}
-          >
-            Close
-          </button>
-        </div>
+      {controlsOpen && (
+        <aside id="controls" ref={controlsRef} tabIndex={-1} className={styles.drawer}>
+          <div className={styles.drawerHeader}>
+            <h2 className={styles.title}>Controls</h2>
+            <button
+              type="button"
+              className={styles.close}
+              onClick={() => {
+                setControlsOpen(false);
+                toggleRef.current?.focus();
+              }}
+            >
+              Close
+            </button>
+          </div>
 
-        <p className={styles.subtitle}>
-          A mirrored canvas toy. Load the chamber with objects, mirror a photo, or point the camera
-          at the world — then swipe across the artwork to turn it.
-        </p>
-
-        <ControlPanel
-          settings={settings}
-          onChange={set}
-          onRandomize={randomize}
-          onReset={reset}
-          onSave={handleSave}
-          onShare={handleShare}
-          status={status}
-          imageName={image.fileName}
-          imageError={image.error}
-          onSelectImage={image.select}
-          onClearImage={image.clear}
-          cameraStatus={camera.status}
-          cameraMessage={camera.message}
-          tiltStatus={tilt.status}
-        />
-
-        {prefersReducedMotion && (
-          <p className={styles.notice}>
-            {isPlaying
-              ? 'Your system asks for reduced motion. The camera feed is live; swiping still turns the tube.'
-              : 'Motion is held still because your system asks for reduced motion. Swiping still turns the tube.'}
+          <p className={styles.subtitle}>
+            A mirrored canvas toy. Load the chamber with objects, mirror a photo, or point the
+            camera at the world — then swipe across the artwork to turn it.
           </p>
-        )}
-      </aside>
+
+          <ControlPanel
+            settings={settings}
+            onChange={set}
+            onRandomize={randomize}
+            onReset={reset}
+            onSave={handleSave}
+            onShare={handleShare}
+            status={status}
+            imageName={image.fileName}
+            imageError={image.error}
+            onSelectImage={image.select}
+            onClearImage={image.clear}
+            cameraStatus={camera.status}
+            cameraMessage={camera.message}
+            tiltStatus={tilt.status}
+          />
+
+          {prefersReducedMotion && (
+            <p className={styles.notice}>
+              {isPlaying
+                ? 'Your system asks for reduced motion. The camera feed is live; swiping still turns the tube.'
+                : 'Motion is held still because your system asks for reduced motion. Swiping still turns the tube.'}
+            </p>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

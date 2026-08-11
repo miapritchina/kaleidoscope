@@ -85,6 +85,18 @@
   pointer-events: none;
 }
 
+/*
+ * Present only while it is open.
+ *
+ * It used to be kept in the DOM and slid off-canvas with a transform, which
+ * made it a scroll container that is moved by a transform and hidden with
+ * `visibility` — the combination iOS Safari is known to paint stale or blank
+ * until something invalidates it. It came up as a band of last frame's content
+ * with the rest black, and came right the moment it was scrolled. Nothing here
+ * is worth an animation that does that: mounted when open and gone when not,
+ * there is no hidden layer left to paint wrongly, and no `inert` needed to keep
+ * a keyboard out of it.
+ */
 .drawer {
   position: absolute;
   /* Its own scrolling, and nothing beyond it: a flick that runs off the end of
@@ -101,23 +113,6 @@
   padding: 1.5rem 1.25rem;
   border-inline-start: 1px solid var(--border);
   background: var(--surface-raised);
-  /* Off-canvas rather than absent, so the panel keeps its scroll position and
-     the transition has something to run on. `visibility` is what takes it out
-     of the tab order and the accessibility tree; a transform alone would leave
-     a keyboard user tabbing into a panel nobody can see. */
-  visibility: hidden;
-  transform: translateX(100%);
-  transition:
-    transform 200ms ease,
-    visibility 0s linear 200ms;
-}
-
-.drawerOpen {
-  visibility: visible;
-  transform: translateX(0);
-  transition:
-    transform 200ms ease,
-    visibility 0s;
 }
 
 .drawerHeader {
@@ -175,10 +170,5 @@
     border-start-start-radius: var(--radius);
     border-start-end-radius: var(--radius);
     border-block-start: 1px solid var(--border);
-    transform: translateY(100%);
-  }
-
-  .drawerOpen {
-    transform: translateY(0);
   }
 }

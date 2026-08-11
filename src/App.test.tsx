@@ -11,16 +11,20 @@ beforeAll(() => {
 });
 
 const controls = () => screen.getByRole('button', { name: /controls/i });
-const drawer = () => document.getElementById('controls')!;
+const drawer = () => document.getElementById('controls');
 
 describe('App', () => {
   // The artwork has the whole window. Nothing else is on it but the two
   // buttons, so the panel starts away.
-  it('opens with the controls out of the way', () => {
+  // Not merely hidden: gone. A scroll container that is kept in the DOM and
+  // moved off-canvas with a transform is what iOS Safari paints stale, and
+  // there is no animation worth that.
+  it('opens with the controls out of the way, and out of the document', () => {
     render(<App />);
 
     expect(controls()).toHaveAttribute('aria-expanded', 'false');
-    expect(drawer()).toHaveAttribute('inert');
+    expect(drawer()).toBeNull();
+    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
   });
 
   it('shows them when the button is pressed, and hides them again', async () => {
@@ -29,12 +33,12 @@ describe('App', () => {
 
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'true');
-    expect(drawer()).not.toHaveAttribute('inert');
+    expect(drawer()).not.toBeNull();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
 
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'false');
-    expect(drawer()).toHaveAttribute('inert');
+    expect(drawer()).toBeNull();
   });
 
   // Whatever has covered the artwork, Escape is what a viewer reaches for.
@@ -79,7 +83,9 @@ describe('App', () => {
     const live = screen.getByRole('status');
 
     expect(live).toBeInTheDocument();
-    expect(drawer().contains(live)).toBe(false);
+    // Closed, there is no panel at all — which is the point: a message still
+    // has to reach a screen reader.
+    expect(drawer()).toBeNull();
   });
 
   // The visible heading is in the drawer, which is not always on screen.
@@ -93,8 +99,7 @@ describe('App', () => {
   it('leaves saving the pattern on the artwork, not behind the button', () => {
     render(<App />);
 
-    const save = screen.getByRole('button', { name: /save pattern/i });
-
-    expect(drawer().contains(save)).toBe(false);
+    expect(screen.getByRole('button', { name: /save pattern/i })).toBeInTheDocument();
+    expect(drawer()).toBeNull();
   });
 });
