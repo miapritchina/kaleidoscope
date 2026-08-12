@@ -144,7 +144,7 @@ export function App() {
       announce(
         outcome === 'failed'
           ? 'Could not save the pattern.'
-          : 'A square tile that repeats without a seam.',
+          : 'One repeat of the pattern, which tiles without a seam.',
       );
     })();
   }, [announce, settings.seed, settings.source]);
@@ -211,32 +211,56 @@ export function App() {
         {/* Hidden rather than absent: Safari refuses to play a video element
             that is not in the document, and display:none can pause playback. */}
         <video ref={setVideo} className={styles.hiddenVideo} muted playsInline aria-hidden="true" />
+      </main>
 
-        <button type="button" className={styles.saveButton} onClick={handleSavePattern}>
+      {/* The three things worth reaching without opening anything. Named for a
+          screen reader and drawn for everyone else: a word beside each would be
+          three labels laid over the artwork, and the artwork is the point. */}
+      <div className={styles.toolbar}>
+        <button
+          type="button"
+          className={styles.tool}
+          aria-label="Save pattern"
+          onClick={handleSavePattern}
+        >
           <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3h2Z" />
             <path d="M4 19h16v2H4z" />
           </svg>
-          Save pattern
         </button>
-      </main>
 
-      <button
-        ref={toggleRef}
-        type="button"
-        className={styles.controlsToggle}
-        aria-expanded={controlsOpen}
-        aria-controls="controls"
-        onClick={() => {
-          setControlsOpen((open) => !open);
-        }}
-      >
-        <svg className={styles.gear} viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6.2a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4Z" />
-          <path d="m21 13.6-.1-1.6.1-1.6-2.1-.5a7 7 0 0 0-.7-1.7l1.1-1.8-2.3-2.3-1.8 1.1a7 7 0 0 0-1.7-.7L13 2.7h-2l-.5 2.1a7 7 0 0 0-1.7.7L7 4.4 4.7 6.7l1.1 1.8a7 7 0 0 0-.7 1.7l-2.1.5.1 1.6-.1 1.6 2.1.5c.16.6.4 1.17.7 1.7l-1.1 1.8 2.3 2.3 1.8-1.1c.53.3 1.1.54 1.7.7l.5 2.1h2l.5-2.1a7 7 0 0 0 1.7-.7l1.8 1.1 2.3-2.3-1.1-1.8c.3-.53.54-1.1.7-1.7l2.1-.5Z" />
-        </svg>
-        Controls
-      </button>
+        <button
+          type="button"
+          className={styles.tool}
+          aria-label="New arrangement"
+          onClick={() => {
+            randomize();
+            announce('A new arrangement of the pieces.');
+          }}
+        >
+          <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 5V2L8 6l4 4V7a5 5 0 0 1 4.6 7l1.5 1.5A7 7 0 0 0 12 5Z" />
+            <path d="M12 17v3l4-4-4-4v3a5 5 0 0 1-4.6-7L5.9 8.5A7 7 0 0 0 12 19Z" />
+          </svg>
+        </button>
+
+        <button
+          ref={toggleRef}
+          type="button"
+          className={styles.tool}
+          aria-label="Controls"
+          aria-expanded={controlsOpen}
+          aria-controls="controls"
+          onClick={() => {
+            setControlsOpen((open) => !open);
+          }}
+        >
+          <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 6.2a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4Z" />
+            <path d="m21 13.6-.1-1.6.1-1.6-2.1-.5a7 7 0 0 0-.7-1.7l1.1-1.8-2.3-2.3-1.8 1.1a7 7 0 0 0-1.7-.7L13 2.7h-2l-.5 2.1a7 7 0 0 0-1.7.7L7 4.4 4.7 6.7l1.1 1.8a7 7 0 0 0-.7 1.7l-2.1.5.1 1.6-.1 1.6 2.1.5c.16.6.4 1.17.7 1.7l-1.1 1.8 2.3 2.3 1.8-1.1c.53.3 1.1.54 1.7.7l.5 2.1h2l.5-2.1a7 7 0 0 0 1.7-.7l1.8 1.1 2.3-2.3-1.1-1.8c.3-.53.54-1.1.7-1.7l2.1-.5Z" />
+          </svg>
+        </button>
+      </div>
 
       {/* Announcements reach a viewer whether or not the panel is on screen,
           so this lives out here rather than inside it. */}

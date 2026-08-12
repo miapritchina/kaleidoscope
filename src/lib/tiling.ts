@@ -43,6 +43,26 @@ export function hexLattice(radius: number): HexLattice {
   };
 }
 
+/**
+ * The smallest upright rectangle the tiling repeats by, for hexagons of the
+ * given circumradius.
+ *
+ * A hexagonal lattice has no square period — `k` steps across can never equal
+ * `m` steps up, because the ratio is `sqrt(3)` and that is irrational. It does
+ * have a rectangular one. Writing a lattice vector as `i*a + j*b`, the ones
+ * lying flat need `i * sqrt(3)/2 + j * sqrt(3) = 0`, so `i = -2j` and the
+ * shortest is `3 * radius` across; the ones standing upright need `i = 0`, so
+ * the shortest is `sqrt(3) * radius` tall. The rectangle they span holds two
+ * hexagons, which is as small as it goes.
+ *
+ * So a rectangle of these proportions cut straight out of the field repeats
+ * without a seam, with no mirroring and no cleverness — it is a period of the
+ * figure, and the figure is what makes it match.
+ */
+export function latticePeriod(radius: number): Vector {
+  return { x: 3 * radius, y: SQRT3 * radius };
+}
+
 /** A hexagon in the tiling: where it sits, and which cell of the lattice it is. */
 export interface HexagonCell extends Vector {
   /** Steps along the lattice's two primitive translations. */

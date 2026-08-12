@@ -360,10 +360,17 @@ is live rather than a snapshot.
 
 ## The screen
 
-The artwork has the whole window. The controls are behind a button in the corner and start
-out of the way, because the point of the thing is the picture rather than the panel; **Save
-pattern** is the only other thing on it, being the one action worth reaching without opening
-anything.
+The artwork has the whole screen — under the notch and under the home indicator, which is
+what `viewport-fit=cover` in `index.html` buys. Without it iOS insets the whole page by the
+safe areas and the picture comes up with a black band above and below it. What has to stay
+clear of the notch is the controls, and they hold their own `env(safe-area-inset-*)`.
+
+On it are three buttons in a corner: save the pattern, reshuffle the pieces, open the panel.
+They are drawn and not written. A word beside each would be three labels laid over the thing
+they are for, and they are faint on purpose — a solid pill in the corner of a picture is the
+first place the eye lands, which is the wrong place. The name lives in the accessibility
+tree, where it costs the picture nothing. Everything else is behind the gear, because the
+point of the thing is the picture rather than the panel.
 
 The window is measured in `dvh`, not `%`. On iOS Safari a percentage height resolves against
 the _large_ viewport — the one without the address bar — so the page comes out taller than
@@ -372,12 +379,14 @@ collapses the bar and brings the two into line. That is exactly how the drawer u
 half off the bottom, and correct after a scroll. The body does not scroll at all; the only
 thing that does is the drawer's own contents, and it opens at the top of them.
 
-The panel slides in from the right, or up from the bottom on a narrow screen, and lies over
+The panel comes in from the right, or up from the bottom on a narrow screen, and lies over
 the artwork rather than squeezing it — the canvas keeps its size, so opening the panel costs
-no re-render and no reflow of the pattern. Off screen it is `inert` as well as invisible,
-which is what keeps a keyboard from tabbing into a panel nobody can see; `visibility` in the
-stylesheet does the same thing, but only once a stylesheet has loaded. Escape closes it from
-anywhere and hands the focus back to the button.
+no re-render and no reflow of the pattern. Closed it is not hidden but **absent**: a scroll
+container kept in the DOM, moved off-canvas with a transform and hidden with `visibility`, is
+the combination iOS Safari paints stale, and it came up as a band of the last frame with the
+rest black until something scrolled it. Unmounted there is no hidden layer to paint wrongly
+and no `inert` needed to keep a keyboard out of it. Escape closes it from anywhere and hands
+the focus back to the button.
 
 Two things live outside the panel for that reason. The document's `<h1>` is in the layout
 rather than in the drawer, since the drawer is not always on screen; and so is the live
@@ -429,7 +438,7 @@ of the optics, and it is left out of an exported tile entirely.
 
 ## Saving a pattern
 
-**Save PNG** writes the frame as you see it. **Save pattern** writes a 1024px square that
+**Save PNG** writes the frame as you see it. **Save pattern** writes a 1351x780 tile that
 repeats without a seam.
 
 It goes to the **share sheet** rather than straight to a download. On a phone a download
@@ -440,17 +449,39 @@ and taking it for a failure would mean downloading the file behind the back of s
 just declined. `lib/share.ts` holds that decision, away from the component, because the
 branch nobody thinks about is the one worth testing.
 
-The square is not a period of the figure, and it cannot be. A three-mirror kaleidoscope tiles
-the plane on a hexagonal lattice, and a hexagonal lattice has no square period: `k` steps
-across can never equal `m` steps up, because the ratio is `sqrt(3)`. So the tile is built the
-way the figure itself is — a quarter of it is drawn once, then mirrored across and down.
-Every edge of the result is a mirror line, so a copy laid beside it matches along the join
-exactly. Measured on the built app, the mean step in brightness across the join between two
-tiles is **0**, against 9–12 for an ordinary boundary inside the tile.
+### Why it is that shape
 
-The barrel and the mirror falloff are left off it. Both are radial — they describe looking
-down a tube, not the pattern — and baked in they would put a dark blot at every repeat. That
-is why `lib/renderer.ts` keeps the field and the optics in front of it as separate steps.
+The tile is a rectangle cut straight out of the figure, the way you would cut one out of the
+screen. Nothing is mirrored and no edges are blended: it is a **period** of the field, so a
+copy laid beside it continues the pattern because it _is_ the pattern.
+
+It cannot be square. A three-mirror kaleidoscope tiles the plane on a hexagonal lattice, and
+a hexagonal lattice has no square period — `k` steps across can never equal `m` steps up,
+because the ratio is `sqrt(3)` and that is irrational. It does have a rectangular one.
+Writing a lattice vector as `i*a + j*b`, the ones lying flat need `i = -2j`, so the shortest
+is `3 * radius` across; the ones standing upright need `i = 0`, so the shortest is
+`sqrt(3) * radius` tall. That rectangle holds two hexagons and nothing smaller works, which
+is `lib/tiling.ts`'s `latticePeriod`. 1351x780 is that ratio in whole pixels: it is out by
+two parts in ten million, which over the whole width comes to three ten-thousandths of a
+pixel.
+
+Three things the screen has are left off it, all for the same reason — each varies across the
+view, so baked into a tile it comes back at every repeat as a visible grid:
+
+- the **barrel** and the **mirror falloff**, which are radial. They describe looking down a
+  tube, not the pattern, and would put a dark blot in the middle of every copy. This is why
+  `lib/renderer.ts` keeps the field and the optics in front of it as separate steps.
+- the **per-hexagon exposure**, which is deliberately aperiodic on screen so the field does
+  not read as a printed pattern. Here a printed pattern is the point, and that variation is
+  the one thing standing between the field and an exact repeat. The variation _between the
+  six cells of a hexagon_ stays, so the tile still has facets.
+
+The source is painted again at the tile's own size rather than scaled up from the screen, so
+the tile is as sharp as the pieces are and does not depend on the mirror-size slider.
+
+Measured on the built app: laying a copy alongside, the mean step in brightness across the
+join is **11.2** across and **6.0** down, against **14.4** and **14.2** for the average pair of
+neighbouring pixels inside the tile. The join is smoother than the picture is.
 
 ## Accessibility
 

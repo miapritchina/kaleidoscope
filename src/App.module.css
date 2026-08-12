@@ -22,44 +22,50 @@
   white-space: nowrap;
 }
 
-.control {
+/* Clear of the notch and the rounded corners, which the artwork runs under. */
+.toolbar {
   position: absolute;
   z-index: 2;
+  inset-block-start: calc(0.75rem + env(safe-area-inset-top));
+  inset-inline-end: calc(0.75rem + env(safe-area-inset-right));
   display: flex;
-  gap: 0.4rem;
-  align-items: center;
-  padding: 0.5rem 1.1rem;
-  border: 1px solid var(--border);
+  gap: 0.5rem;
+}
+
+/*
+ * Faint on purpose. These sit on top of the thing they are for, and a solid
+ * pill in the corner of it is the first thing the eye lands on — which is the
+ * wrong thing. Enough contrast to find, not enough to look at.
+ */
+.tool {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
   border-radius: 999px;
-  background: rgb(7 7 13 / 0.72);
-  backdrop-filter: blur(6px);
+  background: rgb(7 7 13 / 0.38);
+  backdrop-filter: blur(8px);
   cursor: pointer;
-  transition: background-color 150ms ease;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 
-.control:hover {
-  background: rgb(26 26 39 / 0.9);
-}
-
-.saveButton {
-  composes: control;
-  inset-block-end: 1rem;
-  inset-inline-start: 1rem;
-}
-
-.controlsToggle {
-  composes: control;
-  inset-block-start: 1rem;
-  inset-inline-end: 1rem;
+.tool:hover,
+.tool:focus-visible {
+  border-color: rgb(255 255 255 / 0.32);
+  background: rgb(7 7 13 / 0.72);
 }
 
 /* Drawn rather than an icon font, so they need no network and no glyph. */
-.gear,
 .icon {
   display: block;
-  width: 1rem;
-  height: 1rem;
+  width: 1.15rem;
+  height: 1.15rem;
   fill: currentcolor;
+  opacity: 0.85;
 }
 
 .emptyState {
@@ -110,7 +116,10 @@
   gap: 1.25rem;
   width: min(21rem, 100%);
   overflow-y: auto;
-  padding: 1.5rem 1.25rem;
+  /* The artwork runs under the notch and the home indicator, so the panel over
+     it has to keep its own contents clear of both. */
+  padding: calc(1.5rem + env(safe-area-inset-top)) calc(1.25rem + env(safe-area-inset-right))
+    calc(1.5rem + env(safe-area-inset-bottom)) 1.25rem;
   border-inline-start: 1px solid var(--border);
   background: var(--surface-raised);
 }
@@ -166,6 +175,8 @@
        a panel too narrow to read; across the bottom it gets the whole width. */
     width: auto;
     max-height: 82%;
+    padding-block-start: 1.5rem;
+    padding-inline: 1.25rem;
     border-inline-start: none;
     border-start-start-radius: var(--radius);
     border-start-end-radius: var(--radius);

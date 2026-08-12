@@ -23,8 +23,8 @@ export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
   /**
-   * Returns a square PNG that repeats without a seam. `null` before the first
-   * paint, or if the surfaces cannot be made.
+   * Returns a PNG of one period of the field, which repeats without a seam.
+   * `null` before the first paint, or if the surfaces cannot be made.
    */
   capturePattern: () => Promise<Blob | null>;
 }
@@ -97,9 +97,11 @@ export function Kaleidoscope({
     ref,
     () => ({
       capture: () => rendererRef.current?.toDataUrl() ?? null,
-      capturePattern: async () => (await rendererRef.current?.toPatternBlob(settings)) ?? null,
+      // The tile is a period of the figure, so its size is the geometry's to
+      // decide rather than the settings'.
+      capturePattern: async () => (await rendererRef.current?.toPatternBlob()) ?? null,
     }),
-    [settings],
+    [],
   );
 
   useEffect(() => {

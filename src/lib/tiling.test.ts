@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext } from '../test/fakeCanvas';
-import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
+import {
+  coverWithHexagons,
+  hexLattice,
+  latticePeriod,
+  traceHexagon,
+  traceTriangle,
+} from './tiling';
 
 const SQRT3 = Math.sqrt(3);
 
@@ -20,6 +26,55 @@ describe('hexLattice', () => {
     const angle = Math.abs(Math.atan2(a.y, a.x) - Math.atan2(b.y, b.x));
 
     expect(angle).toBeCloseTo(Math.PI / 3, 6);
+  });
+});
+
+describe('latticePeriod', () => {
+  const radius = 12;
+  const { a, b } = hexLattice(radius);
+
+  /** How many steps of each primitive translation the vector is, if whole. */
+  const stepsFor = ({ x, y }: { x: number; y: number }) => {
+    const determinant = a.x * b.y - a.y * b.x;
+
+    return {
+      i: (x * b.y - y * b.x) / determinant,
+      j: (a.x * y - a.y * x) / determinant,
+    };
+  };
+
+  const isLatticeVector = (vector: { x: number; y: number }) => {
+    const { i, j } = stepsFor(vector);
+
+    return Math.abs(i - Math.round(i)) < 1e-9 && Math.abs(j - Math.round(j)) < 1e-9;
+  };
+
+  // The whole seamless tile rests on this: a rectangle of these proportions cut
+  // out of the field is a period of it, so a copy laid beside it continues the
+  // pattern rather than merely matching along the join.
+  it('is a translation the tiling repeats by, both ways', () => {
+    const { x: width, y: height } = latticePeriod(radius);
+
+    expect(isLatticeVector({ x: width, y: 0 })).toBe(true);
+    expect(isLatticeVector({ x: 0, y: height })).toBe(true);
+  });
+
+  it('is the smallest such rectangle', () => {
+    const { x: width, y: height } = latticePeriod(radius);
+
+    // Anything shorter in either direction lands between lattice points.
+    for (const fraction of [1 / 2, 1 / 3, 2 / 3, 3 / 4]) {
+      expect(isLatticeVector({ x: width * fraction, y: 0 })).toBe(false);
+      expect(isLatticeVector({ x: 0, y: height * fraction })).toBe(false);
+    }
+  });
+
+  // Which is why the tile cannot be square, and why it used to be built out of
+  // four mirrored quarters instead.
+  it('is sqrt(3) to 1, a ratio no whole number of steps can square up', () => {
+    const { x: width, y: height } = latticePeriod(radius);
+
+    expect(width / height).toBeCloseTo(SQRT3, 12);
   });
 });
 
