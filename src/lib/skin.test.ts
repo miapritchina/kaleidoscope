@@ -259,6 +259,29 @@ describe('cutting objects out of a picture', () => {
     }
   });
 
+  // What the chamber collides on. A sliver fills a fraction of the circle it
+  // was cut to, and colliding with the circle holds everything a sliver's
+  // length away in every direction — the pile settles full of air.
+  it('reports how much of its own circle each object fills', () => {
+    const slivers = cuts(splinters);
+    const round = cuts(objects);
+
+    for (const cut of slivers) {
+      expect(cut.girth).toBeLessThan(0.7);
+    }
+
+    for (const cut of round) {
+      expect(cut.girth).toBeGreaterThan(0.8);
+    }
+
+    // And a needle never collapses to a point, or the pile would pass through
+    // itself; nor does anything reach further than the circle it was cut to.
+    for (const cut of [...slivers, ...round]) {
+      expect(cut.girth).toBeGreaterThanOrEqual(0.5);
+      expect(cut.girth).toBeLessThanOrEqual(1);
+    }
+  });
+
   // A landscape has no backdrop to separate objects from, and the whole frame
   // comes back as one blob. Cutting every piece to that silhouette would be a
   // chamber of identical shapes, so this falls back to the patch path instead.

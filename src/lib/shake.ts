@@ -7,12 +7,9 @@
  * is a new arrangement, which here is a new seed.
  */
 
-/** One reading of the accelerometer, in metres per second squared. */
-export interface Motion {
-  x: number;
-  y: number;
-  z: number;
-}
+import type { Motion } from './readings';
+
+export type { Motion };
 
 /**
  * How hard the reading has to change between samples to count towards a shake.

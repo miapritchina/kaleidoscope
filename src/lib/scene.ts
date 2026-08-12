@@ -22,8 +22,18 @@ export interface Shard {
   /** Velocity in cell units per second. */
   vx: number;
   vy: number;
-  /** Radius in cell units. */
+  /** Radius in cell units: the circle the piece is cut to fit. */
   radius: number;
+  /**
+   * How much of that circle the glass actually fills, across.
+   *
+   * 1 for a piece as wide as it is long. A cut-out sliver fills a fraction of
+   * its own circle, and colliding with the circle would hold everything a
+   * sliver's length away in every direction — the pile settles full of air and
+   * pieces come to rest on nothing. Set from the picture the pieces are cut
+   * from; the drawn size is {@link Shard.radius} either way.
+   */
+  girth: number;
   rotation: number;
   /** Angular velocity in radians per second. */
   spin: number;
@@ -170,6 +180,9 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
       // differently. Scaling only the sprite leaves every arrangement identical
       // and just draws it smaller, which is a picture of the same chamber.
       radius: randomBetween(rng, 0.08, 0.26) * Math.max(0.05, chipScale),
+      // Until a picture says otherwise the drawn shapes are round enough to
+      // collide as the circles they are cut to.
+      girth: 1,
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
       skin: { x: rng(), y: rng() },
@@ -191,6 +204,31 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
   settleChamber(shards);
 
   return scene;
+}
+
+/**
+ * Tells each piece how much of its circle the glass it is cut to actually fills.
+ *
+ * Called when the picture changes rather than every frame: it is a property of
+ * the cut, and the cut is fixed for a piece. Without a picture, or for a piece
+ * whose cut has gone, the circle is the answer — the drawn shapes fill theirs.
+ *
+ * @returns Whether anything changed, so a caller can skip resettling a chamber
+ *   that is already right.
+ */
+export function applyCutGirth(shards: Shard[], patches: SkinPatches | null): boolean {
+  let changed = false;
+
+  for (const shard of shards) {
+    const girth = patches?.cut(shard.skin)?.girth ?? 1;
+
+    if (shard.girth !== girth) {
+      shard.girth = girth;
+      changed = true;
+    }
+  }
+
+  return changed;
 }
 
 /**
