@@ -491,23 +491,48 @@ far the cell has been turned plus how far the whole instrument is tilted; turnin
 sweeps gravity around the cell, and tipping the phone moves it again without turning
 anything.
 
-`lib/tilt.ts` holds the arithmetic and nothing else. The orientation event gives the
-front-to-back tilt and the left-to-right one; held upright and facing you those are about 90
-and about 0, and leaning the phone to the right — the right edge dipping, so down moves
-towards that edge — takes the first towards 0 and the second towards 90, so `atan2` of the
-pair is the angle directly. Two details matter as much as the formula. The reading wraps at half a turn — gravity itself does not mind, being a
-sine and a cosine, but the smoothing does: asked to move from just under half a turn to just
-over, it sweeps all the way round through zero and the pile slides the wrong way while it
-does. So each reading is carried on from the last by the shorter way, and only then smoothed,
-which is also what takes out the sensor's shiver at rest.
+`lib/tilt.ts` holds the arithmetic and nothing else, and the arithmetic is a projection rather
+than a formula fitted to the numbers.
 
-iOS will not report orientation until it has been asked from a user gesture, which is what
+The orientation event reports three Euler angles: `alpha` about the vertical, then `beta`
+about the device's own x, then `gamma` about its own y. Composed in that order, the rotation
+from the device's axes to the room's is `Rz(alpha) Rx(beta) Ry(gamma)`, and the room's upright
+direction written in the device's own axes is that matrix's bottom row,
+`(-cos b sin g, sin b, cos b cos g)`. Down is its negative, and the screen shows the first two
+of those, with the sign of the second flipped because a canvas counts y downwards and the
+device counts it up. So **down on screen is `(cos(beta) sin(gamma), sin(beta))`**, and its
+angle from the bottom of the screen is the `atan2` of that pair. `alpha` is absent on purpose:
+turning on the spot with the phone held out in front of you does not move the glass.
+
+This was `atan2(gamma, beta)` for a long time — the two Euler angles treated as if they were
+the components of a vector, which they are not. It is right near upright and wrong everywhere
+else, by **11 degrees on average and 45 at worst** over every attitude the app acts on. The
+plainest case: rolling a phone in its own plane drives `gamma` to 90 and carries the roll in
+`beta`, so held perfectly upright the old formula answered **45 degrees** when the truth was
+0, and a 60-degree roll came out as 27 degrees of movement on top of that offset. What that
+felt like in the hand is what was reported — tipping the phone away from you swinging gravity
+off to the side, on a movement that has no side to it.
+
+The length of that same vector is how much of gravity the screen still has: 1 held upright,
+0 laid flat on a table, where down points through the glass and the direction in the plane is
+whichever way the hand last shook. Below about a tenth the reading is **dropped** rather than
+smoothed, so a phone put down leaves the pile where it was. The debug readout prints the
+percentage beside the angle, and marks it `flat` when it stops being believed.
+
+Two details of the plumbing matter as much as the formula. The reading wraps at half a turn —
+gravity itself does not mind, being a sine and a cosine, but the smoothing does: asked to move
+from just under half a turn to just over, it sweeps all the way round through zero and the
+pile slides the wrong way while it does. So each reading is carried on from the last by the
+shorter way, and only then smoothed, which is also what takes out the sensor's shiver at rest.
+
+iOS will not report orientation until it has been asked for from a user gesture, which is what
 the toggle is. Refused, it says so and stays refused; nothing asks twice.
 
-The sign of the left-to-right reading was wrong until a phone said so: leaning right sent
-the pieces towards the raised edge rather than the dipped one. That is the one thing about
-this that cannot be checked without hardware in a hand — synthesised events confirm the
-wiring and say nothing about which way the world is. It is a unit test now.
+The sign of the left-to-right reading was wrong until a phone said so: leaning right sent the
+pieces towards the raised edge rather than the dipped one. That is the one thing about this
+that cannot be checked without hardware in a hand — synthesised events confirm the wiring and
+say nothing about which way the world is. It is a unit test now, and so is the projection
+above.
 
 ## Shaking it
 

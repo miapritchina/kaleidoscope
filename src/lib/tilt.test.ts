@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { screenAngleFromOrientation, smoothAngle, unwrapAngle } from './tilt';
+import {
+  screenAngleFromOrientation,
+  screenGravity,
+  smoothAngle,
+  TILT_FLAT,
+  tiltStrength,
+  unwrapAngle,
+} from './tilt';
 
 const degrees = (radians: number) => (radians * 180) / Math.PI;
 
@@ -27,8 +34,33 @@ describe('screenAngleFromOrientation', () => {
   });
 
   it('reads the halfway points in between', () => {
-    expect(degrees(screenAngleFromOrientation(45, 45))).toBeCloseTo(45, 4);
-    expect(degrees(screenAngleFromOrientation(45, -45))).toBeCloseTo(-45, 4);
+    // Not 45: the two are Euler angles, not the sides of a triangle. Down in
+    // the screen is (cos b sin g, sin b), which here is (0.5, 0.707).
+    expect(degrees(screenAngleFromOrientation(45, 45))).toBeCloseTo(35.26, 2);
+    expect(degrees(screenAngleFromOrientation(45, -45))).toBeCloseTo(-35.26, 2);
+  });
+
+  // The reported bug, and the reason the Euler angles cannot be used as a
+  // vector. Tipping the phone away from you has no side to it, but it runs
+  // `beta` down towards 0 while `gamma` stays near it — so a ratio of the two
+  // swings the whole direction of gravity across to the side.
+  it('leaves gravity alone when the phone is tipped away, not sideways', () => {
+    for (const beta of [90, 75, 60, 45, 30, 20]) {
+      expect(degrees(screenAngleFromOrientation(beta, 0)), `beta ${String(beta)}`).toBeCloseTo(
+        0,
+        6,
+      );
+    }
+  });
+
+  // And a hand is never exactly level, so a degree or two of roll must not turn
+  // into a lurch as the phone comes down towards flat.
+  it('does not magnify a hand’s wobble as the phone is laid down', () => {
+    for (const beta of [90, 60, 40, 25]) {
+      const wobble = Math.abs(degrees(screenAngleFromOrientation(beta, 3)));
+
+      expect(wobble, `beta ${String(beta)}`).toBeLessThan(8);
+    }
   });
 
   // Upside down is half a turn either way; which of the two it names does not
@@ -40,6 +72,42 @@ describe('screenAngleFromOrientation', () => {
   it('gives a number for readings that are not ones', () => {
     expect(screenAngleFromOrientation(Number.NaN, 0)).toBe(0);
     expect(screenAngleFromOrientation(0, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('screenGravity', () => {
+  // Rolling the phone in its own plane keeps all of gravity on the screen and
+  // simply turns it. This is the motion the whole feature is for.
+  it('keeps its whole length as the phone is rolled', () => {
+    for (let turn = 0; turn <= 80; turn += 10) {
+      // A roll of `turn` degrees reads as beta 90 - turn with gamma at 90.
+      const down = screenGravity(90 - turn, 90);
+
+      expect(tiltStrength(down), `rolled ${String(turn)}`).toBeCloseTo(1, 6);
+      expect(degrees(Math.atan2(down.x, down.y)), `rolled ${String(turn)}`).toBeCloseTo(turn, 4);
+    }
+  });
+
+  // Laid flat, down goes through the glass and there is nothing of it left in
+  // the plane of the screen to point at.
+  it('has nothing left once the screen is horizontal', () => {
+    expect(tiltStrength(screenGravity(0, 0))).toBeCloseTo(0, 6);
+    expect(tiltStrength(screenGravity(0, 0))).toBeLessThan(TILT_FLAT);
+    expect(tiltStrength(screenGravity(90, 0))).toBeCloseTo(1, 6);
+  });
+
+  it('loses it gradually as the phone is tipped away', () => {
+    const held = tiltStrength(screenGravity(90, 0));
+    const leaning = tiltStrength(screenGravity(45, 0));
+    const nearlyFlat = tiltStrength(screenGravity(8, 0));
+
+    expect(held).toBeGreaterThan(leaning);
+    expect(leaning).toBeGreaterThan(nearlyFlat);
+    expect(nearlyFlat).toBeLessThan(TILT_FLAT);
+  });
+
+  it('points straight down for a reading that is not one', () => {
+    expect(screenGravity(Number.NaN, 0)).toEqual({ x: 0, y: 1 });
   });
 });
 
