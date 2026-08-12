@@ -7,6 +7,8 @@
  * difference between them is the bug.
  */
 
+import { screenGravity, TILT_FLAT, tiltStrength } from './tilt';
+
 export interface Orientation {
   /** Compass heading, in degrees. */
   alpha: number;
@@ -68,10 +70,26 @@ export function readoutLines(readings: DeviceReadings, tilt: number | null): str
   }
 
   if (tilt !== null) {
-    lines.push(`down ${number(tilt / DEGREES, 0)} deg`);
+    lines.push(`down ${number(tilt / DEGREES, 0)} deg${share(readings.orientation)}`);
   }
 
   return lines;
+}
+
+/**
+ * How much of gravity is left in the plane of the screen, as a percentage.
+ *
+ * The direction above is only worth as much as this: upright it is all of it,
+ * laid flat there is none and down points through the glass instead.
+ */
+function share(orientation: Orientation | null): string {
+  if (!orientation) {
+    return '';
+  }
+
+  const left = tiltStrength(screenGravity(orientation.beta, orientation.gamma));
+
+  return `  ${String(Math.round(left * 100))}%${left < TILT_FLAT ? ' flat' : ''}`;
 }
 
 /** A signed, fixed-width number, so a column of them does not jump about. */

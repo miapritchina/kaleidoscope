@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { screenAngleFromOrientation, smoothAngle, unwrapAngle } from '../lib/tilt';
+import {
+  screenAngleFromOrientation,
+  screenGravity,
+  smoothAngle,
+  TILT_FLAT,
+  tiltStrength,
+  unwrapAngle,
+} from '../lib/tilt';
 
 export type TiltStatus = 'unsupported' | 'idle' | 'asking' | 'active' | 'denied';
 
@@ -47,6 +54,14 @@ export function useDeviceTilt(enabled: boolean): DeviceTilt {
 
     const onOrientation = (event: DeviceOrientationEvent) => {
       if (event.beta === null || event.gamma === null) {
+        return;
+      }
+
+      // Laid flat, down points through the glass and has no direction on
+      // screen. Dropped rather than smoothed: a phone put down on a table
+      // should leave the pile where it is, not stir it with whichever way the
+      // last shake of the hand happened to point.
+      if (tiltStrength(screenGravity(event.beta, event.gamma)) < TILT_FLAT) {
         return;
       }
 

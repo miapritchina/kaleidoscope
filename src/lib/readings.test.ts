@@ -28,7 +28,19 @@ describe('readoutLines', () => {
   it('shows where the app has decided down is, beside the readings', () => {
     const lines = readoutLines({ ...NOTHING, orientation: { alpha: 0, beta: 90, gamma: 0 } }, 0);
 
-    expect(lines.at(-1)).toBe('down   +0 deg');
+    // Held upright, all of gravity is still in the plane of the screen.
+    expect(lines.at(-1)).toBe('down   +0 deg  100%');
+  });
+
+  // The direction is only worth as much as what is left of gravity on screen:
+  // laid flat there is none of it, and down points through the glass instead.
+  it('says how much of gravity the screen still has, and when it has none', () => {
+    const upright = readoutLines({ ...NOTHING, orientation: { alpha: 0, beta: 90, gamma: 0 } }, 0);
+    const flat = readoutLines({ ...NOTHING, orientation: { alpha: 0, beta: 2, gamma: 0 } }, 0);
+
+    expect(upright.at(-1)).toContain('100%');
+    expect(upright.at(-1)).not.toContain('flat');
+    expect(flat.at(-1)).toContain('flat');
   });
 
   it('leaves that line out when nothing is asking for it', () => {
