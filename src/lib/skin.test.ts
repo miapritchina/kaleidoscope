@@ -259,26 +259,20 @@ describe('cutting objects out of a picture', () => {
     }
   });
 
-  // What the chamber collides on. A sliver fills a fraction of the circle it
-  // was cut to, and colliding with the circle holds everything a sliver's
-  // length away in every direction — the pile settles full of air.
-  it('reports how much of its own circle each object fills', () => {
-    const slivers = cuts(splinters);
-    const round = cuts(objects);
-
-    for (const cut of slivers) {
-      expect(cut.girth).toBeLessThan(0.7);
+  // What mass goes with, and what `lib/shape.ts` lays its chain of circles
+  // along. A circle the object was cut to fit has area pi, so this over pi is
+  // how much of that circle is glass.
+  it('reports the area of the silhouette it traced', () => {
+    for (const cut of cuts(splinters)) {
+      // A bar half the picture long and a fifteenth of it thick, cut to a
+      // circle: a small share of one.
+      expect(cut.area / Math.PI).toBeLessThan(0.35);
+      expect(cut.area).toBeGreaterThan(0);
     }
 
-    for (const cut of round) {
-      expect(cut.girth).toBeGreaterThan(0.8);
-    }
-
-    // And a needle never collapses to a point, or the pile would pass through
-    // itself; nor does anything reach further than the circle it was cut to.
-    for (const cut of [...slivers, ...round]) {
-      expect(cut.girth).toBeGreaterThanOrEqual(0.5);
-      expect(cut.girth).toBeLessThanOrEqual(1);
+    for (const cut of cuts(objects)) {
+      // A round blob fills most of the circle drawn round it.
+      expect(cut.area / Math.PI).toBeGreaterThan(0.5);
     }
   });
 

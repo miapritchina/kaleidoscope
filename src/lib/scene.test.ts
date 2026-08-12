@@ -383,7 +383,7 @@ describe('drawChamber', () => {
       ],
       source: { x: 20, y: 30, width: 90, height: 40 },
       extent: { x: 1, y: 0.44 },
-      girth: 0.45,
+      area: Math.PI * 0.44,
     };
     const patches = { pick: (draw: { x: number; y: number }) => draw, cuts: [cut], cut: () => cut };
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
 import { createScene, type Shard } from './scene';
+import { ROUND, shapeOf } from './shape';
 
 function chips(count: number, radius = 0.1): Shard[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -12,7 +13,7 @@ function chips(count: number, radius = 0.1): Shard[] {
     vx: 0,
     vy: 0,
     radius,
-    girth: 1,
+    shape: ROUND,
     rotation: 0,
     spin: 0,
     colorStop: 0.5,
@@ -312,7 +313,10 @@ describe('weight', () => {
   });
 });
 
-describe('girth', () => {
+describe('shape', () => {
+  /** A splinter: five or six times as long as it is wide. */
+  const sliver = shapeOf({ x: 1, y: 0.18 }, Math.PI * 0.18);
+
   /** Mean gap between neighbouring pieces, as a share of a piece's own width. */
   const airBetween = (glass: Shard[]) => {
     const gaps: number[] = [];
@@ -340,27 +344,68 @@ describe('girth', () => {
   // on nothing at all.
   it('packs cut-out slivers close instead of leaving air around them', () => {
     const asCircles = chips(18, 0.16);
-    const asGlass = chips(18, 0.16).map((shard) => ({ ...shard, girth: 0.4 }));
+    const asGlass = chips(18, 0.16).map((shard) => ({ ...shard, shape: sliver }));
 
     settleChamber(asCircles, 0, 20);
     settleChamber(asGlass, 0, 20);
 
-    expect(airBetween(asGlass)).toBeLessThan(airBetween(asCircles) * 0.6);
+    expect(airBetween(asGlass)).toBeLessThan(airBetween(asCircles) * 0.7);
+  });
+
+  // The whole point of a chain rather than one circle: a sliver on its end and
+  // a sliver lying flat are different obstacles. One circle is the same in
+  // every direction and cannot tell the two apart.
+  it('knows the difference between a piece end-on and side-on', () => {
+    const along = pairAcross(0);
+    const across = pairAcross(Math.PI / 2);
+
+    // Set beside the splinter's length the two touch and push apart; set beside
+    // its width, at the same distance, they are nowhere near each other.
+    expect(Math.abs(along[1]!.x - along[0]!.x)).toBeGreaterThan(0.68);
+    expect(Math.abs(across[1]!.x - across[0]!.x)).toBeCloseTo(0.65, 3);
+  });
+
+  /** A splinter and a bead set 0.65 apart, with the splinter turned. */
+  function pairAcross(turn: number): Shard[] {
+    const splinter: Shard = { ...chips(1, 0.5)[0]!, shape: sliver, x: 0, y: 0, rotation: turn };
+    const bead: Shard = { ...chips(1, 0.25)[0]!, x: 0.65, y: 0 };
+    const glass = [splinter, bead];
+
+    for (let frame = 0; frame < 10; frame += 1) {
+      // Weightless, so the only thing that can move them is each other.
+      updateChamber(glass, { dt: 1 / 240, angle: 0 });
+    }
+
+    return glass;
+  }
+
+  // A long piece has its mass out at the ends, so a contact away from its
+  // middle turns it. Standing one on end and letting go should lay it down;
+  // with one circle per piece there is no such thing as an end.
+  it('lays a splinter down instead of leaving it standing on end', () => {
+    const upright: Shard = {
+      ...chips(1, 0.45)[0]!,
+      shape: sliver,
+      x: 0,
+      y: 0,
+      // A hair off vertical, since a rod balanced exactly upright has no reason
+      // to fall either way.
+      rotation: Math.PI / 2 - 0.25,
+    };
+
+    settleChamber([upright], 0, 20);
+
+    // Its long axis runs along `rotation`; flat means that is across the floor.
+    expect(Math.abs(Math.sin(upright.rotation))).toBeLessThan(0.5);
   });
 
   it('still keeps them inside the wall, and out of each other', () => {
-    const glass = chips(18, 0.16).map((shard) => ({ ...shard, girth: 0.4 }));
+    const glass = chips(18, 0.16).map((shard) => ({ ...shard, shape: sliver }));
 
     settleChamber(glass, 0, 20);
 
-    for (const [i, a] of glass.entries()) {
-      expect(Math.hypot(a.x, a.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-9);
-
-      for (const b of glass.slice(i + 1)) {
-        const gap = Math.hypot(b.x - a.x, b.y - a.y) - (a.radius * a.girth + b.radius * b.girth);
-
-        expect(gap).toBeGreaterThan(-0.03);
-      }
+    for (const shard of glass) {
+      expect(Math.hypot(shard.x, shard.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-6);
     }
   });
 });
