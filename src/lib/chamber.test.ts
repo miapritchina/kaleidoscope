@@ -171,12 +171,14 @@ describe('updateChamber', () => {
     ] as const) {
       const chip = glass[0]!;
       chip.x = 0;
-      // Resting on the floor of the chamber, moving along it.
-      chip.y = CHAMBER_RADIUS - chip.radius;
+      // Resting on one of the mirrors, moving along it. The cell is turned so
+      // that a wall is underneath rather than a corner, which is what a chip
+      // rolls along; the walls are half a circumradius from the middle.
+      chip.y = CHAMBER_RADIUS / 2 - chip.radius;
       chip.vx = direction;
 
       for (let i = 0; i < 10; i += 1) {
-        updateChamber(glass, { dt: 1 / 60, angle: 0 });
+        updateChamber(glass, { dt: 1 / 60, angle: 0, bounds: -Math.PI / 3 });
       }
     }
 
@@ -239,9 +241,9 @@ describe('updateChamber', () => {
     const glass = chips(1);
     const chip = glass[0]!;
 
-    // In the air, clear of the wall, so only the damping acts on it.
+    // In the middle, clear of every wall, so only the damping acts on it.
     chip.x = 0;
-    chip.y = -0.5;
+    chip.y = 0;
     chip.spin = 8;
 
     for (let i = 0; i < 30; i += 1) {
@@ -361,14 +363,14 @@ describe('shape', () => {
 
     // Set beside the splinter's length the two touch and push apart; set beside
     // its width, at the same distance, they are nowhere near each other.
-    expect(Math.abs(along[1]!.x - along[0]!.x)).toBeGreaterThan(0.68);
-    expect(Math.abs(across[1]!.x - across[0]!.x)).toBeCloseTo(0.65, 3);
+    expect(Math.abs(along[1]!.x - along[0]!.x)).toBeGreaterThan(0.33);
+    expect(Math.abs(across[1]!.x - across[0]!.x)).toBeCloseTo(0.32, 3);
   });
 
-  /** A splinter and a bead set 0.65 apart, with the splinter turned. */
+  /** A splinter and a bead set 0.32 apart, with the splinter turned. */
   function pairAcross(turn: number): Shard[] {
-    const splinter: Shard = { ...chips(1, 0.5)[0]!, shape: sliver, x: 0, y: 0, rotation: turn };
-    const bead: Shard = { ...chips(1, 0.25)[0]!, x: 0.65, y: 0 };
+    const splinter: Shard = { ...chips(1, 0.25)[0]!, shape: sliver, x: 0, y: 0, rotation: turn };
+    const bead: Shard = { ...chips(1, 0.12)[0]!, x: 0.32, y: 0 };
     const glass = [splinter, bead];
 
     for (let frame = 0; frame < 10; frame += 1) {
@@ -384,7 +386,7 @@ describe('shape', () => {
   // with one circle per piece there is no such thing as an end.
   it('lays a splinter down instead of leaving it standing on end', () => {
     const upright: Shard = {
-      ...chips(1, 0.45)[0]!,
+      ...chips(1, 0.3)[0]!,
       shape: sliver,
       x: 0,
       y: 0,
@@ -393,7 +395,9 @@ describe('shape', () => {
       rotation: Math.PI / 2 - 0.25,
     };
 
-    settleChamber([upright], 0, 20);
+    // Turned so a wall is underneath rather than a corner: a splinter dropped
+    // into a corner wedges there, which is a different thing from lying down.
+    settleChamber([upright], 0, 20, -Math.PI / 3);
 
     // Its long axis runs along `rotation`; flat means that is across the floor.
     expect(Math.abs(Math.sin(upright.rotation))).toBeLessThan(0.5);

@@ -245,11 +245,13 @@ describe('updateScene', () => {
     const tilted = createScene('both', 20);
     const turned = createScene('both', 20);
 
-    // Half a turn of tilt is the same as half a turn of tube, as far as the
-    // pieces are concerned — they compose into one direction for gravity.
+    // A third of a turn of tilt is the same as a third of a turn of tube, as
+    // far as the pieces are concerned — they compose into one direction for
+    // gravity. A third and not a half, because the cell is the mirror triangle
+    // and only a third of a turn brings its walls back onto themselves.
     for (let i = 0; i < 120; i += 1) {
-      updateScene(tilted, { dt: 0.05, turn: 0, drag, tilt: Math.PI });
-      turned.cell = Math.PI;
+      updateScene(tilted, { dt: 0.05, turn: 0, drag, tilt: (2 * Math.PI) / 3 });
+      turned.cell = (2 * Math.PI) / 3;
       updateScene(turned, { dt: 0.05, turn: 0, drag });
     }
 
