@@ -7,8 +7,9 @@ export type TiltStatus = 'unsupported' | 'idle' | 'asking' | 'active' | 'denied'
 export interface DeviceTilt {
   /**
    * How far the phone has been turned in its own plane, in radians, or `null`
-   * when nothing is listening. A ref, because the animation loop reads it every
-   * frame and re-rendering the app for a sensor reading would be pointless.
+   * when nothing is listening. Gravity is rotated by it; nothing on screen is.
+   * A ref, because the animation loop reads it every frame and re-rendering the
+   * app for a sensor reading would be pointless.
    */
   angleRef: { current: number | null };
   status: TiltStatus;
@@ -19,7 +20,7 @@ interface OrientationPermission {
 }
 
 /**
- * The phone's own rotation, for turning the tube by turning the instrument.
+ * The phone's own rotation, for pointing gravity the way the world does.
  *
  * iOS will not report orientation until it has been asked for from a user
  * gesture, so the flag this takes has to be raised by a tap — which the toggle
@@ -53,8 +54,8 @@ export function useDeviceTilt(enabled: boolean): DeviceTilt {
       const previous = angleRef.current;
 
       // Unwrapped first, then smoothed: smoothing towards a reading that has
-      // just wrapped past half a turn would send the tube the long way round
-      // slowly, instead of the short way quickly.
+      // just wrapped past half a turn would sweep gravity all the way round
+      // through zero, and the pile would slide the wrong way while it did.
       angleRef.current =
         previous === null ? held : smoothAngle(previous, unwrapAngle(previous, held));
 

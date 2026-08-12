@@ -49,7 +49,7 @@ export interface Settings {
   /** Magnification of the source cell. */
   zoom: number;
   /**
-   * Turn the tube by turning the phone.
+   * Let the phone's own position say which way is down.
    *
    * Off by default, and not carried in a shared link: whether a device has the
    * sensor, and whether its owner has allowed it, is about the recipient rather

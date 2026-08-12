@@ -70,10 +70,10 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
  * which has a lens or a glass ball where this one has a chamber of objects.
  */
 const TILT_HINTS: Record<TiltStatus, string> = {
-  unsupported: 'This device does not report which way up it is, so the tube turns by swiping.',
-  idle: 'Hold the phone like the instrument it is: turn it, and the tube turns with it while the pieces keep falling downwards.',
+  unsupported: 'This device does not report which way up it is.',
+  idle: 'Down stays down in the room rather than down the screen. Tip the phone and the pieces slide the way they would in a real one; the mirrors do not move, because they are fixed in the tube.',
   asking: 'Waiting for permission to read the device’s position…',
-  active: 'On. Turn the phone and the tube turns with it, and the pieces fall the way they would.',
+  active: 'On. Tip the phone and the pieces fall towards whatever is lowest.',
   denied: 'Motion access was blocked. Allow it in your browser settings, then switch this back on.',
 };
 
@@ -239,7 +239,7 @@ export function ControlPanel({
             control, one thing said about it, and nothing announcing itself from
             inside a panel that is usually off screen. */}
         <ToggleField
-          label="Turn by tilting"
+          label="Real gravity"
           checked={settings.tilt}
           onChange={(checked) => {
             onChange('tilt', checked);

@@ -123,13 +123,13 @@ describe('ControlPanel', () => {
     expect(props.onReset).toHaveBeenCalledOnce();
   });
 
-  // A real one is held and turned, and that is the whole point of the setting:
-  // gravity stays where it is while the tube does not.
-  it('reports turning the tube by tilting the device', async () => {
+  // Tipping a real one does not turn the figure — the mirrors are fixed in the
+  // tube. What changes is which way the pieces fall.
+  it('reports switching gravity over to the phone', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.click(screen.getByLabelText('Turn by tilting'));
+    await user.click(screen.getByLabelText('Real gravity'));
 
     expect(props.onChange).toHaveBeenCalledWith('tilt', true);
   });
