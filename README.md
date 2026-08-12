@@ -302,6 +302,40 @@ coordinates — it points down in the **world**, and turning sweeps that directi
 That is the whole mechanism: the pattern does not change because something is rotating, it
 changes because turning tips the pile, it avalanches, and it settles into a new one.
 
+### The cell is the triangle
+
+The glass is bounded by **the three mirrors themselves**, not by a disc around them. Plenty of
+kaleidoscopes are built each way — a wheel of glass turning behind a fixed triangular window,
+or a dry cell whose walls _are_ the mirrors with a pane at either end — and here the second is
+better by a long way, because everything simulated is inside the triangle and so everything
+simulated can be seen.
+
+A disc around the triangle looks reasonable and behaves badly. Only **41%** of it falls inside
+the triangle at all, and a settled pile lies along its rim, which is outside the triangle
+everywhere except near the three corners. Measured on the built app with ten pieces in the
+cell and the instrument held upside down, the triangle came out between **0% and 4.2%**
+covered depending on the mirror angle: the glass fell out of view, and turning the mirrors
+changed which corner it peeked into. With the triangle as the cell, the same measurement gives
+**4.0% to 4.2%** at every angle, and at the default thirty pieces the pile sits where gravity
+points to within a degree whatever the mirrors are doing.
+
+The corners are taken off, at 0.78 of the circumradius. Where two mirrors meet at sixty
+degrees the glass wedges, and a pile that has settled into a corner will not come out again:
+tipping the instrument through a right angle moved it **not at all**. Rounded off, it rides
+round the corner the way it used to ride round the barrel. Real dry cells are like this too —
+the joints where the mirrors meet are taped or glued, and the glass never reaches the corner.
+
+The pieces are smaller to match: the triangle is a little over four tenths of the disc that
+would go round it, so pieces cut for the disc pack a triangle solid. At the default thirty
+they now cover about two thirds of the triangle and a tip through a right angle still moves
+each piece a third of a wall's distance.
+
+Seen from inside the cell — which is the frame the simulation is in — the mirrors turn
+backwards as the tube is turned, which is what tips the pile out of one corner and into the
+next. It also means turning the tube and tilting the phone are no longer interchangeable: they
+compose only when the turn is a multiple of 120 degrees, which is what brings the walls back
+onto themselves.
+
 ### Weight, and what a contact holds
 
 Two things make a chamber of glass behave like one rather than like a bag of identical

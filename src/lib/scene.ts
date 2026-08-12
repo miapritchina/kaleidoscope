@@ -151,6 +151,21 @@ const CONTENTS_CATCHUP = 4;
  */
 const MAX_LAG = 0.3;
 
+/**
+ * How big a piece is, in cell units, before the size gesture scales it.
+ *
+ * Sized so the glass packs the cell to around three quarters by area: a real
+ * cell is full, so tipping it rearranges the pile rather than emptying most of
+ * the view. The range is wide because a real one holds everything from a
+ * splinter to a bead.
+ *
+ * The cell is the mirror triangle, whose area is `3 sqrt(3) / 4` of its
+ * circumradius squared — a little over four tenths of the disc that would go
+ * round it. Pieces cut for that disc pack a triangle half again too tightly.
+ */
+const PIECE_SMALLEST = 0.038;
+const PIECE_LARGEST = 0.12;
+
 /** Builds a deterministic chamber of glass for the given seed. */
 export function createScene(seed: string, shardCount: number, chipScale = 1): Scene {
   const rng = mulberry32(hashSeed(seed));
@@ -161,7 +176,9 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
     // Scattered over the disc by area, not by radius, so the middle does not
     // come out crowded.
     const angle = rng() * Math.PI * 2;
-    const distance = Math.sqrt(rng()) * CHAMBER_RADIUS * 0.85;
+    // Inside the largest circle the cell's three walls will hold, so nothing
+    // starts outside them and has to be shoved in.
+    const distance = Math.sqrt(rng()) * (CHAMBER_RADIUS / 2) * 0.8;
 
     shards.push({
       kind: randomItem(rng, SHARD_KINDS),
@@ -178,7 +195,7 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
       // bigger piece: it displaces its neighbours, packs differently and piles
       // differently. Scaling only the sprite leaves every arrangement identical
       // and just draws it smaller, which is a picture of the same chamber.
-      radius: randomBetween(rng, 0.08, 0.26) * Math.max(0.05, chipScale),
+      radius: randomBetween(rng, PIECE_SMALLEST, PIECE_LARGEST) * Math.max(0.05, chipScale),
       // Until a picture says otherwise the drawn shapes are round enough to
       // collide as the single circle they are cut to.
       shape: ROUND,
@@ -276,7 +293,14 @@ export function updateScene(
   // off again, and tipping the phone moves it once more without turning
   // anything on screen. Nothing else moves the pieces — they tip, avalanche and
   // settle, which is what a real one does and why it never repeats.
-  updateChamber(scene.shards, { dt: step, angle: scene.cell + framework + tilt });
+  updateChamber(scene.shards, {
+    dt: step,
+    angle: scene.cell + framework + tilt,
+    // The mirrors do not turn with the cell, so from inside it they turn
+    // backwards — which is what tips the pile out of one corner and into the
+    // next as the tube is turned.
+    bounds: scene.cell,
+  });
 
   return scene;
 }
