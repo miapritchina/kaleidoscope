@@ -225,6 +225,20 @@ export function ControlPanel({
           }}
         />
 
+        <RangeField
+          label="Mirror angle"
+          value={settings.angle}
+          limit={LIMITS.angle}
+          format={(value) => `${String(value)}°`}
+          onChange={(value) => {
+            onChange('angle', value);
+          }}
+        />
+
+        <p className={styles.hint}>
+          Which way up you hold the tube. A third of a turn brings it back.
+        </p>
+
         <p className={styles.hint}>
           Swipe to turn. Pinch or scroll to size the pieces; drag two fingers to move them.
         </p>

@@ -97,6 +97,9 @@ const DEBUG_HALO = 2.6;
 /** Length of the gravity arrow, as a fraction of the smaller viewport edge. */
 const DEBUG_ARROW = 0.18;
 
+/** Radians per degree, for the one setting that is kept in degrees. */
+const DEGREES = Math.PI / 180;
+
 /**
  * Pixel size of the exported tile: one period of the figure.
  *
@@ -262,12 +265,14 @@ export class KaleidoscopeRenderer {
       patches,
     };
 
+    const framework = settings.angle * DEGREES;
+
     this.#source = source;
     this.#paintWedge(source, triangle);
-    this.#compositeTiling(triangle);
+    this.#compositeTiling(triangle, framework);
 
     if (settings.debug) {
-      this.#drawDebug(triangle, scene.tilt);
+      this.#drawDebug(triangle, scene.tilt, framework);
     }
   }
 
@@ -371,7 +376,11 @@ export class KaleidoscopeRenderer {
     // window is smaller than the tile wants.
     this.#resizeWedge(wanted);
     this.#paintWedge(source, side);
-    this.#stampField(tileCtx, TILE.width, TILE.height, side, true);
+    // Squarely upright, whatever angle the instrument is being held at: the
+    // period is a rectangle of the lattice's own, and a rotated one does not
+    // line up with the sides of a picture. How you are holding the tube is not
+    // a property of the pattern.
+    this.#stampField(tileCtx, TILE.width, TILE.height, side, 0, true);
     this.#resizeWedge(painted);
 
     // A blob rather than a data URL: it is what the share sheet wants, and it
@@ -466,10 +475,10 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(side: number): void {
+  #compositeTiling(side: number, angle: number): void {
     const ctx = this.#ctx;
 
-    this.#stampField(ctx, this.#width, this.#height, side);
+    this.#stampField(ctx, this.#width, this.#height, side, angle);
 
     // What the mirrors themselves cost, applied last because it applies to the
     // whole view — the light coming through the gaps as much as the glass.
@@ -502,7 +511,7 @@ export class KaleidoscopeRenderer {
    * the barrel, since it is an instrument laid on the picture rather than part
    * of the optics, and left out of an exported tile entirely.
    */
-  #drawDebug(side: number, tilt: number): void {
+  #drawDebug(side: number, tilt: number, angle: number): void {
     const ctx = this.#ctx;
 
     ctx.save();
@@ -516,13 +525,18 @@ export class KaleidoscopeRenderer {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
+    // Turned with the framework, since it is part of it.
     ctx.save();
+    ctx.rotate(angle);
     traceTriangle(ctx, side, 0);
     ctx.restore();
     this.#strokeTwice(width, DEBUG_INK);
 
     // Gravity, in the plane of the screen: straight down when the phone is
-    // upright, and turned by however far it is being held over.
+    // upright, and turned by however far it is being held over. Not turned by
+    // the framework's angle — the floor is where it is however the instrument
+    // is held, and seeing the arrow stay put while the figure turns under it is
+    // the whole point of drawing it.
     const reach = Math.min(this.#width, this.#height) * DEBUG_ARROW;
     const x = Math.sin(tilt) * reach;
     const y = Math.cos(tilt) * reach;
@@ -561,6 +575,8 @@ export class KaleidoscopeRenderer {
    * the field and nothing else: the barrel and the mirror falloff are radial,
    * so baking either into a tile puts a dark blot at every repeat.
    *
+   * @param angle How far the framework is turned, in radians — which way up the
+   *   tube is being held.
    * @param uniform Stamps every hexagon at the same exposure, making the field
    *   exactly periodic. For an exported tile, where a repeat is what is wanted.
    */
@@ -569,6 +585,7 @@ export class KaleidoscopeRenderer {
     width: number,
     height: number,
     side: number,
+    angle: number,
     uniform = false,
   ): void {
     const hexagon = this.#buildHexagon(side);
@@ -584,12 +601,18 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // The mirror framework does not move. Plenty of real kaleidoscopes are built
-    // this way: the mirrors are fixed in the barrel and the chamber of glass
-    // turns against them on its own bearing. Rotating the whole tiling instead
-    // sweeps the figure around the screen, which reads as a picture being spun
-    // and drowns the thing actually worth watching — the glass falling.
+    // The mirror framework does not move on its own. Plenty of real
+    // kaleidoscopes are built this way: the mirrors are fixed in the barrel and
+    // the chamber of glass turns against them on its own bearing. Turning the
+    // whole tiling as the cell turns instead sweeps the figure around the
+    // screen, which reads as a picture being spun and drowns the thing actually
+    // worth watching — the glass falling.
+    //
+    // What it does take is a fixed angle, set once: which way up the tube is
+    // being held. It stays put while the cell turns under it, so it reads as
+    // the instrument's own attitude rather than as motion.
     ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
 
     const lattice = hexLattice(side);
     // A rotated rectangle fits inside the circle through its corners, so cover

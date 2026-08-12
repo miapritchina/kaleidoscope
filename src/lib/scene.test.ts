@@ -260,6 +260,35 @@ describe('updateScene', () => {
     }
   });
 
+  // Holding the tube at an angle turns the figure and leaves the pieces where
+  // the floor puts them. The cell is drawn inside the framework, so unless the
+  // framework's angle comes off gravity's the pile leans with the instrument —
+  // which no real one does.
+  it('turns the framework without taking the pile with it', () => {
+    for (const framework of [0, Math.PI / 3, -Math.PI / 4, Math.PI]) {
+      const scene = createScene('framework', 24);
+
+      for (let i = 0; i < 160; i += 1) {
+        updateScene(scene, { dt: 0.05, turn: 0, drag, framework });
+      }
+
+      // Where the pile has gathered, put back through the rotation the renderer
+      // will apply to it. However the instrument is being held, the glass ends
+      // up at the bottom of the screen.
+      const x = scene.shards.reduce((sum, shard) => sum + shard.x, 0) / scene.shards.length;
+      const y = scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
+      const onScreen = {
+        x: x * Math.cos(framework) - y * Math.sin(framework),
+        y: x * Math.sin(framework) + y * Math.cos(framework),
+      };
+
+      expect(onScreen.y, `held at ${String(framework)}`).toBeGreaterThan(0);
+      expect(Math.abs(onScreen.x), `held at ${String(framework)}`).toBeLessThan(onScreen.y);
+      // And the figure's own angle is not something the framework touches.
+      expect(scene.cell).toBe(0);
+    }
+  });
+
   it('ignores negative time steps', () => {
     const scene = createScene('negative', 4);
 

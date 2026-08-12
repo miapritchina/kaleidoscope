@@ -19,6 +19,9 @@ import styles from './Kaleidoscope.module.css';
  */
 const WHEEL_ZOOM = 0.0015;
 
+/** Radians per degree, for the one setting that is kept in degrees. */
+const DEGREES = Math.PI / 180;
+
 export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
   capture: () => string | null;
@@ -156,6 +159,9 @@ export function Kaleidoscope({
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
+        // The cell is drawn inside the framework, so the framework's angle has
+        // to come off gravity's or the pile would lean with the instrument.
+        framework: settings.angle * DEGREES,
       });
       renderer.render(scene, settings, media, skin);
     },

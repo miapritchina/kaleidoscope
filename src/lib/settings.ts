@@ -55,6 +55,18 @@ export interface Settings {
    */
   zoom: number;
   /**
+   * How far the whole mirror framework is turned, in degrees.
+   *
+   * Which way up you are holding the tube. It turns the figure and nothing
+   * else: the pieces go on falling down the screen, because gravity does not
+   * care how the instrument is held.
+   *
+   * A third of a turn brings the framework back onto itself — six triangles
+   * around a point, alternately mirrored, are unchanged by 120 degrees — so
+   * that is the whole range there is.
+   */
+  angle: number;
+  /**
    * Let the phone's own position say which way is down.
    *
    * Off by default, and not carried in a shared link: whether a device has the
@@ -83,6 +95,9 @@ export const LIMITS = {
   shards: { min: 4, max: 60, step: 1 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
+  // A third of a turn is the whole of it: the framework is unchanged by 120
+  // degrees, so a wider slider would only repeat itself twice over.
+  angle: { min: 0, max: 120, step: 1 },
 } as const satisfies Record<string, NumericLimit>;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -92,6 +107,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sourceScale: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
+  angle: 0,
   tilt: false,
   debug: false,
   seed: 'kaleido',
@@ -134,6 +150,7 @@ export function sanitizeSettings(input: unknown): Settings {
     ),
     objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
+    angle: clampToLimit(toNumber(raw.angle, DEFAULT_SETTINGS.angle), LIMITS.angle),
     tilt: typeof raw.tilt === 'boolean' ? raw.tilt : DEFAULT_SETTINGS.tilt,
     debug: typeof raw.debug === 'boolean' ? raw.debug : DEFAULT_SETTINGS.debug,
     seed: toSeed(raw.seed),
@@ -157,6 +174,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     sourceScale: String(settings.sourceScale),
     objects: settings.objects,
     zoom: String(settings.zoom),
+    angle: String(settings.angle),
     seed: settings.seed,
   });
 }
@@ -203,6 +221,7 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),
     objects: params.get('objects'),
     zoom: params.get('zoom'),
+    angle: params.get('angle'),
     seed: params.get('seed'),
   });
 }

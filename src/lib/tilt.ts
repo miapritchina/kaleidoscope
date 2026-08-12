@@ -16,11 +16,16 @@ const RADIANS = Math.PI / 180;
  *
  * `beta` is the front-to-back tilt and `gamma` the left-to-right one, as the
  * device orientation event reports them: held upright and facing you, `beta` is
- * about 90 and `gamma` about 0. Rotate it clockwise in its own plane and `beta`
- * falls towards 0 while `gamma` falls towards -90, so the two together give the
- * angle directly.
+ * about 90 and `gamma` about 0. Lean it to the right — the right edge dipping,
+ * so down moves towards that edge — and `beta` falls towards 0 while `gamma`
+ * rises towards 90, so the two together give the angle directly.
  *
- * Positive is clockwise on screen, which is the direction canvas angles grow.
+ * Positive is clockwise on screen, which is the direction canvas angles grow,
+ * and the direction gravity's arrow swings when the right edge goes down.
+ *
+ * The sign of `gamma` here was wrong until a phone said so: the pieces slid
+ * towards the raised edge rather than the dipped one, which is the one thing
+ * about this that cannot be checked without hardware in a hand.
  *
  * Flat on a table both are near zero and the angle is meaningless — there is no
  * "up" in the screen's plane to measure from. That is not an error to guard
@@ -32,7 +37,7 @@ export function screenAngleFromOrientation(beta: number, gamma: number): number 
     return 0;
   }
 
-  return Math.atan2(-gamma * RADIANS, beta * RADIANS);
+  return Math.atan2(gamma * RADIANS, beta * RADIANS);
 }
 
 /**
