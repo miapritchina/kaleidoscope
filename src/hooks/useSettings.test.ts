@@ -9,7 +9,8 @@ const CHANGES = [
   ['source', 'camera'],
   ['cameraFacing', 'user'],
   ['shards', 40],
-  ['chipSize', 1.5],
+  ['sourceScale', 1.5],
+  ['debug', true],
   ['objects', 'custom'],
   ['zoom', 2],
   ['tilt', true],
@@ -108,12 +109,12 @@ describe('useSettings', () => {
       'kaleidoscope:settings',
       JSON.stringify({ ...DEFAULT_SETTINGS, seed: 'stored' }),
     );
-    window.history.replaceState(null, '', '/?seed=shared&chipSize=1.5');
+    window.history.replaceState(null, '', '/?seed=shared&sourceScale=1.5');
 
     const { result } = renderHook(() => useSettings());
 
     expect(result.current.settings.seed).toBe('shared');
-    expect(result.current.settings.chipSize).toBe(1.5);
+    expect(result.current.settings.sourceScale).toBe(1.5);
   });
 
   it('resets back to the defaults', () => {

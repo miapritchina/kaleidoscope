@@ -101,8 +101,8 @@ export function App() {
   }, []);
 
   const handleZoom = useCallback(
-    (zoom: number) => {
-      set('zoom', clampToLimit(zoom, LIMITS.zoom));
+    (scale: number) => {
+      set('sourceScale', clampToLimit(scale, LIMITS.sourceScale));
     },
     [set],
   );
@@ -261,8 +261,7 @@ export function App() {
           </div>
 
           <p className={styles.subtitle}>
-            A mirrored canvas toy. Load the chamber with objects, mirror a photo, or point the
-            camera at the world — then swipe across the artwork to turn it.
+            Three mirrors and a chamber of objects. Swipe the artwork to turn it.
           </p>
 
           <ControlPanel

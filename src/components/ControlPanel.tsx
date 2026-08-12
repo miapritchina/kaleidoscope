@@ -70,20 +70,20 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
  * which has a lens or a glass ball where this one has a chamber of objects.
  */
 const TILT_HINTS: Record<TiltStatus, string> = {
-  unsupported: 'This device does not report which way up it is.',
-  idle: 'Down stays down in the room rather than down the screen. Tip the phone and the pieces slide the way they would in a real one; the mirrors do not move, because they are fixed in the tube.',
-  asking: 'Waiting for permission to read the device’s position…',
-  active: 'On. Tip the phone and the pieces fall towards whatever is lowest.',
-  denied: 'Motion access was blocked. Allow it in your browser settings, then switch this back on.',
+  unsupported: 'This device cannot tell which way up it is.',
+  idle: 'Tip the phone and the pieces slide. The mirrors stay put.',
+  asking: 'Waiting for permission…',
+  active: 'On. The pieces fall towards whatever is lowest.',
+  denied: 'Motion access is blocked. Allow it in your browser settings.',
 };
 
 const CAMERA_HINTS: Record<CameraStatus, string> = {
   idle: 'The camera is off.',
-  starting: 'Waiting for camera permission…',
-  active: 'Live. Nothing is uploaded — frames stay in this browser.',
-  denied: 'Camera access was blocked.',
+  starting: 'Waiting for permission…',
+  active: 'Live. Frames stay in this browser.',
+  denied: 'Camera access is blocked.',
   unavailable: 'No camera available.',
-  error: 'The camera could not be started.',
+  error: 'The camera could not start.',
 };
 
 export function ControlPanel({
@@ -121,7 +121,7 @@ export function ControlPanel({
       }}
     >
       <fieldset className={styles.group}>
-        <legend className={styles.legend}>Source</legend>
+        <legend className={styles.legend}>Contents</legend>
 
         <SelectField
           label="Source"
@@ -137,7 +137,6 @@ export function ControlPanel({
               onChange('source', name);
             }
           }}
-          description="A chamber of objects, or a photo or the camera mirrored flat."
         />
 
         {settings.source === 'objects' && (
@@ -149,16 +148,6 @@ export function ControlPanel({
               onChange={(value) => {
                 onChange('shards', value);
               }}
-            />
-            <RangeField
-              label="Chip size"
-              value={settings.chipSize}
-              limit={LIMITS.chipSize}
-              format={(value) => `${value.toFixed(2)}x`}
-              onChange={(value) => {
-                onChange('chipSize', value);
-              }}
-              description="How big each piece is. Bigger pieces crowd each other, so the pile settles differently."
             />
           </>
         )}
@@ -175,8 +164,8 @@ export function ControlPanel({
             />
             <p className={styles.hint}>
               {settings.objects === CUSTOM
-                ? 'A PNG of a few objects on a transparent background. It stays in this browser — nothing is uploaded.'
-                : 'Or drop a photo onto the artwork. It stays in this browser — nothing is uploaded.'}
+                ? 'A PNG of a few objects on a transparent background.'
+                : 'Or drop one onto the artwork.'}
             </p>
             {imageName ? (
               <button type="button" className={styles.ghost} onClick={onClearImage}>
@@ -224,15 +213,20 @@ export function ControlPanel({
       </fieldset>
 
       <fieldset className={styles.group}>
-        <legend className={styles.legend}>Assembly</legend>
+        <legend className={styles.legend}>Mirrors</legend>
+
+        <RangeField
+          label="Mirror size"
+          value={settings.zoom}
+          limit={LIMITS.zoom}
+          format={(value) => `${value.toFixed(2)}x`}
+          onChange={(value) => {
+            onChange('zoom', value);
+          }}
+        />
 
         <p className={styles.hint}>
-          A triangular tube of three mirrors. Six triangles meet at every corner to make a hexagon,
-          and those hexagons repeat across the field — which is what a real one does.
-        </p>
-        <p className={styles.hint}>
-          Swipe across the artwork to turn it. Pinch, or scroll, to zoom; drag with two fingers to
-          move the source.
+          Swipe to turn. Pinch or scroll to size the pieces; drag two fingers to move them.
         </p>
 
         {/* The state is the description rather than a line of its own: one
@@ -245,6 +239,15 @@ export function ControlPanel({
             onChange('tilt', checked);
           }}
           description={TILT_HINTS[tiltStatus]}
+        />
+
+        <ToggleField
+          label="Show the mirrors"
+          checked={settings.debug}
+          onChange={(checked) => {
+            onChange('debug', checked);
+          }}
+          description="Outlines the triangle everything is reflected from, and points at gravity."
         />
       </fieldset>
 

@@ -31,12 +31,13 @@ export interface Settings {
   /** How many shards live in the source cell. */
   shards: number;
   /**
-   * Size of the glass pieces, as a multiplier.
+   * How big the things in the source are, as a multiplier.
    *
-   * Separate from the cell size, which sets how many chips land in view as well
-   * as how big they are — so growing that to enlarge them thins them out.
+   * The pieces in the chamber, or the magnification of a photo. Pinched and
+   * scrolled rather than dragged on a slider: it belongs to what is being
+   * looked at, and the hand is already on it.
    */
-  chipSize: number;
+  sourceScale: number;
   /**
    * Which set of objects the chamber is loaded with.
    *
@@ -46,7 +47,12 @@ export interface Settings {
    * picker" — until one is chosen the pieces fall back to the drawn shapes.
    */
   objects: string;
-  /** Magnification of the source cell. */
+  /**
+   * How big the mirror triangle is, as a multiplier.
+   *
+   * The instrument rather than its contents — a wider tube shows fewer, larger
+   * repeats — so this one is a slider and not a gesture.
+   */
   zoom: number;
   /**
    * Let the phone's own position say which way is down.
@@ -56,6 +62,8 @@ export interface Settings {
    * than about the look being shared.
    */
   tilt: boolean;
+  /** Draws the mirror triangle and the direction of gravity over the figure. */
+  debug: boolean;
   /** Seed for the shard generator. */
   seed: string;
 }
@@ -73,7 +81,7 @@ export interface NumericLimit {
  */
 export const LIMITS = {
   shards: { min: 4, max: 60, step: 1 },
-  chipSize: { min: 0.4, max: 2.5, step: 0.05 },
+  sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
 } as const satisfies Record<string, NumericLimit>;
 
@@ -81,10 +89,11 @@ export const DEFAULT_SETTINGS: Settings = {
   source: 'objects',
   cameraFacing: 'environment',
   shards: 30,
-  chipSize: 1,
+  sourceScale: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
   tilt: false,
+  debug: false,
   seed: 'kaleido',
 };
 
@@ -119,10 +128,14 @@ export function sanitizeSettings(input: unknown): Settings {
       ? raw.cameraFacing
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
-    chipSize: clampToLimit(toNumber(raw.chipSize, DEFAULT_SETTINGS.chipSize), LIMITS.chipSize),
+    sourceScale: clampToLimit(
+      toNumber(raw.sourceScale, DEFAULT_SETTINGS.sourceScale),
+      LIMITS.sourceScale,
+    ),
     objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     tilt: typeof raw.tilt === 'boolean' ? raw.tilt : DEFAULT_SETTINGS.tilt,
+    debug: typeof raw.debug === 'boolean' ? raw.debug : DEFAULT_SETTINGS.debug,
     seed: toSeed(raw.seed),
   };
 }
@@ -141,7 +154,7 @@ export function randomizeSeed(settings: Settings): Settings {
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     shards: String(settings.shards),
-    chipSize: String(settings.chipSize),
+    sourceScale: String(settings.sourceScale),
     objects: settings.objects,
     zoom: String(settings.zoom),
     seed: settings.seed,
@@ -172,6 +185,7 @@ const KNOWN_PARAMS: readonly string[] = [
   'light',
   'trails',
   'skin',
+  'chipSize',
   'metallic',
   'palette',
   'source', // Never encoded, but tolerated in a hand-written link.
@@ -186,7 +200,7 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
   return sanitizeSettings({
     shards: params.get('shards'),
-    chipSize: params.get('chipSize'),
+    sourceScale: params.get('sourceScale') ?? params.get('chipSize'),
     objects: params.get('objects'),
     zoom: params.get('zoom'),
     seed: params.get('seed'),

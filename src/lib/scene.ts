@@ -67,6 +67,13 @@ export interface Scene {
    * tile, so its travel is bounded by however much hangs outside the wedge.
    */
   drag: { x: number; y: number };
+  /**
+   * How far the instrument is tilted, in radians.
+   *
+   * Gravity's direction on screen, and nothing else — the figure does not turn
+   * with it. Kept so the debug overlay has something to point at.
+   */
+  tilt: number;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -165,6 +172,7 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
     shards,
     pan: { x: 0, y: 0 },
     cell: 0,
+    tilt: 0,
     contents: 0,
     drag: { x: 0, y: 0 },
     elapsed: 0,
@@ -187,6 +195,7 @@ export function updateScene(scene: Scene, { dt, turn, drag, tilt = 0 }: SceneUpd
 
   scene.elapsed += step;
   scene.cell += turn * step;
+  scene.tilt = tilt;
   // Exponential approach, clamped so a long frame cannot overshoot past the
   // tube and swing back.
   scene.contents += (scene.cell - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);

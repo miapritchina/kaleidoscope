@@ -72,12 +72,14 @@ export function Kaleidoscope({
 }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
-  // The pinch reads the zoom when it starts, so it scales from wherever the
-  // zoom has got to rather than from whatever it was when this render ran.
-  const zoomRef = useRef(settings.zoom);
+  // A pinch sizes what is being looked at, not the tube it is looked at
+  // through: the mirror triangle has a slider of its own. Read when the pinch
+  // starts, so it scales from wherever it has got to rather than from whatever
+  // it was when this render ran.
+  const zoomRef = useRef(settings.sourceScale);
   useEffect(() => {
-    zoomRef.current = settings.zoom;
-  }, [settings.zoom]);
+    zoomRef.current = settings.sourceScale;
+  }, [settings.sourceScale]);
   const gesture = useStageGesture({ zoom: () => zoomRef.current, onZoom });
   const [containerRef, size] = useElementSize<HTMLDivElement>();
 
@@ -87,8 +89,8 @@ export function Kaleidoscope({
   // into a different pile, which cannot be done by scaling what is already
   // there.
   const scene = useMemo(
-    () => createScene(settings.seed, settings.shards, settings.chipSize),
-    [settings.seed, settings.shards, settings.chipSize],
+    () => createScene(settings.seed, settings.shards, settings.sourceScale),
+    [settings.seed, settings.shards, settings.sourceScale],
   );
 
   useImperativeHandle(
