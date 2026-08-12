@@ -38,8 +38,10 @@ export interface KaleidoscopeProps {
   /** Picture to cut the pieces out of, when `settings.skin` asks for one. */
   skin?: MediaElement | null;
   /**
-   * Where the instrument is being held, in radians, or `null` for none. Given
-   * one, the tube is at that angle rather than wherever swiping has left it.
+   * How far the instrument is tilted, in radians, or `null` for not knowing.
+   * It moves gravity rather than the figure: the mirrors are fixed in the tube
+   * and the tube is the phone, so tipping it changes which way the pieces fall
+   * and turns nothing on screen.
    */
   tiltRef?: { current: number | null };
   /**
@@ -145,12 +147,11 @@ export function Kaleidoscope({
       // A finger held still fires no move events, so the rate has to be expired
       // here rather than waiting for one — and a flick coasts down here too.
       gesture.settle(deltaSeconds);
-      const held = tiltRef?.current;
       updateScene(scene, {
         dt: paused ? 0 : deltaSeconds,
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
-        cell: held ?? undefined,
+        tilt: tiltRef?.current ?? 0,
       });
       renderer.render(scene, settings, media, skin);
     },

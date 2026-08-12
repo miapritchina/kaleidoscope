@@ -376,24 +376,28 @@ rather than in the drawer, since the drawer is not always on screen; and so is t
 region, so that a message — a photo dropped on the artwork, say — still reaches a screen
 reader with the panel closed.
 
-## Turning it by turning the phone
+## Tilting it
 
-A real kaleidoscope is held and rotated, and the chips fall because gravity stays where it
-is while the tube does not. **Tilt** does that: the phone's own rotation becomes the cell's
-angle, and the chamber — which already puts gravity down in the world rather than down the
-screen — does the rest. The tube is then wherever the instrument is, so a swipe cannot add
-to it.
+A real kaleidoscope is held in the hand, and tipping it does not turn the figure — the
+mirrors and the chamber are both fixed in the tube. What changes is which way the pieces
+fall. **Real gravity** does exactly that: the phone's own rotation is given to gravity and to
+nothing else, so the framework stays put on screen and the pile slides towards whatever is
+lowest in the room.
+
+It composes with a swipe rather than fighting it. Gravity's direction inside the cell is how
+far the cell has been turned plus how far the whole instrument is tilted; turning the tube
+sweeps gravity around the cell, and tipping the phone moves it again without turning
+anything.
 
 `lib/tilt.ts` holds the arithmetic and nothing else. The orientation event gives the
 front-to-back tilt and the left-to-right one; held upright and facing you those are about 90
 and about 0, and rotating the phone clockwise in its own plane takes the first towards 0 and
 the second towards -90, so `atan2` of the pair is the angle directly. Two details matter as
-much as the formula. The reading wraps at half a turn, so a hand turning steadily past the
-top sends it from just under to just over — taken as read that is a whole turn in one frame,
-which flings the pile round and leaves the contents unwinding for seconds; each reading is
-carried on from the last by the shorter way instead. And the sensor is noisy at rest, so the
-angle is smoothed, after the unwrap rather than before it: smoothing towards a number that
-has just wrapped sends the tube the long way round slowly.
+much as the formula. The reading wraps at half a turn — gravity itself does not mind, being a
+sine and a cosine, but the smoothing does: asked to move from just under half a turn to just
+over, it sweeps all the way round through zero and the pile slides the wrong way while it
+does. So each reading is carried on from the last by the shorter way, and only then smoothed,
+which is also what takes out the sensor's shiver at rest.
 
 iOS will not report orientation until it has been asked from a user gesture, which is what
 the toggle is. Refused, it says so and stays refused; nothing asks twice. The arithmetic is

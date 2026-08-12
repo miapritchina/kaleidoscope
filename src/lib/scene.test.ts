@@ -219,6 +219,47 @@ describe('updateScene', () => {
     expect(centre(inverted)).toBeLessThan(0);
   });
 
+  // Tipping a real one in your hand does not turn the figure: the mirrors and
+  // the chamber are both fixed in the tube. What changes is which way the
+  // pieces fall.
+  it('lets a tilt move gravity without turning anything', () => {
+    const scene = createScene('tilt', 24);
+
+    for (let i = 0; i < 160; i += 1) {
+      updateScene(scene, { dt: 0.05, turn: 0, drag, tilt: Math.PI / 2 });
+    }
+
+    // A quarter turn of tilt puts the floor along one side of the cell, so the
+    // pile gathers sideways rather than at the bottom.
+    const centreX = scene.shards.reduce((sum, shard) => sum + shard.x, 0) / scene.shards.length;
+    const centreY = scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
+
+    expect(Math.abs(centreX)).toBeGreaterThan(Math.abs(centreY));
+    // And the figure has not moved: the cell is drawn at this angle, and it is
+    // exactly where it started.
+    expect(scene.cell).toBe(0);
+    expect(scene.contents).toBe(0);
+  });
+
+  it('takes a tilt and a turn together', () => {
+    const tilted = createScene('both', 20);
+    const turned = createScene('both', 20);
+
+    // Half a turn of tilt is the same as half a turn of tube, as far as the
+    // pieces are concerned — they compose into one direction for gravity.
+    for (let i = 0; i < 120; i += 1) {
+      updateScene(tilted, { dt: 0.05, turn: 0, drag, tilt: Math.PI });
+      turned.cell = Math.PI;
+      updateScene(turned, { dt: 0.05, turn: 0, drag });
+    }
+
+    for (const [index, shard] of tilted.shards.entries()) {
+      expect(
+        Math.hypot(shard.x - turned.shards[index]!.x, shard.y - turned.shards[index]!.y),
+      ).toBeLessThan(0.2);
+    }
+  });
+
   it('ignores negative time steps', () => {
     const scene = createScene('negative', 4);
 

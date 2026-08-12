@@ -1,11 +1,11 @@
 /**
- * Turning the tube by turning the phone.
+ * Which way is down, for a phone being held.
  *
- * A real kaleidoscope is held and rotated, and the chips fall because gravity
- * stays where it is while the tube does not. The chamber already works that
- * way — it is given the cell's angle and puts gravity down in the world — so
- * all this has to do is say how far the phone has been rotated in its own
- * plane.
+ * Tipping a real kaleidoscope does not turn the figure — the mirrors and the
+ * chamber are both fixed in the tube — it changes which way the pieces fall.
+ * The chamber already takes a direction for gravity, so all this has to do is
+ * say how far the phone has been rotated in its own plane, and that number goes
+ * to gravity rather than to the figure.
  */
 
 /** Radians per degree. */
@@ -39,10 +39,12 @@ export function screenAngleFromOrientation(beta: number, gamma: number): number 
  * Continues an angle past a wrap, rather than jumping the long way round.
  *
  * The sensor reports an angle in `(-pi, pi]`, so a hand turning steadily past
- * the top sends it from just under pi to just over -pi. Fed to the chamber as
- * it stands, that is a full turn in one frame: the pile is flung round and the
- * contents unwind for seconds afterwards. Taking the shortest way between the
- * two keeps the number continuous, however many turns it has been through.
+ * the top sends it from just under pi to just over -pi. Gravity itself does not
+ * mind — it is a sine and a cosine, and those do not notice a whole turn — but
+ * the smoothing below does: asked to move from one to the other it sweeps all
+ * the way round through zero, and the pile slides the wrong way while it does.
+ * Taking the shortest way between the two keeps the number continuous, however
+ * many turns it has been through.
  */
 export function unwrapAngle(previous: number, next: number): number {
   const turn = Math.PI * 2;
@@ -55,8 +57,8 @@ export function unwrapAngle(previous: number, next: number): number {
  * Smoothing applied to the tilt, per reading.
  *
  * The sensor is noisy at rest, and an unsmoothed angle makes a settled pile
- * shiver. Low enough to take that out, high enough that the tube does not lag
- * the hand holding it.
+ * shiver. Low enough to take that out, high enough that gravity does not lag
+ * the hand holding the phone.
  */
 const TILT_SMOOTHING = 0.25;
 
