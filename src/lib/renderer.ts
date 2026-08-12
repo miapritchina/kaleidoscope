@@ -5,7 +5,13 @@ import { GROUND, rgbToCss } from './color';
 import { DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
-import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './tiling';
+import {
+  coverWithHexagons,
+  hexLattice,
+  traceHexagon,
+  traceTriangle,
+  triangleCentre,
+} from './tiling';
 
 /** Which source last painted the wedge, so a switch can clear it. */
 type WedgeMode = 'chamber' | 'media' | 'empty';
@@ -518,19 +524,20 @@ export class KaleidoscopeRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.translate(this.#width / 2, this.#height / 2);
-
     const width = Math.max(2, side * DEBUG_WIDTH);
 
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Turned with the framework, since it is part of it.
+    // Placed exactly as the field is, so it outlines the real triangle rather
+    // than one drawn where the mirrors used to be.
     ctx.save();
-    ctx.rotate(angle);
+    this.#placeField(ctx, this.#width, this.#height, side, angle);
     traceTriangle(ctx, side, 0);
     ctx.restore();
     this.#strokeTwice(width, DEBUG_INK);
+
+    ctx.translate(this.#width / 2, this.#height / 2);
 
     // Gravity, in the plane of the screen: straight down when the phone is
     // upright, and turned by however far it is being held over. Not turned by
@@ -601,18 +608,7 @@ export class KaleidoscopeRenderer {
     }
 
     ctx.save();
-    // The mirror framework does not move on its own. Plenty of real
-    // kaleidoscopes are built this way: the mirrors are fixed in the barrel and
-    // the chamber of glass turns against them on its own bearing. Turning the
-    // whole tiling as the cell turns instead sweeps the figure around the
-    // screen, which reads as a picture being spun and drowns the thing actually
-    // worth watching — the glass falling.
-    //
-    // What it does take is a fixed angle, set once: which way up the tube is
-    // being held. It stays put while the cell turns under it, so it reads as
-    // the instrument's own attitude rather than as motion.
-    ctx.translate(width / 2, height / 2);
-    ctx.rotate(angle);
+    this.#placeField(ctx, width, height, side, angle);
 
     const lattice = hexLattice(side);
     // A rotated rectangle fits inside the circle through its corners, so cover
@@ -637,6 +633,40 @@ export class KaleidoscopeRenderer {
 
     this.#drawSeams(ctx, width, height, side);
     ctx.restore();
+  }
+
+  /**
+   * Puts the field where it belongs on a surface, ready to be drawn into.
+   *
+   * Three steps, and both the field and the debug overlay take all three or
+   * they would disagree about where the mirrors are:
+   *
+   * 1. To the middle of the view.
+   * 2. Turned by the framework's angle — which way up the tube is being held.
+   *    The framework does not move on its own; plenty of real kaleidoscopes are
+   *    built with the mirrors fixed in the barrel and the chamber of glass
+   *    turning against them on its own bearing. Turning the whole tiling as the
+   *    cell turns instead sweeps the figure around the screen, which reads as a
+   *    picture being spun and drowns the thing worth watching — the glass
+   *    falling.
+   * 3. Back by the source triangle's own centre, so that triangle lands in the
+   *    middle rather than the corner where six of them meet. It is the one the
+   *    source is actually painted into and every other is a reflection of it;
+   *    having it off to one side while the middle of the screen is a junction
+   *    puts the interesting part where nobody is looking.
+   */
+  #placeField(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    side: number,
+    angle: number,
+  ): void {
+    const centre = triangleCentre(side);
+
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(angle);
+    ctx.translate(-centre.x, -centre.y);
   }
 
   /**

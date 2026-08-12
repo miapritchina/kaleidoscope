@@ -270,6 +270,80 @@ describe('updateChamber', () => {
   });
 });
 
+describe('weight', () => {
+  // A splinter that lands on a bead is the one that moves. Splitting the push
+  // evenly shoves the bead just as far, and a chamber of mixed sizes behaves as
+  // though every piece weighed the same — which is what reads most plainly as
+  // "not glass". Mass goes with area, so twice across is four times as hard to
+  // shift.
+  it('gives the push to the lighter piece', () => {
+    const big: Shard = { ...chips(1, 0.3)[0]!, x: 0, y: 0 };
+    const small: Shard = { ...chips(1, 0.1)[0]!, x: 0.32, y: 0 };
+
+    updateChamber([big, small], { dt: 1 / 60, angle: 0 });
+
+    const bigMoved = Math.abs(big.x);
+    const smallMoved = Math.abs(small.x - 0.32);
+
+    expect(smallMoved).toBeGreaterThan(0);
+    // Nine times, for a piece three times across. Loosely, since a substep of
+    // gravity moves both of them as well.
+    expect(smallMoved / bigMoved).toBeGreaterThan(5);
+  });
+
+  // Pushing two pieces apart is something they do to each other, so it cannot
+  // move the pair as a whole. Weighting it by anything other than mass is what
+  // breaks that: the pieces would drift off in the direction of whichever
+  // happened to be favoured, one contact at a time.
+  it('moves the two apart without moving the pair', () => {
+    const big: Shard = { ...chips(1, 0.3)[0]!, x: -0.05, y: 0 };
+    const small: Shard = { ...chips(1, 0.1)[0]!, x: 0.3, y: 0 };
+    const weigh = () =>
+      (big.x * big.radius ** 2 + small.x * small.radius ** 2) /
+      (big.radius ** 2 + small.radius ** 2);
+    const before = weigh();
+
+    // Gravity is along y at this angle, so anything that moves the pair
+    // sideways came from the contact.
+    updateChamber([big, small], { dt: 1 / 60, angle: 0 });
+
+    expect(weigh()).toBeCloseTo(before, 6);
+  });
+});
+
+describe('friction', () => {
+  /** How far the pile has moved from where it started, per piece. */
+  const travelled = (before: Shard[], after: Shard[]) =>
+    after.reduce(
+      (sum, shard, index) =>
+        sum + Math.hypot(shard.x - before[index]!.x, shard.y - before[index]!.y),
+      0,
+    ) / after.length;
+
+  // The point of holding a contact against sliding: a heap stands at a slope.
+  // Resolving only the overlap leaves the glass free to slide across whatever
+  // it rests on, so a pile spreads until it is flat and the least tip sets the
+  // whole thing flowing — a chamber of liquid rather than one of glass.
+  it('holds a pile through a small tip and lets it go past a steep one', () => {
+    const settled = chips(16, 0.12);
+    settleChamber(settled, 0, 20);
+
+    const nudged = settled.map((shard) => ({ ...shard }));
+    const tipped = settled.map((shard) => ({ ...shard }));
+
+    for (let frame = 0; frame < 120; frame += 1) {
+      updateChamber(nudged, { dt: 1 / 60, angle: (5 * Math.PI) / 180 });
+      updateChamber(tipped, { dt: 1 / 60, angle: (50 * Math.PI) / 180 });
+    }
+
+    const held = travelled(settled, nudged);
+    const slid = travelled(settled, tipped);
+
+    expect(held).toBeLessThan(0.05);
+    expect(slid).toBeGreaterThan(held * 4);
+  });
+});
+
 describe('settleChamber', () => {
   // A chamber still mid-avalanche on the first frame visibly rains down on load.
   it('leaves a generated scene at rest', () => {

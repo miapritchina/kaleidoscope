@@ -5,6 +5,7 @@ import {
   coverWithHexagons,
   hexLattice,
   latticePeriod,
+  triangleCentre,
   traceHexagon,
   traceTriangle,
 } from './tiling';
@@ -75,6 +76,40 @@ describe('latticePeriod', () => {
     const { x: width, y: height } = latticePeriod(radius);
 
     expect(width / height).toBeCloseTo(SQRT3, 12);
+  });
+});
+
+describe('triangleCentre', () => {
+  // traceTriangle puts the apex at the origin, because that is the corner all
+  // six are assembled around. Laid straight onto the middle of the view that
+  // puts six apexes there and the triangle everything is a reflection of ends
+  // up in a corner; offsetting the field by this centres the source instead.
+  it('is the middle of the triangle traceTriangle draws', () => {
+    const side = 30;
+    const centre = triangleCentre(side);
+    const corners = [
+      { x: 0, y: 0 },
+      { x: side, y: 0 },
+      { x: side * Math.cos(Math.PI / 3), y: side * Math.sin(Math.PI / 3) },
+    ];
+
+    expect(centre.x).toBeCloseTo(corners.reduce((sum, at) => sum + at.x, 0) / 3, 9);
+    expect(centre.y).toBeCloseTo(corners.reduce((sum, at) => sum + at.y, 0) / 3, 9);
+  });
+
+  // Equidistant from all three corners, which is what makes it the middle
+  // rather than merely somewhere inside.
+  it('sits one circumradius from every corner', () => {
+    const side = 30;
+    const centre = triangleCentre(side);
+
+    for (const corner of [
+      { x: 0, y: 0 },
+      { x: side, y: 0 },
+      { x: side / 2, y: (side * SQRT3) / 2 },
+    ]) {
+      expect(Math.hypot(corner.x - centre.x, corner.y - centre.y)).toBeCloseTo(side / SQRT3, 9);
+    }
   });
 });
 

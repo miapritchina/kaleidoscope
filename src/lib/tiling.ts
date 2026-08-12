@@ -63,6 +63,22 @@ export function latticePeriod(radius: number): Vector {
   return { x: 3 * radius, y: SQRT3 * radius };
 }
 
+/**
+ * Middle of the source triangle, relative to the centre of its hexagon.
+ *
+ * {@link traceTriangle} puts the apex at the origin, because that is the corner
+ * all six triangles are assembled around. It is not where you would want the
+ * triangle itself to sit: laid straight onto the middle of the view it puts six
+ * apexes there and the triangle everything is a reflection of ends up off in a
+ * corner. Offsetting the whole field by this instead centres the source, which
+ * is the part worth looking at — the centroid lies along the 30-degree bisector,
+ * one third of the way up from the apex.
+ */
+export function triangleCentre(side: number): Vector {
+  // Mean of (0, 0), (side, 0) and (side/2, side*sqrt(3)/2).
+  return { x: side / 2, y: side / (2 * SQRT3) };
+}
+
 /** A hexagon in the tiling: where it sits, and which cell of the lattice it is. */
 export interface HexagonCell extends Vector {
   /** Steps along the lattice's two primitive translations. */

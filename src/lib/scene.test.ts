@@ -282,8 +282,10 @@ describe('updateScene', () => {
         y: x * Math.sin(framework) + y * Math.cos(framework),
       };
 
-      expect(onScreen.y, `held at ${String(framework)}`).toBeGreaterThan(0);
-      expect(Math.abs(onScreen.x), `held at ${String(framework)}`).toBeLessThan(onScreen.y);
+      // Below the middle, by a real pile's depth. Not centred sideways: the
+      // contacts hold, so a heap keeps whatever lopsidedness it settled with
+      // rather than levelling itself off like a liquid.
+      expect(onScreen.y, `held at ${String(framework)}`).toBeGreaterThan(0.1);
       // And the figure's own angle is not something the framework touches.
       expect(scene.cell).toBe(0);
     }
