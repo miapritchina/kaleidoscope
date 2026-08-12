@@ -85,13 +85,25 @@ const GRID = 10;
 /**
  * Side the picture is worked at.
  *
- * Coarse on purpose — this is not a thumbnail — but fine enough that an object
- * traced out of it has a recognisable silhouette rather than a staircase.
+ * Coarse on purpose — this is not a thumbnail — but the objects are traced off
+ * this raster, so it sets how well their edges come out. At 96 a photograph of
+ * nine beads left each one about twenty pixels across, and a silhouette traced
+ * at twenty pixels and then drawn two hundred wide is visibly scalloped: the
+ * beads came out as flowers. This is scored once per picture, so the cost of
+ * being finer is paid once and is a few milliseconds.
  */
-const SAMPLE = 96;
+const SAMPLE = 160;
 
 /** Corners on a traced outline. Enough for a crystal, few enough to clip cheaply. */
 const OUTLINE_CORNERS = 28;
+
+/**
+ * Halvings used to pin down where a ray leaves an object.
+ *
+ * Six takes the half-pixel the search ends on down to under a hundredth of one,
+ * which is far below anything the raster itself can say.
+ */
+const EDGE_PASSES = 6;
 
 /** Smallest object worth cutting out, as a share of the picture. */
 const MIN_OBJECT = 0.002;
@@ -309,31 +321,78 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
   const half = Math.max(width, height) / 2;
   const reach = Math.hypot(width, height);
 
-  const outline: Point[] = [];
+  // Bilinear between pixel centres, which turns the blob's staircase edge into
+  // a ramp that crosses a half exactly where the edge really is. Reading whole
+  // pixels instead rounds every ray to the raster, independently — which on an
+  // object twenty pixels across is five percent each way, and is the difference
+  // between a bead and a flower.
+  const cover = (x: number, y: number): number => {
+    const atX = x - 0.5;
+    const atY = y - 0.5;
+    const left = Math.floor(atX);
+    const top = Math.floor(atY);
+    const acrossX = atX - left;
+    const acrossY = atY - top;
+    const solid = (column: number, row: number) =>
+      column >= 0 &&
+      row >= 0 &&
+      column < SAMPLE &&
+      row < SAMPLE &&
+      inside.has(row * SAMPLE + column)
+        ? 1
+        : 0;
+
+    return (
+      solid(left, top) * (1 - acrossX) * (1 - acrossY) +
+      solid(left + 1, top) * acrossX * (1 - acrossY) +
+      solid(left, top + 1) * (1 - acrossX) * acrossY +
+      solid(left + 1, top + 1) * acrossX * acrossY
+    );
+  };
+
+  const hits: number[] = [];
 
   for (let corner = 0; corner < OUTLINE_CORNERS; corner += 1) {
     const angle = (corner / OUTLINE_CORNERS) * Math.PI * 2;
     const dx = Math.cos(angle);
     const dy = Math.sin(angle);
     let hit = 0;
+    let outside = reach;
 
     for (let step = reach; step >= 0; step -= 0.5) {
-      const x = Math.floor(fromX + dx * step);
-      const y = Math.floor(fromY + dy * step);
-
-      if (x >= 0 && y >= 0 && x < SAMPLE && y < SAMPLE && inside.has(y * SAMPLE + x)) {
-        hit = step + 0.5;
+      if (cover(fromX + dx * step, fromY + dy * step) >= 0.5) {
+        hit = step;
         break;
+      }
+
+      outside = step;
+    }
+
+    // Then narrow the gap between the last step outside and the first inside,
+    // which is where the edge actually falls.
+    for (let pass = 0; pass < EDGE_PASSES; pass += 1) {
+      const middle = (hit + outside) / 2;
+
+      if (cover(fromX + dx * middle, fromY + dy * middle) >= 0.5) {
+        hit = middle;
+      } else {
+        outside = middle;
       }
     }
 
+    hits.push(hit);
+  }
+
+  const outline: Point[] = round(hits).map((hit, corner) => {
+    const angle = (corner / OUTLINE_CORNERS) * Math.PI * 2;
+
     // Pulled in along the ray, so the silhouette erodes towards the object's
     // own middle rather than towards the corner of its bounding box.
-    outline.push({
-      x: (fromX + dx * hit * OUTLINE_TRIM - middleX) / half,
-      y: (fromY + dy * hit * OUTLINE_TRIM - middleY) / half,
-    });
-  }
+    return {
+      x: (fromX + Math.cos(angle) * hit * OUTLINE_TRIM - middleX) / half,
+      y: (fromY + Math.sin(angle) * hit * OUTLINE_TRIM - middleY) / half,
+    };
+  });
 
   const acrossX = size.width / SAMPLE;
   const acrossY = size.height / SAMPLE;
@@ -349,6 +408,25 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
     extent: { x: width / (half * 2), y: height / (half * 2) },
     area: polygonArea(outline),
   };
+}
+
+/**
+ * Takes the raster's jitter out of a ring of ray lengths.
+ *
+ * Each ray stops at the last whole pixel of the blob it passes through, so
+ * neighbouring rays land a pixel apart on a shape that has no such step in it.
+ * On an object twenty pixels across that is five percent, and every ray is
+ * wrong independently — which is the difference between a bead and a flower.
+ * A three-tap average around the ring removes what varies ray to ray and keeps
+ * what does not, so a real corner survives while the noise does not.
+ */
+function round(radii: readonly number[]): number[] {
+  return radii.map((radius, index) => {
+    const before = radii[(index - 1 + radii.length) % radii.length]!;
+    const after = radii[(index + 1) % radii.length]!;
+
+    return (before + 2 * radius + after) / 4;
+  });
 }
 
 /** Area enclosed by a closed polygon, by the shoelace formula. */
