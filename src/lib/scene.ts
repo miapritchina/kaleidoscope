@@ -1,7 +1,8 @@
 import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
-import { measureSource, type SkinPatches } from './skin';
+import { ROUND, shapeOf, type Shape } from './shape';
+import { measureSource, type SkinCut, type SkinPatches } from './skin';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
@@ -25,15 +26,13 @@ export interface Shard {
   /** Radius in cell units: the circle the piece is cut to fit. */
   radius: number;
   /**
-   * How much of that circle the glass actually fills, across.
+   * What the chamber collides on: a chain of circles laid along the piece.
    *
-   * 1 for a piece as wide as it is long. A cut-out sliver fills a fraction of
-   * its own circle, and colliding with the circle would hold everything a
-   * sliver's length away in every direction — the pile settles full of air and
-   * pieces come to rest on nothing. Set from the picture the pieces are cut
-   * from; the drawn size is {@link Shard.radius} either way.
+   * The drawn shape is the polygon traced out of the picture; this is what a
+   * solver of circles can make of it. See `lib/shape.ts`. Shared between every
+   * piece cut from the same object, and never mutated.
    */
-  girth: number;
+  shape: Shape;
   rotation: number;
   /** Angular velocity in radians per second. */
   spin: number;
@@ -181,8 +180,8 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
       // and just draws it smaller, which is a picture of the same chamber.
       radius: randomBetween(rng, 0.08, 0.26) * Math.max(0.05, chipScale),
       // Until a picture says otherwise the drawn shapes are round enough to
-      // collide as the circles they are cut to.
-      girth: 1,
+      // collide as the single circle they are cut to.
+      shape: ROUND,
       rotation: randomBetween(rng, 0, Math.PI * 2),
       spin: 0,
       skin: { x: rng(), y: rng() },
@@ -207,23 +206,33 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
 }
 
 /**
- * Tells each piece how much of its circle the glass it is cut to actually fills.
+ * Gives each piece the shape of whatever it is cut to.
  *
- * Called when the picture changes rather than every frame: it is a property of
+ * Called when the picture changes rather than every frame: the shape belongs to
  * the cut, and the cut is fixed for a piece. Without a picture, or for a piece
- * whose cut has gone, the circle is the answer — the drawn shapes fill theirs.
+ * whose cut has gone, a piece is the circle it was cut to fit — which is what
+ * the drawn shapes are.
  *
- * @returns Whether anything changed, so a caller can skip resettling a chamber
- *   that is already right.
+ * @returns Whether anything changed, so a caller can leave a chamber alone that
+ *   is already right.
  */
-export function applyCutGirth(shards: Shard[], patches: SkinPatches | null): boolean {
+export function applyCutShape(shards: Shard[], patches: SkinPatches | null): boolean {
+  // One shape per cut, not one per piece: a hundred splinters off the same
+  // object are the same shape, and the solver reads it every frame.
+  const shapes = new Map<SkinCut, Shape>();
   let changed = false;
 
   for (const shard of shards) {
-    const girth = patches?.cut(shard.skin)?.girth ?? 1;
+    const cut = patches?.cut(shard.skin) ?? null;
+    let shape = ROUND;
 
-    if (shard.girth !== girth) {
-      shard.girth = girth;
+    if (cut) {
+      shape = shapes.get(cut) ?? shapeOf(cut.extent, cut.area);
+      shapes.set(cut, shape);
+    }
+
+    if (shard.shape !== shape) {
+      shard.shape = shape;
       changed = true;
     }
   }

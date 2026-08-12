@@ -2,7 +2,7 @@ import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
-import { applyCutGirth, DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
+import { applyCutShape, DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import {
@@ -272,7 +272,7 @@ export class KaleidoscopeRenderer {
     if (this.#girthFor !== patches || this.#girthOn !== scene) {
       this.#girthFor = patches;
       this.#girthOn = scene;
-      applyCutGirth(scene.shards, patches);
+      applyCutShape(scene.shards, patches);
     }
 
     const source: WedgeSource = {

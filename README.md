@@ -204,8 +204,8 @@ src/
     controls/    Small labelled form fields
   hooks/         Animation frame, element size, media queries, settings, gestures, photo,
                  camera, device tilt, shake
-  lib/           Rendering engine, chamber physics, tiling, object sets, tilt, shake,
-                 settings — no React
+  lib/           Rendering engine, chamber physics, piece shapes, tiling, object sets,
+                 tilt, shake, settings — no React
   test/          Vitest setup and a fake 2D context
 ```
 
@@ -293,22 +293,39 @@ weighed the same. Mass goes with area, so a piece twice across is four times as 
 shift. It is a push the two pieces give each other, so it cannot move the pair as a whole —
 weighting it by anything but mass breaks that, and there is a test on the invariant.
 
-**Girth.** A piece is collided on how far it reaches on average, not on the circle it was cut
-to fit. This matters as soon as the pieces come out of a photograph, because a cut-out sliver
-fills a fraction of its circle: collide with the circle and it holds everything a sliver's
-length away in every direction, so the pile settles full of air and pieces come to rest on
-nothing at all. That is exactly what a picture of glass splinters looked like.
+**Shape.** The pieces are _drawn_ as polygons — the silhouettes traced out of the picture they
+are cut from — but a polygon solver is a different machine entirely: contact manifolds,
+several touch points per pair, a full inertia tensor. Each piece is instead **a chain of two
+to four circles laid along its length** (`lib/shape.ts`), which the existing solver of circles
+can take without changing what it is.
 
-The measure is **half the object's mean width over all directions**, which by Cauchy's formula
-is its perimeter over `2 * pi`. A disc gives back its own radius; a needle gives about two
-thirds of its half-length. Neither of the two obvious alternatives works — the radius of an
-equal-area disc is a sixth of a needle's length, and the mean distance from its middle to its
-edge is smaller still, and at either of those two needles lie almost on top of one another:
-the pile does not settle full of air, it collapses into a knot. Both were tried. `lib/skin.ts`
-measures it off the traced outline, and the drawn size is unchanged either way.
+One circle cannot tell a needle from a pebble. It is the same in every direction, so a sliver
+on its end and a sliver lying flat take up exactly the same room, two of them cross straight
+through each other, and neither can ever bridge a gap. That is what a photograph of glass
+splinters looked like: the pile settled full of air, with pieces resting on nothing at all,
+because a single circle held everything a sliver's _length_ away in every direction.
+
+The chain is as fine as the piece is thick, capped at four — the cost of a pair is the square
+of that, and the gain falls away quickly. The circles are wide enough to cover the length
+without holes and never narrower than the piece really is. Because a contact away from a
+piece's middle now **turns** it as well as pushing it, a splinter stood on end lies itself
+down, which no single circle can do.
+
+Two numbers come along with the chain. **Bulk** is the area of the traced silhouette over the
+area of the circle it was cut to fit, and mass goes with it — a sliver should not weigh what
+the pebble beside it does simply because it is as long. **Gyration** is how hard the piece is
+to turn, worked out from where the circles actually sit: a uniform disc is `r^2 / 2`, and a
+thin rod of the same reach comes out near `L^2 / 3` and is _easier_ to turn, because the disc
+has mass out at that reach in every direction while the rod has it along one line.
+
+Measured on the built app, on 60 pieces — the most the panel offers — a chamber of four-circle
+splinters costs **2.8 ms** a frame against **0.6 ms** for single circles, and **1.1 ms**
+against **0.2 ms** at the default thirty. A piece that is a single circle on its own middle
+skips the rotation entirely, so the bundled object sets and the drawn shapes pay nothing for
+any of this.
 
 Note that this makes a chamber of slivers **emptier** than a chamber of pebbles for the same
-count, because there is less glass in it — which is true, and **Pieces** is the control for it.
+count, because there is genuinely less glass in it — and **Pieces** is the control for that.
 
 **Friction.** A contact also resists sliding, up to `0.45` times how hard the two are being
 pressed together — Coulomb's number for glass on glass, roughly, and these are ground and
