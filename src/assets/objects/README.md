@@ -1,8 +1,13 @@
 # Object sets
 
-Drop a picture in here and it becomes a preset in the **Pieces** control. Remove
+Drop a picture in here and it becomes a preset in the **Source** control. Remove
 it and the preset goes away. Nothing else to edit — the list is built from the
 files by `src/lib/objectSets.ts`.
+
+Put a matching file in `thumbs/` as well: same name, about 128 pixels across.
+That is what the control shows beside the name, and a set with none looks like
+one that failed to load. The whole folder of them is a few kilobytes; showing
+the sets themselves would download a megabyte to draw seven postage stamps.
 
 ## What a picture has to be
 
@@ -23,6 +28,10 @@ files by `src/lib/objectSets.ts`.
 The filename is the preset's name: `rough-quartz.png` shows up as "Rough
 quartz". Keep it lowercase with hyphens.
 
+Which one the app opens on is a single name in `src/lib/objectSets.ts`. If the
+picture it names is not here, the first set is used instead — the name cannot
+put the app in a state the files do not support.
+
 ## Prefer WebP
 
 Both are read the same way, but a photographic cut-out is several times smaller
@@ -37,7 +46,7 @@ a white diamond in the middle keeps its middle.
 
 ## Licensing
 
-Only put files in here that this repository is allowed to redistribute. The two
-sets here came from stock previews at the owner's request, as a stand-in until
-the real collection is ready; they are not cleared for redistribution and should
-be replaced.
+Only put files in here that this repository is allowed to redistribute. The sets
+here were supplied by the owner as a stand-in until the real collection is
+ready; they came from stock previews and clip-art, they are not cleared for
+redistribution, and they should be replaced.

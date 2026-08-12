@@ -152,10 +152,20 @@ longest — so this is noise being removed rather than corners being rounded off
 
 **Object sets.** A set is a PNG or WebP of a few objects on a transparent background. The
 bundled ones are discovered from the files rather than listed anywhere: dropping one into
-`src/assets/objects/` adds a preset to the **Objects** control and removing it takes one
+`src/assets/objects/` adds a preset to the **Source** control and removing it takes one
 away, with no registry to keep in step and no way for the list and the files to disagree
-(`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). One
-entry is not a file — **Upload a photo** takes one of your own. They sit in the same list as
+(`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). Which
+one the app opens on is a single name in that module, and if the picture it names is missing
+the first set is used instead, so the name cannot put the app in a state the files do not
+support. One entry is not a file — **Upload a photo** takes one of your own.
+
+Each set is shown with a **thumbnail beside its name**, because the names are no help on
+their own: "Cut gems" and "Bright gems" are two different pictures and one description. That
+means the control is a listbox rather than a `select` — an `option` carries text and nothing
+else on every browser — so arrow keys, Home and End, Enter and Space to choose, Escape to
+close and the combobox announcements are all built in `controls/PictureField.tsx` rather than
+inherited. The thumbnails live in `assets/objects/thumbs/` and are a few kilobytes together;
+the sets themselves are fetched only when chosen, so opening the app downloads one picture. They sit in the same list as
 **Mirror a photo** and **Camera**, because a chamber of objects, a flat photograph and the
 live camera are three answers to the same question. They were two controls once, and the one
 that chose between them decided whether the other was rendered at all — so leaving it on
@@ -381,6 +391,15 @@ any of this.
 
 Note that this makes a chamber of slivers **emptier** than a chamber of pebbles for the same
 count, because there is genuinely less glass in it — and **Pieces** is the control for that.
+
+**Small steps rather than many passes.** The solver takes four substeps a frame and solves
+each once, rather than two substeps solved three times. That is the result of Macklin et al.,
+[_Small Steps in Physics Simulation_](https://mmacklin.com/smallsteps.pdf) (SCA 2019): a large
+step solved _n_ times converges worse than _n_ small steps solved once each, for the same
+work, because the solver always gets to use the newest contact directions instead of iterating
+against stale ones. Measured here on a settled pile of thirty pieces, the change took the
+deepest overlap between two pieces from **2.2% of a piece's width to 1.3%**, left the pile a
+little more willing to move when tipped, and cost slightly _less_ per frame.
 
 **Friction.** A contact also resists sliding, up to `0.45` times how hard the two are being
 pressed together — Coulomb's number for glass on glass, roughly, and these are ground and
