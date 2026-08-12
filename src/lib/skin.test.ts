@@ -259,6 +259,40 @@ describe('cutting objects out of a picture', () => {
     }
   });
 
+  // A photograph of round beads should give round beads. Traced off whole
+  // pixels, every ray lands a pixel out on its own and consecutive ones wobble
+  // in and out — on an object twenty pixels across that is a few percent each
+  // way, and drawn two hundred wide the beads came out as flowers.
+  it('traces a round object round', () => {
+    for (const cut of cuts(objects)) {
+      const middleX = cut.outline.reduce((sum, at) => sum + at.x, 0) / cut.outline.length;
+      const middleY = cut.outline.reduce((sum, at) => sum + at.y, 0) / cut.outline.length;
+      const radii = cut.outline.map((at) => Math.hypot(at.x - middleX, at.y - middleY));
+      const mean = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
+      // How far each ray lands from the one beside it: the scalloping itself,
+      // and the one thing a smooth silhouette has none of.
+      const wobble =
+        radii.reduce(
+          (sum, radius, index) => sum + Math.abs(radius - radii[(index + 1) % radii.length]!),
+          0,
+        ) /
+        radii.length /
+        mean;
+
+      expect(wobble).toBeLessThan(0.015);
+      expect(Math.min(...radii) / Math.max(...radii)).toBeGreaterThan(0.9);
+    }
+  });
+
+  // And without rounding off the shapes that are genuinely not round.
+  it('leaves a corner where the object has one', () => {
+    for (const cut of cuts(splinters)) {
+      const radii = cut.outline.map((at) => Math.hypot(at.x, at.y));
+
+      expect(Math.min(...radii) / Math.max(...radii)).toBeLessThan(0.3);
+    }
+  });
+
   // What mass goes with, and what `lib/shape.ts` lays its chain of circles
   // along. A circle the object was cut to fit has area pi, so this over pi is
   // how much of that circle is glass.

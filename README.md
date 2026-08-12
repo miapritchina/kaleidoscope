@@ -129,6 +129,27 @@ a generated shape with a patch of it inside — see below.
 over generated ones. This is what the chamber is normally loaded with; the drawn shapes are
 what is left when there is no picture.
 
+**Tracing an object.** Each blob is turned into a 28-corner outline by casting rays out from
+its own middle — a star-shaped approximation, exact for the compact, roughly convex things
+this is for, and it cannot produce the self-intersecting mess a contour walk gives on a ragged
+edge. The two details that decide whether it looks like the object:
+
+- The picture is worked at **160 pixels** a side, not 96. The objects are traced off that
+  raster, so it sets how well their edges come out: at 96, a photograph of nine beads left
+  each one about twenty pixels across, and a silhouette traced at twenty pixels and drawn two
+  hundred wide is visibly scalloped. The beads came out as flowers. It is scored once per
+  picture, so being finer costs a few milliseconds, once.
+- Each ray finds the edge to **below a hundredth of a pixel**, by reading the mask bilinearly
+  between pixel centres — which turns its staircase edge into a ramp that crosses a half where
+  the edge really is — and then halving the gap six times. Stopping at the last whole pixel
+  instead rounds every ray to the raster _independently_, so neighbouring rays land a pixel
+  apart on a shape that has no such step in it.
+
+Measured on a picture of round beads: how far each ray lands from the one beside it fell from
+**3.7% of the radius to 0.7%**, and the worst outline's roundness went from 0.90 to **0.97**.
+Long thin objects stay long and thin — a splinter's shortest ray is still under a third of its
+longest — so this is noise being removed rather than corners being rounded off.
+
 **Object sets.** A set is a PNG or WebP of a few objects on a transparent background. The
 bundled ones are discovered from the files rather than listed anywhere: dropping one into
 `src/assets/objects/` adds a preset to the **Objects** control and removing it takes one
