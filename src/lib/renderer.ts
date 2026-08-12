@@ -55,6 +55,31 @@ const VIGNETTE_CLEAR = 0.16;
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
 
+/** Ink for the mirror triangle in debug mode. */
+const DEBUG_INK = 'rgb(230 20 20)';
+
+/** Ink for the gravity arrow. */
+const DEBUG_GRAVITY = 'rgb(20 90 255)';
+
+/** What every debug stroke is underlaid with, so it reads over any picture. */
+const DEBUG_HALO_INK = 'rgb(255 255 255 / 0.85)';
+
+/** Width of a debug line, as a fraction of the triangle's side. */
+const DEBUG_WIDTH = 0.022;
+
+/**
+ * How much wider the pale underlay is than the line it carries.
+ *
+ * The overlay lies over a picture that could be any colour, including its own,
+ * so every stroke is drawn twice: once broad and pale, once narrow and
+ * coloured. A hairline in one ink is legible over half the pictures it might
+ * land on, which is no use in a thing whose only job is to be seen.
+ */
+const DEBUG_HALO = 2.6;
+
+/** Length of the gravity arrow, as a fraction of the smaller viewport edge. */
+const DEBUG_ARROW = 0.18;
+
 /** Side of the exported pattern tile, in pixels. */
 const TILE_SIZE = 1024;
 
@@ -207,6 +232,10 @@ export class KaleidoscopeRenderer {
 
     this.#paintWedge(scene, settings, sprites, mode, frame ?? null, surface, patches, triangle);
     this.#compositeTiling(triangle);
+
+    if (settings.debug) {
+      this.#drawDebug(triangle, scene.tilt);
+    }
   }
 
   /**
@@ -349,7 +378,10 @@ export class KaleidoscopeRenderer {
       ctx.translate(SEAM_BLEED, SEAM_BLEED);
       drawMedia(ctx, media, {
         size: reach,
-        zoom: settings.zoom,
+        // The source's own magnification, not the tube's: the mirror triangle
+        // is sized separately, and conflating the two meant a wider tube also
+        // enlarged the picture inside it.
+        zoom: settings.sourceScale,
         // A photo has no physics of its own, so it simply turns with the cell,
         // a little behind it.
         rotation: scene.contents,
@@ -416,6 +448,67 @@ export class KaleidoscopeRenderer {
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, this.#width, this.#height);
     }
+  }
+
+  /**
+   * The two things worth seeing that the figure hides.
+   *
+   * One triangle of the mirror framework, drawn where the source is painted
+   * before anything is reflected — everything on screen is that triangle and
+   * its images. And an arrow for gravity, which points down the screen until
+   * the instrument is tilted and then follows the room instead. Over the top of
+   * the barrel, since it is an instrument laid on the picture rather than part
+   * of the optics, and left out of an exported tile entirely.
+   */
+  #drawDebug(side: number, tilt: number): void {
+    const ctx = this.#ctx;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.translate(this.#width / 2, this.#height / 2);
+
+    const width = Math.max(2, side * DEBUG_WIDTH);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.save();
+    traceTriangle(ctx, side, 0);
+    ctx.restore();
+    this.#strokeTwice(width, DEBUG_INK);
+
+    // Gravity, in the plane of the screen: straight down when the phone is
+    // upright, and turned by however far it is being held over.
+    const reach = Math.min(this.#width, this.#height) * DEBUG_ARROW;
+    const x = Math.sin(tilt) * reach;
+    const y = Math.cos(tilt) * reach;
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(x, y);
+    // The head: two barbs back along the shaft, a sixth of a turn either way.
+    for (const barb of [-1, 1]) {
+      const angle = Math.atan2(y, x) + Math.PI + (barb * Math.PI) / 6;
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(angle) * reach * 0.22, y + Math.sin(angle) * reach * 0.22);
+    }
+
+    this.#strokeTwice(width, DEBUG_GRAVITY);
+    ctx.restore();
+  }
+
+  /** A pale underlay, then the ink: legible over a picture of any colour. */
+  #strokeTwice(width: number, ink: string): void {
+    const ctx = this.#ctx;
+
+    ctx.lineWidth = width * DEBUG_HALO;
+    ctx.strokeStyle = DEBUG_HALO_INK;
+    ctx.stroke();
+    ctx.lineWidth = width;
+    ctx.strokeStyle = ink;
+    ctx.stroke();
   }
 
   /**

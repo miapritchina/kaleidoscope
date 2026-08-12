@@ -34,12 +34,12 @@ describe('ControlPanel', () => {
 
     expect(screen.getByLabelText('Source')).toBeInTheDocument();
     expect(screen.getByLabelText('Count')).toBeInTheDocument();
-    expect(screen.getByLabelText('Chip size')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
 
   it('shows the current values next to their labels', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, chipSize: 1.5 } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, zoom: 1.5 } });
 
     expect(screen.getByText('1.50x')).toBeInTheDocument();
   });
@@ -47,7 +47,7 @@ describe('ControlPanel', () => {
   it('tells the viewer how to turn the tube, now that no slider does', () => {
     renderPanel();
 
-    expect(screen.getByText(/swipe across the artwork/i)).toBeInTheDocument();
+    expect(screen.getByText(/swipe to turn/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Spin')).not.toBeInTheDocument();
   });
 
@@ -61,40 +61,39 @@ describe('ControlPanel', () => {
     expect(props.onChange).toHaveBeenCalledWith('shards', 20);
   });
 
-  // Zoom is a pinch, or a scroll over the artwork. A slider for it was one more
-  // thing in a panel that is now behind a button.
-  it('offers no zoom or trail sliders', () => {
+  // The gestures size what is being looked at; the tube it is looked at through
+  // is the slider. Neither is the other's job.
+  it('sizes the mirrors on a slider and the pieces by hand', () => {
     renderPanel();
 
-    expect(screen.queryByLabelText('Zoom')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Chip size')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Trails')).not.toBeInTheDocument();
-    expect(screen.getByText(/pinch, or scroll, to zoom/i)).toBeInTheDocument();
+    expect(screen.getByText(/pinch or scroll to size the pieces/i)).toBeInTheDocument();
   });
 
   // A real tube has three mirrors and nothing else. There is no arrangement to
   // choose between, so there is no control for one.
-  it('offers no mirror control, and describes the tube instead', () => {
+  it('offers no count of mirrors, since a tube has three', () => {
     renderPanel();
 
-    expect(screen.queryByLabelText('Mirrors')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Fold')).not.toBeInTheDocument();
-    expect(screen.getByText(/three mirrors/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Segments')).not.toBeInTheDocument();
   });
 
-  it('sizes the glass without changing how much of it there is', () => {
+  it('sizes the mirrors without touching what is in them', () => {
     const { props } = renderPanel();
 
-    fireEvent.change(screen.getByLabelText('Chip size'), { target: { value: '1.5' } });
+    fireEvent.change(screen.getByLabelText('Mirror size'), { target: { value: '2' } });
 
-    expect(props.onChange).toHaveBeenCalledWith('chipSize', 1.5);
-    // Count is what sets the amount; the two are separate controls.
-    expect(props.onChange).not.toHaveBeenCalledWith('shards', expect.anything());
+    expect(props.onChange).toHaveBeenCalledWith('zoom', 2);
+    expect(props.onChange).not.toHaveBeenCalledWith('sourceScale', expect.anything());
   });
 
   it('describes slider values to assistive tech', () => {
-    renderPanel({ settings: { ...DEFAULT_SETTINGS, chipSize: 2 } });
+    renderPanel({ settings: { ...DEFAULT_SETTINGS, zoom: 2 } });
 
-    expect(screen.getByLabelText('Chip size')).toHaveAttribute('aria-valuetext', '2.00x');
+    expect(screen.getByLabelText('Mirror size')).toHaveAttribute('aria-valuetext', '2.00x');
   });
 
   it('lets the seed field be cleared while typing', async () => {
@@ -125,6 +124,17 @@ describe('ControlPanel', () => {
 
   // Tipping a real one does not turn the figure — the mirrors are fixed in the
   // tube. What changes is which way the pieces fall.
+  // The triangle everything is reflected from is invisible by design; seeing it
+  // is the whole of understanding the figure.
+  it('offers a way to see the mirrors', async () => {
+    const user = userEvent.setup();
+    const { props } = renderPanel();
+
+    await user.click(screen.getByLabelText('Show the mirrors'));
+
+    expect(props.onChange).toHaveBeenCalledWith('debug', true);
+  });
+
   it('reports switching gravity over to the phone', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
@@ -137,7 +147,7 @@ describe('ControlPanel', () => {
   it('says why tilting is unavailable rather than offering it silently', () => {
     renderPanel({ tiltStatus: 'denied' });
 
-    expect(screen.getByText(/motion access was blocked/i)).toBeInTheDocument();
+    expect(screen.getByText(/motion access is blocked/i)).toBeInTheDocument();
   });
 
   it('reports a change to an uploaded set', async () => {
@@ -286,7 +296,7 @@ describe('ControlPanel', () => {
   it('states that camera frames stay local', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'camera' }, cameraStatus: 'active' });
 
-    expect(screen.getByText(/nothing is uploaded/i)).toBeInTheDocument();
+    expect(screen.getByText(/frames stay in this browser/i)).toBeInTheDocument();
   });
 
   // Shown, but not announced from here. The panel can be off screen, so the app

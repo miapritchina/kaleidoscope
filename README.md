@@ -204,19 +204,27 @@ src/
 
 ## Settings
 
-| Setting   | Range                | Effect                                           |
-| --------- | -------------------- | ------------------------------------------------ |
-| Input     | shards/photo/camera  | What the mirrors repeat                          |
-| Objects   | a set, or upload one | What the chamber is loaded with                  |
-| Count     | 4–60                 | Pieces in the chamber                            |
-| Chip size | 0.4x–2.5x            | How big each piece is, and so how the pile packs |
-| Seed      | any text             | Seeds the chamber; same seed, same arrangement   |
+| Setting          | Range                  | Effect                                         |
+| ---------------- | ---------------------- | ---------------------------------------------- |
+| Source           | a set, a photo, camera | What the mirrors are pointed at                |
+| Count            | 4–60                   | Pieces in the chamber                          |
+| Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
+| Real gravity     | on/off                 | Let the phone's position say which way is down |
+| Show the mirrors | on/off                 | Draws the triangle, and points at gravity      |
+| Seed             | any text               | Seeds the chamber; same seed, same arrangement |
 
-Everything but Source applies to the chamber; Source applies to every one of them. There is no
-mirror control — a tube has three — no spin control, and no zoom control: those are the
-gestures, below. Zoom is still a setting, and still travels in a shared link; it just has no
-slider, because a pinch or a scroll over the artwork is a better way to reach it than a
-panel behind a button.
+There is one more, and it has no slider: **how big the things in the source are** — the
+pieces in the chamber, or the magnification of a photo. That is a pinch, or a scroll over
+the artwork. It still travels in a shared link.
+
+The split is deliberate. **The gestures are for the contents and the panel is for the
+instrument.** Swiping turns the tube, pinching sizes what is in it and two fingers move it
+about; the one thing the hand cannot reach is how wide the mirrors themselves are, so that
+is the slider. They were the same control once, which meant widening the tube also enlarged
+the picture inside it — two things at once and no way to have either alone.
+
+There is no mirror count, because a tube has three, and no spin control, because it is
+swiped.
 
 ## The mirrors
 
@@ -236,11 +244,11 @@ reaches all three corners. Hung off the corner the six triangles are assembled a
 instead, most of the chamber sits outside the view and turning sweeps the pile clean out of
 it, emptying the field. The mirrors cut the chips at the triangle's edges and each one
 continues into its own reflection, which is what fills a real chamber. Cell size alone
-would set both the chip size and how many land in view, so **Chip size** scales the pieces
-on its own — and it scales them in the simulation rather than at draw time, so a bigger
-piece displaces its neighbours and the pile settles differently. Scaling only the sprite
-leaves every arrangement identical and merely draws it larger, which is a picture of the
-same chamber rather than a different one.
+would set both the size of the pieces and how many land in view, so the pinch scales them on
+its own — and it scales them in the simulation rather than at draw time, so a bigger piece
+displaces its neighbours and the pile settles differently. Scaling only the sprite leaves
+every arrangement identical and merely draws it larger, which is a picture of the same
+chamber rather than a different one.
 
 Older links carried a mirror arrangement this app no longer offers. They still open, on
 whichever of their settings still mean something.
@@ -404,6 +412,20 @@ the toggle is. Refused, it says so and stays refused; nothing asks twice. The ar
 unit-tested and the wiring is checked in a browser with synthesised events — **but it has
 not been tried on a real iPhone**, and the sign convention comes from the specification
 rather than from a device.
+
+## Seeing the mirrors
+
+Everything on screen is one triangle and its reflections, and the triangle itself is
+invisible by design — which makes the figure hard to reason about when it misbehaves. **Show
+the mirrors** outlines it, at the centre of the view where the source is painted, and draws
+an arrow for gravity: straight down the screen until the instrument is tilted, and then
+wherever the room says. Between them they answer most of "why is it doing that".
+
+Every stroke is drawn twice, broad and pale then narrow and coloured. The overlay lies over
+a picture that could be any colour, including its own, and a hairline in one ink is legible
+over about half the pictures it might land on — no use in a thing whose only job is to be
+seen. It is drawn after the barrel, being an instrument laid on the picture rather than part
+of the optics, and it is left out of an exported tile entirely.
 
 ## Saving a pattern
 

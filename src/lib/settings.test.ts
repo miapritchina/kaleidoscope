@@ -54,10 +54,11 @@ describe('sanitizeSettings', () => {
       source: DEFAULT_SETTINGS.source,
       cameraFacing: DEFAULT_SETTINGS.cameraFacing,
       shards: 30,
-      chipSize: DEFAULT_SETTINGS.chipSize,
+      sourceScale: DEFAULT_SETTINGS.sourceScale,
       objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,
       tilt: DEFAULT_SETTINGS.tilt,
+      debug: DEFAULT_SETTINGS.debug,
       seed: 'drifting',
     });
   });
