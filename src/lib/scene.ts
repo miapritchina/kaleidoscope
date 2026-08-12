@@ -94,6 +94,15 @@ export interface SceneUpdate {
    * you tip a real one in your hand.
    */
   tilt?: number | undefined;
+  /**
+   * How far the mirror framework itself is turned, in radians.
+   *
+   * The figure turns with it and the pieces do not: gravity does not care which
+   * way up the tube is held. Since the cell is drawn inside the framework, its
+   * rotation has to come off gravity's direction here, or holding the
+   * instrument sideways would have the pile falling sideways with it.
+   */
+  framework?: number | undefined;
 }
 
 /** Largest step the simulation will take, so a backgrounded tab cannot jump. */
@@ -190,7 +199,10 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
  * Mutation is deliberate: this runs every frame and the scene is owned by the
  * renderer, never by React state, so there is nothing to diff.
  */
-export function updateScene(scene: Scene, { dt, turn, drag, tilt = 0 }: SceneUpdate): Scene {
+export function updateScene(
+  scene: Scene,
+  { dt, turn, drag, tilt = 0, framework = 0 }: SceneUpdate,
+): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
   scene.elapsed += step;
@@ -210,13 +222,14 @@ export function updateScene(scene: Scene, { dt, turn, drag, tilt = 0 }: SceneUpd
   scene.drag.y = drag.y;
 
   // Gravity keeps pointing at the floor whatever the instrument does, so its
-  // direction within the cell is however far the cell has been turned plus
-  // however far the whole thing is tilted. The two compose: turning the tube
-  // sweeps gravity around the cell, and tipping the phone moves it again
-  // without turning anything on screen. Nothing else moves the pieces — they
-  // tip, avalanche and settle, which is what a real one does and why it never
-  // repeats.
-  updateChamber(scene.shards, { dt: step, angle: scene.cell + tilt });
+  // direction within the cell is however far the cell has been turned, plus
+  // however far the framework it is drawn inside has been turned, plus however
+  // far the whole thing is tilted. All three compose: turning the tube sweeps
+  // gravity around the cell, holding the instrument at an angle takes it back
+  // off again, and tipping the phone moves it once more without turning
+  // anything on screen. Nothing else moves the pieces — they tip, avalanche and
+  // settle, which is what a real one does and why it never repeats.
+  updateChamber(scene.shards, { dt: step, angle: scene.cell + framework + tilt });
 
   return scene;
 }

@@ -13,6 +13,7 @@ const CHANGES = [
   ['debug', true],
   ['objects', 'custom'],
   ['zoom', 2],
+  ['angle', 45],
   ['tilt', true],
   ['seed', 'changed'],
 ] as const satisfies readonly [keyof Settings, Settings[keyof Settings]][];

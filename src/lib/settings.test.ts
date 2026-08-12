@@ -57,6 +57,7 @@ describe('sanitizeSettings', () => {
       sourceScale: DEFAULT_SETTINGS.sourceScale,
       objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,
+      angle: DEFAULT_SETTINGS.angle,
       tilt: DEFAULT_SETTINGS.tilt,
       debug: DEFAULT_SETTINGS.debug,
       seed: 'drifting',

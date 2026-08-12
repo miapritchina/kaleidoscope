@@ -209,6 +209,7 @@ src/
 | Source           | a set, a photo, camera | What the mirrors are pointed at                |
 | Count            | 4–60                   | Pieces in the chamber                          |
 | Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
+| Mirror angle     | 0–120°                 | Which way up the tube is being held            |
 | Real gravity     | on/off                 | Let the phone's position say which way is down |
 | Show the mirrors | on/off                 | Draws the triangle, and points at gravity      |
 | Seed             | any text               | Seeds the chamber; same seed, same arrangement |
@@ -393,6 +394,23 @@ rather than in the drawer, since the drawer is not always on screen; and so is t
 region, so that a message — a photo dropped on the artwork, say — still reaches a screen
 reader with the panel closed.
 
+## Holding it at an angle
+
+**Mirror angle** turns the whole framework and nothing else — which way up you are holding
+the tube. It is a fixed attitude rather than motion: it stays put while the cell turns under
+it, so it never reads as the picture being spun.
+
+A third of a turn is the whole range. Six triangles around a point, alternately mirrored,
+are unchanged by 120 degrees, so a wider slider would only repeat itself twice over.
+
+The cell is drawn _inside_ the framework, so the framework's angle has to come off gravity's
+direction as well, or the pile would lean with the instrument — which no real one does. That
+is one term in the same sum the swipe and the tilt already contribute to, and there is a test
+that settles the chamber at four attitudes and checks the glass still ends up at the bottom
+of the screen. The exported tile is stamped upright whatever the angle: a rotated rectangle
+does not line up with the sides of a picture, and how you are holding the tube is not a
+property of the pattern.
+
 ## Tilting it
 
 A real kaleidoscope is held in the hand, and tipping it does not turn the figure — the
@@ -408,19 +426,21 @@ anything.
 
 `lib/tilt.ts` holds the arithmetic and nothing else. The orientation event gives the
 front-to-back tilt and the left-to-right one; held upright and facing you those are about 90
-and about 0, and rotating the phone clockwise in its own plane takes the first towards 0 and
-the second towards -90, so `atan2` of the pair is the angle directly. Two details matter as
-much as the formula. The reading wraps at half a turn — gravity itself does not mind, being a
+and about 0, and leaning the phone to the right — the right edge dipping, so down moves
+towards that edge — takes the first towards 0 and the second towards 90, so `atan2` of the
+pair is the angle directly. Two details matter as much as the formula. The reading wraps at half a turn — gravity itself does not mind, being a
 sine and a cosine, but the smoothing does: asked to move from just under half a turn to just
 over, it sweeps all the way round through zero and the pile slides the wrong way while it
 does. So each reading is carried on from the last by the shorter way, and only then smoothed,
 which is also what takes out the sensor's shiver at rest.
 
 iOS will not report orientation until it has been asked from a user gesture, which is what
-the toggle is. Refused, it says so and stays refused; nothing asks twice. The arithmetic is
-unit-tested and the wiring is checked in a browser with synthesised events — **but it has
-not been tried on a real iPhone**, and the sign convention comes from the specification
-rather than from a device.
+the toggle is. Refused, it says so and stays refused; nothing asks twice.
+
+The sign of the left-to-right reading was wrong until a phone said so: leaning right sent
+the pieces towards the raised edge rather than the dipped one. That is the one thing about
+this that cannot be checked without hardware in a hand — synthesised events confirm the
+wiring and say nothing about which way the world is. It is a unit test now.
 
 ## Seeing the mirrors
 
@@ -429,6 +449,10 @@ invisible by design — which makes the figure hard to reason about when it misb
 the mirrors** outlines it, at the centre of the view where the source is painted, and draws
 an arrow for gravity: straight down the screen until the instrument is tilted, and then
 wherever the room says. Between them they answer most of "why is it doing that".
+
+The triangle turns with the framework, being part of it. The arrow does not: the floor is
+where it is however the instrument is held, and watching it stay put while the figure turns
+under it is most of what it is for.
 
 Every stroke is drawn twice, broad and pale then narrow and coloured. The overlay lies over
 a picture that could be any colour, including its own, and a hairline in one ink is legible

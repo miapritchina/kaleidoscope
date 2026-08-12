@@ -283,6 +283,26 @@ describe('KaleidoscopeRenderer', () => {
     expect(wedge.globalAlpha).toBe(1);
   });
 
+  // Which way up the tube is being held. It stays put while the cell turns
+  // under it, so it reads as the instrument's attitude and not as motion.
+  it('turns the whole framework by the mirror angle', () => {
+    const { renderer, main } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, angle: 30 });
+
+    expect(main.argsOf('rotate')).toContainEqual([Math.PI / 6]);
+  });
+
+  it('leaves it alone at zero, which is the default', () => {
+    const { renderer, main } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+
+    expect(main.argsOf('rotate')).toEqual([[0]]);
+  });
+
   it('exposes the frame as a data url', () => {
     const { renderer } = createRenderer();
 
@@ -363,6 +383,19 @@ describe('the exported tile', () => {
     // Painted a second time, on a surface big enough for a tile-sized triangle.
     expect(wedge.countOf('fillRect')).toBe(painted + 1);
     expect(wedgeCanvas.width).toBe(forScreen);
+  });
+
+  // The period is a rectangle of the lattice's own, and a rotated one does not
+  // line up with the sides of a picture. How you are holding the tube is not a
+  // property of the pattern.
+  it('is stamped upright however the instrument is being held', async () => {
+    const { renderer, tile } = createRenderer();
+
+    renderer.resize(240, 240, 1);
+    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, angle: 30 });
+    await renderer.toPatternBlob();
+
+    expect(tile.argsOf('rotate')).toEqual([[0]]);
   });
 
   it('sizes the tile to the period, whatever the viewport is', async () => {

@@ -11,20 +11,24 @@ describe('screenAngleFromOrientation', () => {
     expect(screenAngleFromOrientation(90, 0)).toBeCloseTo(0, 6);
   });
 
-  // Rotating the phone clockwise in its own plane takes beta towards 0 and
-  // gamma towards -90. Positive is clockwise, which is the way canvas angles
-  // grow, so the tube turns the way the hand does.
-  it('reads a quarter turn clockwise as a quarter turn clockwise', () => {
-    expect(degrees(screenAngleFromOrientation(0, -90))).toBeCloseTo(90, 4);
+  // Leaning the phone to the right dips its right edge, so down moves towards
+  // that edge: beta falls towards 0 and gamma rises towards 90. Positive is
+  // clockwise, which is the way canvas angles grow, so gravity swings towards
+  // the edge that went down rather than the one that came up.
+  //
+  // This is the pair that was the wrong way round, and it took a phone to say
+  // so: on screen the pieces slid uphill.
+  it('sends gravity towards the edge that dips, not the one that rises', () => {
+    expect(degrees(screenAngleFromOrientation(0, 90))).toBeCloseTo(90, 4);
   });
 
-  it('reads a quarter turn anticlockwise as the opposite', () => {
-    expect(degrees(screenAngleFromOrientation(0, 90))).toBeCloseTo(-90, 4);
+  it('reads a lean the other way as the opposite', () => {
+    expect(degrees(screenAngleFromOrientation(0, -90))).toBeCloseTo(-90, 4);
   });
 
   it('reads the halfway points in between', () => {
-    expect(degrees(screenAngleFromOrientation(45, -45))).toBeCloseTo(45, 4);
-    expect(degrees(screenAngleFromOrientation(45, 45))).toBeCloseTo(-45, 4);
+    expect(degrees(screenAngleFromOrientation(45, 45))).toBeCloseTo(45, 4);
+    expect(degrees(screenAngleFromOrientation(45, -45))).toBeCloseTo(-45, 4);
   });
 
   // Upside down is half a turn either way; which of the two it names does not
