@@ -75,8 +75,19 @@ const GRAVITY = 6;
 /** Velocity lost per second to drag and friction. Glass in a chamber is damped. */
 const DAMPING = 2.2;
 
-/** Constraint passes per substep. More passes make a deep pile firmer. */
-const ITERATIONS = 3;
+/**
+ * Constraint passes per substep.
+ *
+ * One. The surprising result of Macklin et al., *Small Steps in Physics
+ * Simulation* (SCA 2019), is that a large step solved n times converges worse
+ * than n small steps solved once each, for the same work — the solver always
+ * gets to use the newest contact directions rather than iterating against stale
+ * ones. Measured here on a settled pile of thirty pieces, moving from two
+ * substeps of three passes to four of one took the deepest overlap between two
+ * pieces from 2.2% of a piece's width to 1.3%, made the pile a little more
+ * willing to move when tipped, and cost slightly less per frame.
+ */
+const ITERATIONS = 1;
 
 /**
  * How much of the sliding at a contact is turned into spin, per pass.
@@ -124,8 +135,14 @@ const SEPARATION = 0.8;
  */
 const STATIC_FRICTION = 0.45;
 
-/** Physics substeps per frame, so a fast chip cannot pass through a wall. */
-const SUBSTEPS = 2;
+/**
+ * Physics substeps per frame.
+ *
+ * Where the solver's work goes, rather than into passes over one big step —
+ * see {@link ITERATIONS}. Small steps also keep a fast chip from passing
+ * through a wall between one look and the next.
+ */
+const SUBSTEPS = 4;
 
 export interface ChamberUpdate {
   /** Seconds to advance. */

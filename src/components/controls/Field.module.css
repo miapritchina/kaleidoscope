@@ -103,3 +103,104 @@
   accent-color: var(--accent);
   cursor: pointer;
 }
+
+/*
+ * A chooser that shows what each choice looks like.
+ *
+ * A native `select` cannot carry a picture, and the names of these are no help
+ * on their own: "Cut gems" and "Bright gems" are two different pictures and one
+ * description. So it is a listbox, and everything a select would have given for
+ * free is here instead.
+ */
+.picker {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-input);
+  cursor: pointer;
+  text-align: start;
+}
+
+.picker:hover,
+.picker:focus-visible {
+  border-color: var(--accent);
+}
+
+.pickerName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Chequered, so a cut-out on a transparent ground reads as one rather than as
+   a picture that failed to load. */
+.stamp {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: calc(var(--radius) - 3px);
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e6e6ec 25%, transparent 25%),
+    linear-gradient(-45deg, #e6e6ec 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e6ec 75%),
+    linear-gradient(-45deg, transparent 75%, #e6e6ec 75%);
+  background-position:
+    0 0,
+    0 5px,
+    5px -5px,
+    -5px 0;
+  background-size: 10px 10px;
+  object-fit: contain;
+}
+
+.chevron {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: var(--text-muted);
+}
+
+/* Its own scroller: seven sets and three sources is longer than the panel can
+   give it, and a list that pushes the rest of the controls down is worse. */
+.options {
+  z-index: 1;
+  max-height: 15rem;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.3rem;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+}
+
+.option:hover {
+  background: var(--surface-input);
+}
+
+/* Where the keyboard is, which is not the same as what is chosen. */
+.here {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.taken {
+  background: var(--surface-input);
+  font-weight: 600;
+}

@@ -2,12 +2,31 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { OBJECT_SETS } from '../lib/objectSets';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { ControlPanel, type ControlPanelProps } from './ControlPanel';
 
-/** The values a select offers, in order. */
-function optionsOf(select: HTMLElement): string[] {
-  return [...select.querySelectorAll('option')].map((option) => option.value);
+/**
+ * Opens the source chooser and reads what it offers, by name.
+ *
+ * It is a listbox rather than a select — an `option` cannot carry a picture —
+ * so the options only exist while it is open.
+ */
+async function sourcesOf(user: ReturnType<typeof userEvent.setup>): Promise<string[]> {
+  await user.click(screen.getByRole('combobox', { name: /source/i }));
+
+  return screen.getAllByRole('option').map((option) => option.textContent);
+}
+
+/** Opens the source chooser and takes the option with the given name. */
+async function chooseSource(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(screen.getByRole('combobox', { name: /source/i }));
+  await user.click(screen.getByRole('option', { name }));
+}
+
+/** What the chooser is showing as chosen. */
+function shownSource(): string {
+  return screen.getByRole('combobox', { name: /source/i }).textContent;
 }
 
 function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
@@ -32,7 +51,7 @@ describe('ControlPanel', () => {
   it('labels every control', () => {
     renderPanel();
 
-    expect(screen.getByLabelText('Source')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /source/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
     expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
@@ -154,7 +173,7 @@ describe('ControlPanel', () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.selectOptions(screen.getByLabelText('Source'), 'set:custom');
+    await chooseSource(user, 'Upload a photo…');
 
     expect(props.onChange).toHaveBeenCalledWith('objects', 'custom');
   });
@@ -165,7 +184,7 @@ describe('ControlPanel', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, objects: 'custom' } });
 
     expect(screen.getByLabelText('Photo')).toBeInTheDocument();
-    expect(screen.getByLabelText('Source')).toHaveValue('set:custom');
+    expect(shownSource()).toContain('Upload a photo…');
   });
 
   // One group now, not two: the input and what it is made of are the same
@@ -183,36 +202,55 @@ describe('ControlPanel', () => {
   // One list, not two. A separate input control decided whether the object
   // sets were rendered at all, so leaving it on Photo took the sets out of the
   // panel entirely, with nothing to say why.
-  it('asks what the mirrors are pointed at once, sets and all', () => {
+  it('asks what the mirrors are pointed at once, sets and all', async () => {
+    const user = userEvent.setup();
     renderPanel();
 
-    const source = screen.getByLabelText('Source');
-    const values = optionsOf(source);
+    const names = await sourcesOf(user);
 
-    expect(values).toContain('mirror:image');
-    expect(values).toContain('mirror:camera');
-    expect(values.filter((value) => value.startsWith('set:')).length).toBeGreaterThan(0);
-    expect(values).toContain(`set:${DEFAULT_SETTINGS.objects}`);
-    expect(source).toHaveValue(`set:${DEFAULT_SETTINGS.objects}`);
+    expect(names).toContain('Mirror a photo');
+    expect(names).toContain('Camera (teleidoscope)');
+    // Every bundled set, and the one that is not a file.
+    expect(names.length).toBeGreaterThan(3);
     expect(screen.queryByLabelText('Input')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Objects')).not.toBeInTheDocument();
   });
 
+  // The names alone are no help: "Cut gems" and "Bright gems" are two different
+  // pictures and one description.
+  it('shows what each set looks like beside its name', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('combobox', { name: /source/i }));
+
+    const withPictures = screen
+      .getAllByRole('option')
+      .filter((option) => option.querySelector('img') !== null);
+
+    expect(withPictures.length).toBeGreaterThan(1);
+    // And the chosen one carries its picture on the closed control too.
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('combobox', { name: /source/i }).querySelector('img')).not.toBeNull();
+  });
+
   // Whatever it is pointed at, every set is still one tap away.
-  it('still lists the sets while the mirrors are on a photo', () => {
+  it('still lists the sets while the mirrors are on a photo', async () => {
+    const user = userEvent.setup();
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
 
-    const values = optionsOf(screen.getByLabelText('Source'));
+    expect(shownSource()).toContain('Mirror a photo');
 
-    expect(values).toContain(`set:${DEFAULT_SETTINGS.objects}`);
-    expect(screen.getByLabelText('Source')).toHaveValue('mirror:image');
+    const names = await sourcesOf(user);
+
+    expect(names.length).toBeGreaterThan(3);
   });
 
   it('reports a change to the camera', async () => {
     const user = userEvent.setup();
     const { props } = renderPanel();
 
-    await user.selectOptions(screen.getByLabelText('Source'), 'mirror:camera');
+    await chooseSource(user, 'Camera (teleidoscope)');
 
     expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
   });
@@ -223,7 +261,9 @@ describe('ControlPanel', () => {
     const user = userEvent.setup();
     const { props } = renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
 
-    await user.selectOptions(screen.getByLabelText('Source'), `set:${DEFAULT_SETTINGS.objects}`);
+    // Whatever the default set is called, by the name the panel shows for it.
+    const named = OBJECT_SETS.find((set) => set.id === DEFAULT_SETTINGS.objects)!;
+    await chooseSource(user, named.name);
 
     expect(props.onChange).toHaveBeenCalledWith('source', 'objects');
     expect(props.onChange).toHaveBeenCalledWith('objects', DEFAULT_SETTINGS.objects);
@@ -238,7 +278,7 @@ describe('ControlPanel', () => {
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
     // Shared across every source
-    expect(screen.getByLabelText('Source')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /source/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save PNG' })).toBeInTheDocument();
   });
 

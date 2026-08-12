@@ -8,6 +8,7 @@ import { isSourceId, LIMITS, type Settings } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { RangeField } from './controls/RangeField';
+import { PictureField } from './controls/PictureField';
 import { SelectField } from './controls/SelectField';
 import { TextField } from './controls/TextField';
 import { ToggleField } from './controls/ToggleField';
@@ -45,9 +46,13 @@ export interface ControlPanelProps {
  * called `camera.webp` would otherwise collide with the camera.
  */
 const SOURCE_OPTIONS = [
-  ...OBJECT_SETS.map((set) => ({ value: `set:${set.id}`, label: set.name })),
-  { value: 'mirror:image', label: 'Mirror a photo' },
-  { value: 'mirror:camera', label: 'Camera (teleidoscope)' },
+  ...OBJECT_SETS.map((set) => ({
+    value: `set:${set.id}`,
+    label: set.name,
+    picture: set.thumbnail,
+  })),
+  { value: 'mirror:image', label: 'Mirror a photo', picture: null },
+  { value: 'mirror:camera', label: 'Camera (teleidoscope)', picture: null },
 ];
 
 /** The one option that stands for the current settings. */
@@ -123,7 +128,7 @@ export function ControlPanel({
       <fieldset className={styles.group}>
         <legend className={styles.legend}>Contents</legend>
 
-        <SelectField
+        <PictureField
           label="Source"
           value={currentSource(settings)}
           options={SOURCE_OPTIONS}

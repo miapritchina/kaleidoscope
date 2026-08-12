@@ -53,8 +53,26 @@ describe('object sets', () => {
     expect(new Set(OBJECT_SETS.map((set) => set.id)).size).toBe(OBJECT_SETS.length);
   });
 
+  // Named rather than "whichever sorts first", but it still cannot disagree
+  // with the files: whatever it opens on has to be a set that is actually here.
   it('opens on a bundled set, or on the upload prompt when there are none', () => {
-    expect(DEFAULT_OBJECTS).toBe(PRESET_SETS[0]?.id ?? CUSTOM);
     expect(isObjectSetId(DEFAULT_OBJECTS)).toBe(true);
+    expect(OBJECT_SETS.some((set) => set.id === DEFAULT_OBJECTS)).toBe(true);
+
+    if (PRESET_SETS.length > 0) {
+      expect(DEFAULT_OBJECTS).not.toBe(CUSTOM);
+    }
+  });
+
+  // A set with no picture beside it in the control reads as a set that failed
+  // to load, so every bundled one carries a thumbnail.
+  it('gives every bundled set a thumbnail', () => {
+    for (const set of PRESET_SETS) {
+      expect(set.thumbnail, set.id).toBeTruthy();
+    }
+  });
+
+  it('has nothing to show for the one that is not a file', () => {
+    expect(OBJECT_SETS.find((set) => set.id === CUSTOM)?.thumbnail).toBeNull();
   });
 });
