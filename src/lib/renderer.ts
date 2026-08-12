@@ -11,6 +11,23 @@ import { coverWithHexagons, hexLattice, traceHexagon, traceTriangle } from './ti
 type WedgeMode = 'chamber' | 'media' | 'empty';
 
 /**
+ * Everything the wedge is painted from.
+ *
+ * Kept after a frame so the same source can be painted again at a different
+ * size — which is what an exported tile needs, since its size is fixed and the
+ * triangle on screen is whatever the viewport and the slider make it.
+ */
+interface WedgeSource {
+  scene: Scene;
+  settings: Settings;
+  sprites: ChipSprites;
+  mode: WedgeMode;
+  media: MediaElement | null;
+  skin: MediaElement | null;
+  patches: SkinPatches | null;
+}
+
+/**
  * How far each wedge's clip is bled outwards, in device pixels.
  *
  * Two antialiased clip edges meeting at a seam each cover the boundary pixel
@@ -80,8 +97,15 @@ const DEBUG_HALO = 2.6;
 /** Length of the gravity arrow, as a fraction of the smaller viewport edge. */
 const DEBUG_ARROW = 0.18;
 
-/** Side of the exported pattern tile, in pixels. */
-const TILE_SIZE = 1024;
+/**
+ * Pixel size of the exported tile: one period of the figure.
+ *
+ * The proportions have to be `sqrt(3)` to 1 — see `latticePeriod` — and pixels
+ * are whole numbers, so the closest useful rational is used instead. 1351/780
+ * is out by two parts in ten million, which over the whole width comes to three
+ * ten-thousandths of a pixel.
+ */
+export const TILE = { width: 1351, height: 780 };
 
 /**
  * Side of the mirror triangle, as a fraction of the smaller viewport edge.
@@ -123,7 +147,7 @@ export class KaleidoscopeRenderer {
 
   readonly #createCanvas: () => HTMLCanvasElement;
   #tile: HTMLCanvasElement | null = null;
-  #quadrant: HTMLCanvasElement | null = null;
+  #source: WedgeSource | null = null;
 
   #patches: SkinPatches | null = null;
   #patchesFor: CanvasImageSource | null = null;
@@ -183,9 +207,7 @@ export class KaleidoscopeRenderer {
     // change never has to reallocate — and never overruns the surface either.
     // The margin around the apex is what lets the bled clip find painted pixels
     // there rather than empty canvas, which would leave the seam showing.
-    const surface = Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2;
-    this.#wedge.width = surface;
-    this.#wedge.height = surface;
+    this.#resizeWedge(Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2);
 
     this.#falloff = null;
     this.#vignetteCache = null;
@@ -230,7 +252,18 @@ export class KaleidoscopeRenderer {
     const surface = isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
 
-    this.#paintWedge(scene, settings, sprites, mode, frame ?? null, surface, patches, triangle);
+    const source: WedgeSource = {
+      scene,
+      settings,
+      sprites,
+      mode,
+      media: frame ?? null,
+      skin: surface,
+      patches,
+    };
+
+    this.#source = source;
+    this.#paintWedge(source, triangle);
     this.#compositeTiling(triangle);
 
     if (settings.debug) {
@@ -282,61 +315,64 @@ export class KaleidoscopeRenderer {
   }
 
   /**
-   * Renders a square tile that repeats without a seam.
+   * Renders a tile that repeats without a seam: one period of the field.
    *
-   * A three-mirror kaleidoscope tiles the plane on a hexagonal lattice, and a
-   * hexagonal lattice has no square period — `k` steps across can never equal
-   * `m` steps up, because the ratio is `sqrt(3)`. So the tile is not a period
-   * of the figure. It is built the way the figure itself is: a quarter of it is
-   * drawn once, then mirrored across and down. Every edge of the result is a
-   * mirror line, so a copy laid beside it matches along the join exactly —
-   * which is what seamless has to mean here, and is a fair thing for a
-   * kaleidoscope to hand you.
+   * It is a rectangle cut straight out of the figure, the way you would cut one
+   * out of the screen. Nothing is mirrored and no edges are blended — a
+   * `sqrt(3)`-to-1 rectangle is a translation period of a hexagonal tiling, so
+   * a copy laid beside it continues the pattern because it is the pattern. See
+   * `latticePeriod` for why those proportions and no others.
    *
-   * The barrel and the mirror falloff are left off. Both are radial — they
-   * describe looking down a tube, not the pattern — and baked in they would put
-   * a dark blot at every repeat.
+   * Three things the screen has are left out, all of them for the same reason:
+   * each one varies across the view, so baked into a tile it would come back at
+   * every repeat as a visible grid.
    *
-   * @param size Side of the tile in pixels. Rounded up to an even number, since
-   *   it is built from four quarters.
+   * - The barrel and the mirror falloff, which are radial. They describe
+   *   looking down a tube, not the pattern, and would put a dark blot in the
+   *   middle of every copy.
+   * - The per-hexagon exposure, which is deliberately aperiodic on screen — it
+   *   is there to stop the field reading as a printed pattern. Here a printed
+   *   pattern is the point, and it is the one thing standing between the field
+   *   and an exact repeat. The variation between the six cells of a hexagon
+   *   stays, so the tile still has facets; only the difference between one
+   *   hexagon and the next goes.
+   *
+   * The source is painted again at the tile's own size rather than scaled up
+   * from the screen, so the tile is as sharp as the pieces themselves are.
+   * Returns `null` before the first frame, since there is nothing to cut.
    */
-  toPatternBlob(settings: Settings, size = TILE_SIZE, type = 'image/png'): Promise<Blob | null> {
-    const side = this.#triangleSide(settings);
-    const half = Math.max(1, Math.ceil(size / 2));
+  toPatternBlob(type = 'image/png'): Promise<Blob | null> {
+    const source = this.#source;
 
-    this.#quadrant ??= this.#createCanvas();
-    this.#tile ??= this.#createCanvas();
-
-    const quadrant = this.#quadrant;
-    const tile = this.#tile;
-
-    quadrant.width = half;
-    quadrant.height = half;
-    tile.width = half * 2;
-    tile.height = half * 2;
-
-    const quadrantCtx = quadrant.getContext('2d');
-    const tileCtx = tile.getContext('2d');
-
-    if (!quadrantCtx || !tileCtx) {
+    if (!source) {
       return Promise.resolve(null);
     }
 
-    this.#stampField(quadrantCtx, half, half, side);
+    this.#tile ??= this.#createCanvas();
 
-    // The quarter, then its reflection across, down, and both — the same four
-    // ways round the mirrors themselves work.
-    for (const [flipX, flipY] of [
-      [1, 1],
-      [-1, 1],
-      [1, -1],
-      [-1, -1],
-    ] as const) {
-      tileCtx.setTransform(flipX, 0, 0, flipY, flipX < 0 ? half * 2 : 0, flipY < 0 ? half * 2 : 0);
-      tileCtx.drawImage(quadrant, 0, 0);
+    const tile = this.#tile;
+
+    tile.width = TILE.width;
+    tile.height = TILE.height;
+
+    const tileCtx = tile.getContext('2d');
+
+    if (!tileCtx) {
+      return Promise.resolve(null);
     }
 
-    tileCtx.setTransform(1, 0, 0, 1, 0, 0);
+    // The triangle whose period is exactly the tile.
+    const side = TILE.width / 3;
+    const wanted = Math.ceil(side) + SEAM_BLEED * 2;
+    const painted = this.#wedge.width;
+
+    // Grown for this one painting and put back after: the screen's surface is
+    // sized for the largest triangle the slider can ask for, which on a small
+    // window is smaller than the tile wants.
+    this.#resizeWedge(wanted);
+    this.#paintWedge(source, side);
+    this.#stampField(tileCtx, TILE.width, TILE.height, side, true);
+    this.#resizeWedge(painted);
 
     // A blob rather than a data URL: it is what the share sheet wants, and it
     // saves encoding a megabyte of base64 only to decode it again.
@@ -345,17 +381,23 @@ export class KaleidoscopeRenderer {
     });
   }
 
+  /**
+   * Resizes the wedge surface, which clears it.
+   *
+   * Safe to do between frames because the wedge is painted from scratch every
+   * frame anyway — it has to be, since the pieces composite with `multiply` and
+   * `lighter` and neither survives being stamped over its own remains.
+   */
+  #resizeWedge(size: number): void {
+    if (this.#wedge.width !== size) {
+      this.#wedge.width = size;
+      this.#wedge.height = size;
+    }
+  }
+
   /** Paints the chosen source into the offscreen wedge surface. */
-  #paintWedge(
-    scene: Scene,
-    settings: Settings,
-    sprites: ChipSprites,
-    mode: WedgeMode,
-    media: MediaElement | null,
-    skin: MediaElement | null,
-    patches: SkinPatches | null,
-    triangleSide: number,
-  ): void {
+  #paintWedge(source: WedgeSource, triangleSide: number): void {
+    const { scene, settings, sprites, mode, media, skin, patches } = source;
     const ctx = this.#wedgeCtx;
     // Only the triangle is ever sampled, so the source is painted over its side
     // rather than the whole surface, which is sized for the largest zoom.
@@ -518,8 +560,17 @@ export class KaleidoscopeRenderer {
    * Taken apart from {@link #compositeTiling} because the seamless tile wants
    * the field and nothing else: the barrel and the mirror falloff are radial,
    * so baking either into a tile puts a dark blot at every repeat.
+   *
+   * @param uniform Stamps every hexagon at the same exposure, making the field
+   *   exactly periodic. For an exported tile, where a repeat is what is wanted.
    */
-  #stampField(ctx: CanvasRenderingContext2D, width: number, height: number, side: number): void {
+  #stampField(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    side: number,
+    uniform = false,
+  ): void {
     const hexagon = this.#buildHexagon(side);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -555,7 +606,7 @@ export class KaleidoscopeRenderer {
       // would be exactly periodic — six distinct cells, repeated verbatim
       // forever, which is the same tell one step up. Laid down a little
       // transparent lets that cell's share of the light behind it through.
-      ctx.globalAlpha = 1 - cellNoise(centre.i, centre.j) * CELL_EXPOSURE;
+      ctx.globalAlpha = uniform ? 1 : 1 - cellNoise(centre.i, centre.j) * CELL_EXPOSURE;
       ctx.drawImage(hexagon, centre.x - offset, centre.y - offset);
     }
 

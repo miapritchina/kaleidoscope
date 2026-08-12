@@ -95,11 +95,37 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Kaleidoscope' })).toBeInTheDocument();
   });
 
-  // The one action worth reaching without opening anything.
-  it('leaves saving the pattern on the artwork, not behind the button', () => {
+  // The three worth reaching without opening anything.
+  it('leaves saving and reshuffling on the artwork, not behind the panel', () => {
     render(<App />);
 
-    expect(screen.getByRole('button', { name: /save pattern/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save pattern' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New arrangement' })).toBeInTheDocument();
     expect(drawer()).toBeNull();
+  });
+
+  // Drawn, not written: three words laid over the artwork is three things
+  // competing with the thing they are for. The name is in the accessibility
+  // tree, where it costs the picture nothing.
+  it('names them for a screen reader without printing anything on the picture', () => {
+    render(<App />);
+
+    for (const name of ['Save pattern', 'New arrangement', 'Controls']) {
+      expect(screen.getByRole('button', { name }).textContent).toBe('');
+    }
+  });
+
+  it('reshuffles the pieces and says so', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(controls());
+    const seed = () => screen.getByLabelText('Seed').getAttribute('value');
+    const before = seed();
+
+    await user.click(screen.getByRole('button', { name: 'New arrangement' }));
+
+    expect(seed()).not.toBe(before);
+    expect(screen.getByRole('status')).toHaveTextContent('A new arrangement of the pieces.');
   });
 });

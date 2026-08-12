@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanvas';
-import { KaleidoscopeRenderer } from './renderer';
+import { KaleidoscopeRenderer, TILE } from './renderer';
 import { createScene } from './scene';
 import { DEFAULT_SETTINGS } from './settings';
+import { latticePeriod } from './tiling';
 
 interface Harness {
   renderer: KaleidoscopeRenderer;
@@ -12,9 +13,15 @@ interface Harness {
   wedge: FakeContext;
   /** Where the six mirrored triangles are assembled into one stamp. */
   hexagon: FakeContext;
+  /** Where the exported tile is stamped. */
+  tile: FakeContext;
   canvas: { width: number; height: number };
+  /** Backing store of the wedge, sized for the largest triangle wanted. */
+  wedgeCanvas: { width: number; height: number };
   /** Backing store of the hexagon stamp, which the triangle's side sets. */
   hexagonCanvas: { width: number; height: number };
+  /** Backing store of the tile, made only once one is asked for. */
+  tileCanvas: () => { width: number; height: number } | undefined;
 }
 
 function createRenderer(): Harness {
@@ -35,6 +42,9 @@ function createRenderer(): Harness {
       width: 0,
       height: 0,
       getContext: () => asContext(context),
+      toBlob: (done: (blob: Blob | null) => void) => {
+        done(new Blob([], { type: 'image/png' }));
+      },
     };
 
     canvases.push(surface);
@@ -53,7 +63,11 @@ function createRenderer(): Harness {
     wedge: offscreen[0]!,
     hexagon: offscreen[1]!,
     canvas,
+    wedgeCanvas: canvases[0]!,
     hexagonCanvas: canvases[1]!,
+    /** The exported tile's surface, made the first time one is asked for. */
+    tile: offscreen[2]!,
+    tileCanvas: () => canvases[2],
   };
 }
 
@@ -275,5 +289,89 @@ describe('KaleidoscopeRenderer', () => {
     renderer.resize(50, 50, 1);
 
     expect(renderer.toDataUrl()).toMatch(/^data:image\/png/);
+  });
+});
+
+describe('the exported tile', () => {
+  // The whole claim rests on this: the tile is a period of the field, so its
+  // proportions have to be the lattice's own. Anything else and the copies do
+  // not line up, however carefully the edges are treated.
+  it('is one period of the lattice across and one down', () => {
+    const period = latticePeriod(TILE.width / 3);
+
+    expect(period.x).toBe(TILE.width);
+    // Whole pixels cannot be sqrt(3) apart exactly. Two parts in ten million
+    // is what 1351/780 costs, which over the whole width is invisible.
+    expect(Math.abs(period.y - TILE.height)).toBeLessThan(0.001);
+  });
+
+  it('has nothing to cut before the first frame', async () => {
+    const { renderer } = createRenderer();
+
+    renderer.resize(200, 200, 1);
+
+    await expect(renderer.toPatternBlob()).resolves.toBeNull();
+  });
+
+  // On screen every hexagon is laid down at a slightly different exposure, so
+  // the field does not read as a printed pattern. Here a printed pattern is
+  // exactly what is wanted, and that variation is the one thing standing
+  // between the field and an exact repeat.
+  it('stamps every hexagon at the same exposure, unlike the screen', async () => {
+    const { renderer, main, tile } = createRenderer();
+
+    renderer.resize(200, 200, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    await renderer.toPatternBlob();
+
+    const onTile = tile.stylesOf('drawImage').map((style) => style.globalAlpha);
+    const onScreen = main.stylesOf('drawImage').map((style) => style.globalAlpha);
+
+    expect(onTile.length).toBeGreaterThan(1);
+    expect(onTile.every((alpha) => alpha === 1)).toBe(true);
+    expect(onScreen.some((alpha) => alpha !== 1)).toBe(true);
+  });
+
+  // Radial, both of them: they describe looking down a tube rather than the
+  // pattern, and baked in they would put a dark blot at every repeat.
+  it('leaves the barrel and the mirror falloff off it', async () => {
+    const { renderer, tile } = createRenderer();
+
+    renderer.resize(200, 200, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    await renderer.toPatternBlob();
+
+    // The backdrop, and nothing laid over the top of the field.
+    expect(tile.countOf('fillRect')).toBe(1);
+    expect(tile.stylesOf('fillRect')[0]!.globalCompositeOperation).toBe('source-over');
+  });
+
+  // The tile is a fixed size and the triangle on screen is whatever the
+  // viewport and the slider make it, so the source is painted again at the
+  // tile's size rather than scaled up from the screen's.
+  it('paints the source again at its own size, and puts the surface back', async () => {
+    const { renderer, wedge, wedgeCanvas } = createRenderer();
+
+    renderer.resize(200, 200, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+
+    const forScreen = wedgeCanvas.width;
+    const painted = wedge.countOf('fillRect');
+
+    await renderer.toPatternBlob();
+
+    // Painted a second time, on a surface big enough for a tile-sized triangle.
+    expect(wedge.countOf('fillRect')).toBe(painted + 1);
+    expect(wedgeCanvas.width).toBe(forScreen);
+  });
+
+  it('sizes the tile to the period, whatever the viewport is', async () => {
+    const { renderer, tileCanvas } = createRenderer();
+
+    renderer.resize(90, 320, 1);
+    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    await renderer.toPatternBlob();
+
+    expect(tileCanvas()).toMatchObject({ width: TILE.width, height: TILE.height });
   });
 });
