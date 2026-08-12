@@ -46,7 +46,11 @@ a white diamond in the middle keeps its middle.
 
 ## Licensing
 
-Only put files in here that this repository is allowed to redistribute. The sets
-here were supplied by the owner as a stand-in until the real collection is
-ready; they came from stock previews and clip-art, they are not cleared for
-redistribution, and they should be replaced.
+Only put files in here that this repository is allowed to redistribute.
+
+`glass-shards`, `stone-beads`, `cut-gems`, `rough-jewels` and `flowers` are the
+owner's own work.
+
+`bright-gems` and `cut-stones` are not. They are stand-ins from an earlier
+round, keyed back out of flattened stock previews, and they are not cleared for
+redistribution — they should be replaced or dropped.

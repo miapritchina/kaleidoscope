@@ -173,12 +173,14 @@ Photo took the object sets out of the panel entirely, with nothing to say why. T
 chamber is loaded with objects out of a picture, or it is empty. Without one, nothing is
 drawn at all, which is a truer answer than a chamber full of shapes nobody chose.
 
-The two that ship — **Bright gems** and **Cut stones** — are stand-ins, keyed back out of
-flattened stock previews and not cleared for redistribution. Replacing them is a matter of
-putting different files in the folder.
+Five of the seven that ship — **Glass shards**, **Stone beads**, **Cut gems**, **Rough
+jewels** and **Flowers** — are the owner's own work. The other two, **Bright gems** and **Cut
+stones**, are stand-ins from an earlier round, keyed back out of flattened stock previews and
+not cleared for redistribution; replacing them is a matter of putting different files in the
+folder.
 
 A picture comes apart cleanly when it is a few separate things on a plain backdrop, which is
-what a set of cut-out gemstones is. The picture is sampled to 96x96 and everything that is
+what a set of cut-out gemstones is. The picture is sampled to 160x160 and everything that is
 not backdrop is flood-filled into separate objects. What counts as backdrop depends on what
 the picture is: an image with meaningful transparency — at least a twentieth of it clear —
 has already been segmented by whoever made it, so its alpha decides and the colour is never
