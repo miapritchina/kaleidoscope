@@ -24,7 +24,7 @@ describe('App', () => {
 
     expect(controls()).toHaveAttribute('aria-expanded', 'false');
     expect(drawer()).toBeNull();
-    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Pieces')).not.toBeInTheDocument();
   });
 
   it('shows them when the button is pressed, and hides them again', async () => {
@@ -34,7 +34,7 @@ describe('App', () => {
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'true');
     expect(drawer()).not.toBeNull();
-    expect(screen.getByLabelText('Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
 
     await user.click(controls());
     expect(controls()).toHaveAttribute('aria-expanded', 'false');

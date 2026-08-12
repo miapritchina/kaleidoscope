@@ -48,6 +48,23 @@ const CONTACT_SLOP = 0.01;
 /** Fraction of an overlap resolved per pass. Below 1 the pile settles softly. */
 const SEPARATION = 0.8;
 
+/**
+ * How much sideways movement a contact will hold on to, against how hard the
+ * two pieces are being pressed together.
+ *
+ * This is what gives a pile an angle of repose. Resolving only the overlap
+ * leaves the glass free to slide across whatever it is resting on, so a heap
+ * spreads until it is flat and the least tip sets the whole thing flowing —
+ * which reads as a chamber of liquid rather than one of glass. Holding the
+ * contact against sideways motion up to this share of the separation gives a
+ * heap that stands at a slope, holds through a small tip, and lets go all at
+ * once past a critical one. That is what an avalanche is.
+ *
+ * Coulomb's number for glass on glass is around 0.4 dry, and the pieces here
+ * are ground and faceted rather than polished spheres.
+ */
+const STATIC_FRICTION = 0.45;
+
 /** Physics substeps per frame, so a fast chip cannot pass through a wall. */
 const SUBSTEPS = 2;
 
@@ -213,7 +230,18 @@ function mass(shard: Shard): number {
 const previousX = new WeakMap<Shard, number>();
 const previousY = new WeakMap<Shard, number>();
 
-/** Pushes overlapping chips apart, so they stack instead of interpenetrating. */
+/**
+ * Pushes overlapping chips apart, so they stack instead of interpenetrating,
+ * and holds the contact against sliding while they are pressed together.
+ *
+ * The push is shared out by weight rather than halved. A splinter that lands on
+ * a bead should be the one that moves; splitting the correction evenly shoves
+ * the bead just as far, and a chamber of mixed sizes then behaves as though
+ * every piece weighed the same — which is the thing that reads most plainly as
+ * "not glass". Mass goes with area, so a piece twice across is four times as
+ * hard to shift, and the pile sorts itself as a real one does: the big pieces
+ * work their way down and the small ones ride up.
+ */
 function separate(shards: Shard[]): void {
   for (let i = 0; i < shards.length; i += 1) {
     const a = shards[i]!;
@@ -229,17 +257,70 @@ function separate(shards: Shard[]): void {
         continue;
       }
 
-      const correction = ((minimum - distance) / distance) * SEPARATION * 0.5;
+      const inverseA = 1 / mass(a);
+      const inverseB = 1 / mass(b);
+      const total = inverseA + inverseB;
+      const overlap = (minimum - distance) * SEPARATION;
+      const normalX = dx / distance;
+      const normalY = dy / distance;
+      const shareA = inverseA / total;
+      const shareB = inverseB / total;
 
-      a.x -= dx * correction;
-      a.y -= dy * correction;
-      b.x += dx * correction;
-      b.y += dy * correction;
+      a.x -= normalX * overlap * shareA;
+      a.y -= normalY * overlap * shareA;
+      b.x += normalX * overlap * shareB;
+      b.y += normalY * overlap * shareB;
+
+      hold(a, b, normalX, normalY, overlap, shareA, shareB);
     }
   }
 }
 
-/** Keeps a chip inside the chamber wall. */
+/**
+ * Resists sliding at a contact, up to what the contact can hold.
+ *
+ * The two pieces have moved since the substep began; whatever part of that
+ * movement was across the contact rather than into it is sliding, and a dry
+ * contact takes some of it back. Capped at {@link STATIC_FRICTION} times how
+ * hard they are being pressed together, so a piece high on a steep heap still
+ * gives way — the cap is the difference between a pile and a glued lump.
+ *
+ * Position-level rather than an impulse: the overlap has just been resolved by
+ * moving positions, so the friction that goes with it has to be moved out of
+ * the same ledger or the velocity read back at the end of the substep will not
+ * agree with where the glass actually ended up.
+ */
+function hold(
+  a: Shard,
+  b: Shard,
+  normalX: number,
+  normalY: number,
+  overlap: number,
+  shareA: number,
+  shareB: number,
+): void {
+  const movedX = a.x - (previousX.get(a) ?? a.x) - (b.x - (previousX.get(b) ?? b.x));
+  const movedY = a.y - (previousY.get(a) ?? a.y) - (b.y - (previousY.get(b) ?? b.y));
+  // Only the part across the contact. What went into it is the overlap, and
+  // that has already been dealt with.
+  const into = movedX * normalX + movedY * normalY;
+  const slideX = movedX - into * normalX;
+  const slideY = movedY - into * normalY;
+  const slide = Math.hypot(slideX, slideY);
+
+  if (slide === 0) {
+    return;
+  }
+
+  const held = Math.min(slide, STATIC_FRICTION * overlap) / slide;
+
+  a.x -= slideX * held * shareA;
+  a.y -= slideY * held * shareA;
+  b.x += slideX * held * shareB;
+  b.y += slideY * held * shareB;
+}
+
+/** Keeps a chip inside the chamber wall, and lets the wall grip it. */
 function confine(shard: Shard): void {
   const limit = CHAMBER_RADIUS - shard.radius;
 
@@ -255,8 +336,31 @@ function confine(shard: Shard): void {
     return;
   }
 
-  shard.x = (shard.x / distance) * limit;
-  shard.y = (shard.y / distance) * limit;
+  const normalX = shard.x / distance;
+  const normalY = shard.y / distance;
+  const overlap = distance - limit;
+
+  shard.x = normalX * limit;
+  shard.y = normalY * limit;
+
+  // The wall does not move, so it takes the whole of the friction rather than a
+  // share of it. Without this the glass slides round the barrel as freely as it
+  // falls, and a heap against the side runs away downhill.
+  const movedX = shard.x - (previousX.get(shard) ?? shard.x);
+  const movedY = shard.y - (previousY.get(shard) ?? shard.y);
+  const into = movedX * normalX + movedY * normalY;
+  const slideX = movedX - into * normalX;
+  const slideY = movedY - into * normalY;
+  const slide = Math.hypot(slideX, slideY);
+
+  if (slide === 0) {
+    return;
+  }
+
+  const held = Math.min(slide, STATIC_FRICTION * overlap) / slide;
+
+  shard.x -= slideX * held;
+  shard.y -= slideY * held;
 }
 
 /**

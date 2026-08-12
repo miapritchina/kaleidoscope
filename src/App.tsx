@@ -7,6 +7,7 @@ import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
 import { useImageUrl } from './hooks/useImageUrl';
 import { useDeviceTilt } from './hooks/useDeviceTilt';
+import { useShake } from './hooks/useShake';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
@@ -99,6 +100,16 @@ export function App() {
   const announce = useCallback((message: string) => {
     setStatus(message);
   }, []);
+
+  const reshuffle = useCallback(() => {
+    randomize();
+    announce('A new arrangement of the pieces.');
+  }, [announce, randomize]);
+
+  // Shaking a kaleidoscope is what a hand does with one, and what it does to
+  // the glass is not a tip or a turn — it throws the pile up and lets it come
+  // down somewhere else entirely.
+  useShake(reshuffle, tilt.status === 'active');
 
   const handleZoom = useCallback(
     (scale: number) => {
@@ -233,10 +244,7 @@ export function App() {
           type="button"
           className={styles.tool}
           aria-label="New arrangement"
-          onClick={() => {
-            randomize();
-            announce('A new arrangement of the pieces.');
-          }}
+          onClick={reshuffle}
         >
           <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 5V2L8 6l4 4V7a5 5 0 0 1 4.6 7l1.5 1.5A7 7 0 0 0 12 5Z" />

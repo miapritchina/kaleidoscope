@@ -52,6 +52,11 @@ works the same way:
 4. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
    and that hexagon is stamped across the field on its translation lattice, so neighbours
    meet mirror to mirror.
+5. **Where it sits.** The field is offset by the source triangle's own centre, so that
+   triangle lands in the middle of the view. `traceTriangle` puts the apex at the origin,
+   because that is the corner all six are assembled around — laid straight onto the middle
+   of the screen it puts six apexes there, and the one triangle every other is a reflection
+   of ends up off in a corner. The interesting part belongs where people are looking.
 
 Drawing the source once and blitting the result keeps the per-frame cost proportional to
 the source rather than to `source x triangles` — and building the hexagon once means the
@@ -197,8 +202,10 @@ the interesting parts testable without a browser.
 src/
   components/    Canvas surface and the control panel
     controls/    Small labelled form fields
-  hooks/         Animation frame, element size, media queries, settings, gestures, photo, camera
-  lib/           Rendering engine, chamber physics, tiling, object sets, settings — no React
+  hooks/         Animation frame, element size, media queries, settings, gestures, photo,
+                 camera, device tilt, shake
+  lib/           Rendering engine, chamber physics, tiling, object sets, tilt, shake,
+                 settings — no React
   test/          Vitest setup and a fake 2D context
 ```
 
@@ -207,22 +214,23 @@ src/
 | Setting          | Range                  | Effect                                         |
 | ---------------- | ---------------------- | ---------------------------------------------- |
 | Source           | a set, a photo, camera | What the mirrors are pointed at                |
-| Count            | 4–60                   | Pieces in the chamber                          |
+| Pieces           | 4–60                   | How many are in the chamber                    |
+| Piece size       | 0.4x–2.5x              | How big they are; also a pinch                 |
 | Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
 | Mirror angle     | 0–120°                 | Which way up the tube is being held            |
 | Real gravity     | on/off                 | Let the phone's position say which way is down |
 | Show the mirrors | on/off                 | Draws the triangle, and points at gravity      |
 | Seed             | any text               | Seeds the chamber; same seed, same arrangement |
 
-There is one more, and it has no slider: **how big the things in the source are** — the
-pieces in the chamber, or the magnification of a photo. That is a pinch, or a scroll over
-the artwork. It still travels in a shared link.
+**The gestures are for the contents and the panel is for the instrument.** Swiping turns the
+tube, pinching sizes what is in it and two fingers move it about; the one thing the hand
+cannot reach is how wide the mirrors themselves are, so that is a slider. They were the same
+control once, which meant widening the tube also enlarged the picture inside it — two things
+at once and no way to have either alone.
 
-The split is deliberate. **The gestures are for the contents and the panel is for the
-instrument.** Swiping turns the tube, pinching sizes what is in it and two fingers move it
-about; the one thing the hand cannot reach is how wide the mirrors themselves are, so that
-is the slider. They were the same control once, which meant widening the tube also enlarged
-the picture inside it — two things at once and no way to have either alone.
+Piece size has a slider as well as the pinch. A gesture is the better way to reach it and it
+is not a discoverable one, and a chamber packed with pieces too big to see past has no
+gesture-shaped way out of itself.
 
 There is no mirror count, because a tube has three, and no spin control, because it is
 swiped.
@@ -274,6 +282,33 @@ The cell turns and gravity does not, so gravity does not point "down" in the cel
 coordinates — it points down in the **world**, and turning sweeps that direction around it.
 That is the whole mechanism: the pattern does not change because something is rotating, it
 changes because turning tips the pile, it avalanches, and it settles into a new one.
+
+### Weight, and what a contact holds
+
+Two things make a chamber of glass behave like one rather than like a bag of identical
+counters.
+
+**Weight.** Pushing two overlapping pieces apart is shared out by mass rather than halved. A
+splinter that lands on a bead should be the one that moves; splitting the correction evenly
+shoves the bead just as far, and a chamber of mixed sizes then behaves as though every piece
+weighed the same. Mass goes with area, so a piece twice across is four times as hard to
+shift. It is a push the two pieces give each other, so it cannot move the pair as a whole —
+weighting it by anything but mass breaks that, and there is a test on the invariant.
+
+**Friction.** A contact also resists sliding, up to `0.45` times how hard the two are being
+pressed together — Coulomb's number for glass on glass, roughly, and these are ground and
+faceted rather than polished. This is what gives a pile an **angle of repose**. Resolving
+only the overlap leaves the glass free to slide across whatever it rests on, so a heap
+spreads until it is flat and the least tip sets the whole thing flowing — a chamber of liquid
+rather than one of glass. With it a heap stands at a slope, holds through a small tip, and
+lets go all at once past a critical one, which is what an avalanche is. There is a test that
+settles a pile, tips it 5 degrees and 50, and checks the first barely moves while the second
+runs. The wall grips too, and takes the whole of the friction rather than a share, because it
+does not move.
+
+Both are position-level rather than impulses: the overlap has just been resolved by moving
+positions, so the friction that goes with it has to come out of the same ledger, or the
+velocity read back at the end of the substep will not agree with where the glass ended up.
 
 The renderer draws the cell rotated by its own angle, so world-down has to be turned back
 by that same angle to land in the cell's axes. Signing that the other way — the easy
@@ -441,6 +476,28 @@ The sign of the left-to-right reading was wrong until a phone said so: leaning r
 the pieces towards the raised edge rather than the dipped one. That is the one thing about
 this that cannot be checked without hardware in a hand — synthesised events confirm the
 wiring and say nothing about which way the world is. It is a unit test now.
+
+## Shaking it
+
+Shaking a kaleidoscope is what a hand does with one without being told to, and what it does
+to the glass is not a tip or a turn — it throws the whole pile up and lets it come down
+somewhere else entirely. That is a new arrangement, which here is a new seed.
+
+`lib/shake.ts` watches the **change between accelerometer readings** rather than the readings
+themselves, because a reading includes gravity: a phone lying still reads about 9.8, and a
+phone held still in a hand reads about 9.8 in some other direction. What a shake looks like
+is that number moving, quickly and repeatedly. Four jolts of at least 12 m/s² inside 700 ms
+make one, and then nothing counts for a further 1.2 seconds — a hand does not stop cleanly,
+and without the rest one waggle reseeds the chamber a dozen times over and the figure never
+settles long enough to be seen. A phone set down hard is a single spike, which is two jolts —
+into the table and out of it — so the count is what tells a knock from a shake.
+
+There is no toggle for it. A setting for shaking a kaleidoscope is a setting nobody would go
+looking for. iOS gates the accelerometer behind a permission that has to be asked for from a
+user gesture, and there is no gesture here to hang that on without putting a prompt in front
+of someone who only wanted to look at the picture — so it asks for nothing. Everywhere the
+reading is free it works straight away, and on iOS it starts working the moment **Real
+gravity** is switched on, since Safari's prompt covers motion and orientation together.
 
 ## Seeing the mirrors
 

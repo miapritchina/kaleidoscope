@@ -33,7 +33,7 @@ describe('ControlPanel', () => {
     renderPanel();
 
     expect(screen.getByLabelText('Source')).toBeInTheDocument();
-    expect(screen.getByLabelText('Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
     expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
     expect(screen.getByLabelText('Seed')).toBeInTheDocument();
   });
@@ -56,7 +56,7 @@ describe('ControlPanel', () => {
 
     // jsdom does not implement arrow-key stepping on range inputs, so the
     // change event is dispatched directly.
-    fireEvent.change(screen.getByLabelText('Count'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Pieces'), { target: { value: '20' } });
 
     expect(props.onChange).toHaveBeenCalledWith('shards', 20);
   });
@@ -176,7 +176,7 @@ describe('ControlPanel', () => {
     const groups = screen.getAllByRole('group').map((group) => group.textContent);
     const source = groups.find((text) => text.includes('Source'))!;
 
-    expect(source).toContain('Count');
+    expect(source).toContain('Pieces');
     expect(source).toContain('Seed');
   });
 
@@ -233,7 +233,7 @@ describe('ControlPanel', () => {
     renderPanel({ settings: { ...DEFAULT_SETTINGS, source: 'image' } });
 
     // Chamber-specific
-    expect(screen.queryByLabelText('Count')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Pieces')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Randomize' })).not.toBeInTheDocument();
 
