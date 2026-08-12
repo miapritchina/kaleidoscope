@@ -68,6 +68,19 @@ const STATIC_FRICTION = 0.45;
 /** Physics substeps per frame, so a fast chip cannot pass through a wall. */
 const SUBSTEPS = 2;
 
+/**
+ * The circle a piece actually collides on.
+ *
+ * Not the one it is drawn in. A cut-out sliver fills a fraction of its own
+ * circle, and colliding with the circle holds everything a sliver's length
+ * away in every direction: the pile settles full of air and pieces come to
+ * rest on nothing at all. This is the radius of a disc of the same area as the
+ * glass, which is as much of the shape as a round contact can carry.
+ */
+function reach(shard: Shard): number {
+  return shard.radius * shard.girth;
+}
+
 export interface ChamberUpdate {
   /** Seconds to advance. */
   dt: number;
@@ -174,7 +187,7 @@ function tumble(shards: Shard[]): void {
       const dy = b.y - a.y;
       const distance = Math.hypot(dx, dy);
 
-      if (distance === 0 || distance > a.radius + b.radius + CONTACT_SLOP) {
+      if (distance === 0 || distance > reach(a) + reach(b) + CONTACT_SLOP) {
         continue;
       }
 
@@ -183,7 +196,7 @@ function tumble(shards: Shard[]): void {
       const tangentY = dx / distance;
       // Each surface point carries its body's spin, so both radii count.
       const slip =
-        (b.vx - a.vx) * tangentX + (b.vy - a.vy) * tangentY - b.spin * b.radius - a.spin * a.radius;
+        (b.vx - a.vx) * tangentX + (b.vy - a.vy) * tangentY - b.spin * reach(b) - a.spin * reach(a);
 
       if (slip === 0) {
         continue;
@@ -197,33 +210,37 @@ function tumble(shards: Shard[]): void {
       a.vy -= impulse * inverseA * tangentY;
       b.vx += impulse * inverseB * tangentX;
       b.vy += impulse * inverseB * tangentY;
-      a.spin -= (2 * impulse * inverseA) / a.radius;
-      b.spin -= (2 * impulse * inverseB) / b.radius;
+      a.spin -= (2 * impulse * inverseA) / reach(a);
+      b.spin -= (2 * impulse * inverseB) / reach(b);
     }
   }
 
   for (const shard of shards) {
     const distance = Math.hypot(shard.x, shard.y);
 
-    if (distance === 0 || distance < CHAMBER_RADIUS - shard.radius - CONTACT_SLOP) {
+    if (distance === 0 || distance < CHAMBER_RADIUS - reach(shard) - CONTACT_SLOP) {
       continue;
     }
 
     // The wall is fixed, so its surface contributes nothing to the slip.
     const tangentX = -shard.y / distance;
     const tangentY = shard.x / distance;
-    const slip = shard.vx * tangentX + shard.vy * tangentY + shard.spin * shard.radius;
+    const slip = shard.vx * tangentX + shard.vy * tangentY + shard.spin * reach(shard);
     const change = (-FRICTION * slip) / 3;
 
     shard.vx += change * tangentX;
     shard.vy += change * tangentY;
-    shard.spin += (2 * change) / shard.radius;
+    shard.spin += (2 * change) / reach(shard);
   }
 }
 
-/** Chips are glass all the way through, so mass goes with area. */
+/**
+ * Chips are glass all the way through, so mass goes with area — the area of the
+ * glass rather than of the circle it was cut from, or a sliver would weigh what
+ * the pebble it came off does.
+ */
 function mass(shard: Shard): number {
-  return shard.radius * shard.radius;
+  return reach(shard) ** 2;
 }
 
 /** Scratch space for the previous positions, so no allocation happens per frame. */
@@ -251,7 +268,7 @@ function separate(shards: Shard[]): void {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const distance = Math.hypot(dx, dy);
-      const minimum = a.radius + b.radius;
+      const minimum = reach(a) + reach(b);
 
       if (distance >= minimum || distance === 0) {
         continue;
@@ -322,7 +339,7 @@ function hold(
 
 /** Keeps a chip inside the chamber wall, and lets the wall grip it. */
 function confine(shard: Shard): void {
-  const limit = CHAMBER_RADIUS - shard.radius;
+  const limit = CHAMBER_RADIUS - reach(shard);
 
   if (limit <= 0) {
     shard.x = 0;

@@ -12,6 +12,7 @@ function chips(count: number, radius = 0.1): Shard[] {
     vx: 0,
     vy: 0,
     radius,
+    girth: 1,
     rotation: 0,
     spin: 0,
     colorStop: 0.5,
@@ -308,6 +309,59 @@ describe('weight', () => {
     updateChamber([big, small], { dt: 1 / 60, angle: 0 });
 
     expect(weigh()).toBeCloseTo(before, 6);
+  });
+});
+
+describe('girth', () => {
+  /** Mean gap between neighbouring pieces, as a share of a piece's own width. */
+  const airBetween = (glass: Shard[]) => {
+    const gaps: number[] = [];
+
+    for (let i = 0; i < glass.length; i += 1) {
+      const a = glass[i]!;
+      let nearest = Infinity;
+
+      for (let j = 0; j < glass.length; j += 1) {
+        if (i !== j) {
+          const b = glass[j]!;
+          nearest = Math.min(nearest, Math.hypot(b.x - a.x, b.y - a.y));
+        }
+      }
+
+      gaps.push(nearest / (a.radius * 2));
+    }
+
+    return gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+  };
+
+  // A sliver cut out of a photograph fills a fraction of the circle it was cut
+  // to. Collide with the circle and it holds everything a sliver's length away
+  // in every direction: the pile settles full of air, and pieces come to rest
+  // on nothing at all.
+  it('packs cut-out slivers close instead of leaving air around them', () => {
+    const asCircles = chips(18, 0.16);
+    const asGlass = chips(18, 0.16).map((shard) => ({ ...shard, girth: 0.4 }));
+
+    settleChamber(asCircles, 0, 20);
+    settleChamber(asGlass, 0, 20);
+
+    expect(airBetween(asGlass)).toBeLessThan(airBetween(asCircles) * 0.6);
+  });
+
+  it('still keeps them inside the wall, and out of each other', () => {
+    const glass = chips(18, 0.16).map((shard) => ({ ...shard, girth: 0.4 }));
+
+    settleChamber(glass, 0, 20);
+
+    for (const [i, a] of glass.entries()) {
+      expect(Math.hypot(a.x, a.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-9);
+
+      for (const b of glass.slice(i + 1)) {
+        const gap = Math.hypot(b.x - a.x, b.y - a.y) - (a.radius * a.girth + b.radius * b.girth);
+
+        expect(gap).toBeGreaterThan(-0.03);
+      }
+    }
   });
 });
 

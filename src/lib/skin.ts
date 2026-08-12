@@ -43,6 +43,26 @@ export interface SkinCut {
   readonly source: Rect;
   /** The object's proportions, longest side 1. Keeps a splinter a splinter. */
   readonly extent: Point;
+  /**
+   * How far the object reaches on average, in the outline's units.
+   *
+   * The chamber collides on this rather than on the circle the object was cut
+   * to. A sliver fills a fraction of its circle, and holding everything a
+   * sliver's length away in every direction leaves the pile settling full of
+   * air with pieces resting on nothing.
+   *
+   * Half the object's mean width over all directions, which by Cauchy's formula
+   * is its perimeter over `2 * pi`. A disc gives back its own radius; a needle
+   * gives about two thirds of its half-length.
+   *
+   * Neither of the two obvious alternatives works. The radius of an equal-area
+   * disc is a sixth of a needle's length, and the mean distance from its middle
+   * to its edge is smaller still: at either of those two needles lie almost
+   * entirely on top of one another, and the pile does not settle full of air,
+   * it collapses into a knot. The mean width is what a single circle can
+   * honestly say about a shape that is not one.
+   */
+  readonly girth: number;
 }
 
 export interface SkinPatches {
@@ -95,6 +115,15 @@ const MIN_OBJECT = 0.002;
  * would be a chamber of identical shapes.
  */
 const MAX_OBJECT = 0.55;
+
+/**
+ * Bounds on {@link SkinCut.girth}.
+ *
+ * The floor keeps a hair-thin splinter from letting the pile pass through
+ * itself; the ceiling is a circle, which is as much as anything can reach.
+ */
+const GIRTH_MIN = 0.5;
+const GIRTH_MAX = 1;
 
 /** Fewest objects worth switching to. Below this the patch path reads better. */
 const MIN_OBJECTS = 3;
@@ -338,7 +367,20 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
       height: height * acrossY,
     },
     extent: { x: width / (half * 2), y: height / (half * 2) },
+    girth: Math.min(GIRTH_MAX, Math.max(GIRTH_MIN, perimeter(outline) / (2 * Math.PI))),
   };
+}
+
+/** Length of a closed polygon's edge, all the way round. */
+function perimeter(outline: readonly Point[]): number {
+  let total = 0;
+
+  for (const [index, at] of outline.entries()) {
+    const next = outline[(index + 1) % outline.length]!;
+    total += Math.hypot(next.x - at.x, next.y - at.y);
+  }
+
+  return total;
 }
 
 /** A stable index into a list from a piece's fixed number. */

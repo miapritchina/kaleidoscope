@@ -68,6 +68,30 @@
   opacity: 0.85;
 }
 
+/* Along the bottom, where nothing else is: three columns of numbers is wider
+   than the gap beside the toolbar, and a readout that runs under the buttons
+   is a readout with its last column missing. Faint, in the same register as
+   they are — an instrument laid on the picture rather than part of it — and
+   monospaced so the columns hold still as the numbers change. */
+.readout {
+  position: absolute;
+  z-index: 2;
+  inset-block-end: calc(0.75rem + env(safe-area-inset-bottom));
+  inset-inline-start: calc(0.75rem + env(safe-area-inset-left));
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: var(--radius);
+  background: rgb(7 7 13 / 0.55);
+  backdrop-filter: blur(8px);
+  color: var(--text);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  white-space: pre;
+  pointer-events: none;
+}
+
 .emptyState {
   position: absolute;
   inset-block-start: 50%;

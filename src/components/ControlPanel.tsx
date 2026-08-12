@@ -140,29 +140,14 @@ export function ControlPanel({
         />
 
         {settings.source === 'objects' && (
-          <>
-            <RangeField
-              label="Pieces"
-              value={settings.shards}
-              limit={LIMITS.shards}
-              onChange={(value) => {
-                onChange('shards', value);
-              }}
-            />
-
-            {/* Also a pinch. The gesture is the better way to reach it and it
-                is not a discoverable one, and a chamber packed with pieces too
-                big to see past has no gesture-shaped way out of itself. */}
-            <RangeField
-              label="Piece size"
-              value={settings.sourceScale}
-              limit={LIMITS.sourceScale}
-              format={(value) => `${value.toFixed(2)}x`}
-              onChange={(value) => {
-                onChange('sourceScale', value);
-              }}
-            />
-          </>
+          <RangeField
+            label="Pieces"
+            value={settings.shards}
+            limit={LIMITS.shards}
+            onChange={(value) => {
+              onChange('shards', value);
+            }}
+          />
         )}
 
         {/* One photo, wanted either to mirror or to cut the pieces out of. */}

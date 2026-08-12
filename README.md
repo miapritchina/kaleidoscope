@@ -215,7 +215,6 @@ src/
 | ---------------- | ---------------------- | ---------------------------------------------- |
 | Source           | a set, a photo, camera | What the mirrors are pointed at                |
 | Pieces           | 4–60                   | How many are in the chamber                    |
-| Piece size       | 0.4x–2.5x              | How big they are; also a pinch                 |
 | Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
 | Mirror angle     | 0–120°                 | Which way up the tube is being held            |
 | Real gravity     | on/off                 | Let the phone's position say which way is down |
@@ -228,9 +227,8 @@ cannot reach is how wide the mirrors themselves are, so that is a slider. They w
 control once, which meant widening the tube also enlarged the picture inside it — two things
 at once and no way to have either alone.
 
-Piece size has a slider as well as the pinch. A gesture is the better way to reach it and it
-is not a discoverable one, and a chamber packed with pieces too big to see past has no
-gesture-shaped way out of itself.
+How big the pieces are has no slider: it is a pinch, or a scroll over the artwork. It still
+travels in a shared link.
 
 There is no mirror count, because a tube has three, and no spin control, because it is
 swiped.
@@ -294,6 +292,23 @@ shoves the bead just as far, and a chamber of mixed sizes then behaves as though
 weighed the same. Mass goes with area, so a piece twice across is four times as hard to
 shift. It is a push the two pieces give each other, so it cannot move the pair as a whole —
 weighting it by anything but mass breaks that, and there is a test on the invariant.
+
+**Girth.** A piece is collided on how far it reaches on average, not on the circle it was cut
+to fit. This matters as soon as the pieces come out of a photograph, because a cut-out sliver
+fills a fraction of its circle: collide with the circle and it holds everything a sliver's
+length away in every direction, so the pile settles full of air and pieces come to rest on
+nothing at all. That is exactly what a picture of glass splinters looked like.
+
+The measure is **half the object's mean width over all directions**, which by Cauchy's formula
+is its perimeter over `2 * pi`. A disc gives back its own radius; a needle gives about two
+thirds of its half-length. Neither of the two obvious alternatives works — the radius of an
+equal-area disc is a sixth of a needle's length, and the mean distance from its middle to its
+edge is smaller still, and at either of those two needles lie almost on top of one another:
+the pile does not settle full of air, it collapses into a knot. Both were tried. `lib/skin.ts`
+measures it off the traced outline, and the drawn size is unchanged either way.
+
+Note that this makes a chamber of slivers **emptier** than a chamber of pebbles for the same
+count, because there is less glass in it — which is true, and **Pieces** is the control for it.
 
 **Friction.** A contact also resists sliding, up to `0.45` times how hard the two are being
 pressed together — Coulomb's number for glass on glass, roughly, and these are ground and
@@ -503,13 +518,22 @@ gravity** is switched on, since Safari's prompt covers motion and orientation to
 
 Everything on screen is one triangle and its reflections, and the triangle itself is
 invisible by design — which makes the figure hard to reason about when it misbehaves. **Show
-the mirrors** outlines it, at the centre of the view where the source is painted, and draws
+the mirrors** outlines it, in the middle of the view where the source is painted, and draws
 an arrow for gravity: straight down the screen until the instrument is tilted, and then
 wherever the room says. Between them they answer most of "why is it doing that".
 
 The triangle turns with the framework, being part of it. The arrow does not: the floor is
 where it is however the instrument is held, and watching it stay put while the figure turns
 under it is most of what it is for.
+
+Along the bottom it also writes out **what the device is being told**: the accelerometer's
+`x`, `y` and `z`, the orientation's `α`, `β` and `γ`, and — beside them — where the app has
+decided down is. The overlay on the canvas says what the instrument thinks; this says what it
+was handed. When those two disagree, the difference between them is the bug, which is how the
+sign that sent gravity to the wrong edge was pinned down. `lib/readings.ts` formats it, signed
+and padded, so a column does not jump sideways every time a value crosses zero, and it is
+refreshed eight times a second rather than sixty — a readout changing at sensor speed cannot
+be read at all.
 
 Every stroke is drawn twice, broad and pale then narrow and coloured. The overlay lies over
 a picture that could be any colour, including its own, and a hairline in one ink is legible

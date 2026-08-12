@@ -7,7 +7,9 @@ import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
 import { useImageUrl } from './hooks/useImageUrl';
 import { useDeviceTilt } from './hooks/useDeviceTilt';
+import { useDeviceReadings } from './hooks/useDeviceReadings';
 import { useShake } from './hooks/useShake';
+import { readoutLines } from './lib/readings';
 import { usePrefersReducedMotion } from './hooks/useMediaQuery';
 import { useSettings } from './hooks/useSettings';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
@@ -31,6 +33,7 @@ export function App() {
   const { isPlaying } = resolvePlayback({ source: settings.source, prefersReducedMotion });
 
   const tilt = useDeviceTilt(settings.tilt);
+  const readings = useDeviceReadings(settings.debug);
   const image = useImageSource();
   // The video element lives here so it can sit in the document — Safari will
   // not play a detached one — while the hook owns the stream bound to it.
@@ -218,6 +221,16 @@ export function App() {
         />
 
         {emptyState ? <p className={styles.emptyState}>{emptyState}</p> : null}
+
+        {/* What the instrument is being told, next to what it has decided.
+            The overlay on the canvas says where it thinks down is; this says
+            what the sensors actually read, and the difference between the two
+            is where a bug would be. */}
+        {settings.debug && (
+          <pre className={styles.readout} aria-label="Device readings">
+            {readoutLines(readings, settings.tilt ? (tilt.angleRef.current ?? 0) : null).join('\n')}
+          </pre>
+        )}
 
         {/* Hidden rather than absent: Safari refuses to play a video element
             that is not in the document, and display:none can pause playback. */}

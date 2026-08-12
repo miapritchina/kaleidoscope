@@ -2,7 +2,7 @@ import { createChipSprites, type ChipSprites } from './chips';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
-import { DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
+import { applyCutGirth, DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import {
@@ -162,6 +162,10 @@ export class KaleidoscopeRenderer {
   #patchesFor: CanvasImageSource | null = null;
   #patchesSize = '';
 
+  /** Which picture and which scene the pieces were last sized against. */
+  #girthFor: SkinPatches | null = null;
+  #girthOn: Scene | null = null;
+
   constructor(
     canvas: HTMLCanvasElement,
     createWedgeCanvas: () => HTMLCanvasElement = defaultCanvas,
@@ -260,6 +264,16 @@ export class KaleidoscopeRenderer {
     // chose.
     const surface = isMediaReady(skin) ? skin : null;
     const patches = surface ? this.#patchesOf(surface) : null;
+
+    // What each piece is cut to is what it should collide on, and that is
+    // settled by the picture rather than by the frame. Applied here because
+    // this is where the two meet: the scene knows nothing about pictures and
+    // the picture knows nothing about the scene.
+    if (this.#girthFor !== patches || this.#girthOn !== scene) {
+      this.#girthFor = patches;
+      this.#girthOn = scene;
+      applyCutGirth(scene.shards, patches);
+    }
 
     const source: WedgeSource = {
       scene,
