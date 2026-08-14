@@ -70,6 +70,26 @@ describe('useSettings', () => {
     window.history.replaceState(null, '', '/');
   });
 
+  /**
+   * Writes settings the way a previous visit would have left them.
+   *
+   * Goes through the hook to learn the current version rather than naming it,
+   * so that moving the version — which is a thing releases are meant to do —
+   * does not leave these tests asserting against a number nobody updated.
+   */
+  function store(settings: Settings): void {
+    renderHook(() => useSettings()).unmount();
+
+    const written = JSON.parse(window.localStorage.getItem('kaleidoscope:settings') ?? '{}') as {
+      version: number;
+    };
+
+    window.localStorage.setItem(
+      'kaleidoscope:settings',
+      JSON.stringify({ version: written.version, settings }),
+    );
+  }
+
   it('starts from the defaults', () => {
     const { result } = renderHook(() => useSettings());
 
@@ -106,16 +126,46 @@ describe('useSettings', () => {
   });
 
   it('prefers the url over stored settings', () => {
-    window.localStorage.setItem(
-      'kaleidoscope:settings',
-      JSON.stringify({ ...DEFAULT_SETTINGS, seed: 'stored' }),
-    );
+    store({ ...DEFAULT_SETTINGS, seed: 'stored' });
     window.history.replaceState(null, '', '/?seed=shared&sourceScale=1.5');
 
     const { result } = renderHook(() => useSettings());
 
     expect(result.current.settings.seed).toBe('shared');
     expect(result.current.settings.sourceScale).toBe(1.5);
+  });
+
+  // What a visitor who has been here before gets when a release changes what
+  // the app opens on. Their saved set is a perfectly valid one, so nothing
+  // else would ever let it go, and they would never see the new one.
+  it('lets go of settings saved by another release', () => {
+    window.localStorage.setItem(
+      'kaleidoscope:settings',
+      JSON.stringify({ version: 1, settings: { ...DEFAULT_SETTINGS, seed: 'from-before' } }),
+    );
+
+    const { result } = renderHook(() => useSettings());
+
+    expect(result.current.settings).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('lets go of settings saved before there was a version', () => {
+    window.localStorage.setItem(
+      'kaleidoscope:settings',
+      JSON.stringify({ ...DEFAULT_SETTINGS, seed: 'from-before' }),
+    );
+
+    const { result } = renderHook(() => useSettings());
+
+    expect(result.current.settings).toEqual(DEFAULT_SETTINGS);
+  });
+
+  it('keeps settings saved by this release', () => {
+    store({ ...DEFAULT_SETTINGS, seed: 'mine' });
+
+    const { result } = renderHook(() => useSettings());
+
+    expect(result.current.settings.seed).toBe('mine');
   });
 
   it('resets back to the defaults', () => {

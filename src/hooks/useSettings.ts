@@ -11,6 +11,29 @@ import {
 
 const STORAGE_KEY = 'kaleidoscope:settings';
 
+/**
+ * Bumped when a release changes what the app should open on.
+ *
+ * Saved settings are otherwise kept forever, and every field in them is
+ * individually valid, so nothing about them ever looks wrong: a phone that
+ * opened the app once, months ago, keeps opening on the set it had then. Adding
+ * new sets and pointing the default at one of them changes nothing for the only
+ * people who have already been here. There is no way to tell "chose this" from
+ * "was given this" after the fact — so this number says which release the saved
+ * settings were formed under, and settings from any other release are let go.
+ *
+ * The cost is a visitor losing a mirror angle they liked, once, at a release
+ * that moves this. That is why it is a number to move deliberately and not a
+ * hash of the defaults: most releases should leave saved settings alone.
+ */
+const STORAGE_VERSION = 2;
+
+/** How settings are written down: the release they were formed under, and them. */
+interface StoredSettings {
+  version: number;
+  settings: Settings;
+}
+
 export type SettingsAction =
   | { type: 'set'; key: keyof Settings; value: Settings[keyof Settings] }
   | { type: 'randomize' }
@@ -49,7 +72,9 @@ export function useSettings(): UseSettingsResult {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      const stored: StoredSettings = { version: STORAGE_VERSION, settings };
+
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
     } catch {
       // Private browsing or a full quota: persistence is a nicety, not a feature.
     }
@@ -85,7 +110,15 @@ function readInitialSettings(): Settings {
     const stored = window.localStorage.getItem(STORAGE_KEY);
 
     if (stored) {
-      const restored = sanitizeSettings(JSON.parse(stored));
+      const raw: unknown = JSON.parse(stored);
+
+      // Settings from another release — including every one written before
+      // there was a version to write — are not restored. See STORAGE_VERSION.
+      if (!isCurrent(raw)) {
+        return { ...DEFAULT_SETTINGS };
+      }
+
+      const restored = sanitizeSettings(raw.settings);
 
       // A photo and a camera stream cannot be restored: the file is gone and
       // reopening on `camera` would fire a permission prompt nobody asked for
@@ -97,6 +130,20 @@ function readInitialSettings(): Settings {
   }
 
   return { ...DEFAULT_SETTINGS };
+}
+
+/**
+ * Whether something read out of storage was written by this release.
+ *
+ * Nothing here trusts the `settings` it carries — that still goes through
+ * {@link sanitizeSettings}. This only asks whether it is worth reading at all.
+ */
+function isCurrent(raw: unknown): raw is StoredSettings {
+  return (
+    typeof raw === 'object' &&
+    raw !== null &&
+    (raw as { version?: unknown }).version === STORAGE_VERSION
+  );
 }
 
 /**

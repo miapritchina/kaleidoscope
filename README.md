@@ -473,6 +473,14 @@ renderer. `Input` is deliberately absent from the URL and reset on load — a li
 carry the recipient's photo, and reopening on `camera` would fire a permission prompt
 nobody asked for.
 
+Stored settings carry the release they were written under, and a release that changes what
+the app opens on moves that number so they are let go once. Every field in a saved set of
+settings is individually valid — an object set chosen a year ago is still a real set — so
+nothing else would ever release them, and someone who had been here before would keep
+opening on the old picture while the new ones sat unseen behind the chooser. The cost is
+that the same release forgets a mirror angle they liked, which is why the number moves
+deliberately and most releases leave it alone.
+
 ## Photo and camera
 
 Choose **Photo** and pick a file, or drop one anywhere on the artwork.
