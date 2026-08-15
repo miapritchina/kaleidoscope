@@ -1,4 +1,5 @@
 import { createChipSprites, type ChipSprites } from './chips';
+import { Compositor } from './compositor';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
@@ -74,6 +75,19 @@ const SEAM_ALPHA = 0.22;
 
 /** Fraction of the smaller edge the barrel leaves completely clear. */
 const VIGNETTE_CLEAR = 0.16;
+
+/**
+ * How far apart the channels are pulled at the very rim, in device pixels.
+ *
+ * Glass disperses, and a tube of it disperses most where the light crosses it
+ * most steeply, which is why the outer reflections in a photograph down a real
+ * kaleidoscope have coloured edges and the middle does not. Small on purpose:
+ * enough to see at the rim of a phone and never enough to read as a fault.
+ *
+ * Costs two extra folds on every pixel that shows it, so it is a shader-only
+ * effect — the 2D path leaves it out rather than faking it.
+ */
+const RIM_DISPERSION = 1.4;
 
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
@@ -161,6 +175,16 @@ export class KaleidoscopeRenderer {
   #patches: SkinPatches | null = null;
   #patchesFor: CanvasImageSource | null = null;
   #patchesSize = '';
+
+  /**
+   * The shader, where there is one.
+   *
+   * Built on the first frame rather than in the constructor: a renderer is
+   * made before it has a size, and asking for a WebGL context costs a real
+   * allocation on the GPU that a test which never draws should not pay.
+   */
+  #shader: Compositor | null = null;
+  #shaderTried = false;
 
   /** Which picture and which scene the pieces were last sized against. */
   #girthFor: SkinPatches | null = null;
@@ -498,6 +522,10 @@ export class KaleidoscopeRenderer {
   #compositeTiling(side: number, angle: number): void {
     const ctx = this.#ctx;
 
+    if (this.#compositeWithShader(side, angle)) {
+      return;
+    }
+
     this.#stampField(ctx, this.#width, this.#height, side, angle);
 
     // What the mirrors themselves cost, applied last because it applies to the
@@ -519,6 +547,76 @@ export class KaleidoscopeRenderer {
       ctx.fillStyle = vignette;
       ctx.fillRect(0, 0, this.#width, this.#height);
     }
+  }
+
+  /**
+   * Draws the whole figure with the shader, if there is one.
+   *
+   * Returns `false` when there is not — no WebGL2, or a context that has been
+   * lost — and the caller falls back to stamping hexagons. The two paths make
+   * the same figure; where they differ is written up in the README, and every
+   * difference is the shader being able to answer per pixel something the 2D
+   * path can only approximate over the whole view.
+   *
+   * The result is blitted onto the visible 2D canvas rather than drawn straight
+   * to the screen. That keeps one surface holding the finished frame, which is
+   * what the debug overlay draws onto and what the PNG save reads back.
+   */
+  #compositeWithShader(side: number, angle: number): boolean {
+    if (!this.#shaderTried) {
+      this.#shaderTried = true;
+      // Its own surface, not one from the wedge factory: that factory makes
+      // the 2D surfaces this class draws onto, and a canvas that has been
+      // given a WebGL context can never be given a 2D one.
+      this.#shader = Compositor.create();
+    }
+
+    const shader = this.#shader;
+
+    if (!shader || shader.lost) {
+      // A lost context does not come back on its own, and re-creating one on
+      // a machine that has just dropped its GPU is how you lose it again.
+      this.#shader = null;
+
+      return false;
+    }
+
+    shader.resize(this.#width, this.#height);
+
+    const drawn = shader.draw({
+      source: this.#wedge,
+      bleed: SEAM_BLEED,
+      side,
+      angle,
+      centre: triangleCentre(side),
+      facets: FACET_EXPOSURE,
+      cell: CELL_EXPOSURE,
+      // Half, because the shader shades outwards from the middle of a join
+      // while the 2D path strokes a line of this width across it.
+      seamWidth: Math.max(1, side * SEAM_WIDTH) / 2,
+      seamAlpha: SEAM_ALPHA,
+      tint: MIRROR_TINT,
+      vignette: {
+        // The 2D gradient runs from a fraction of the shorter edge out to the
+        // corner; the shader works in fractions of that same reach.
+        clear: this.#radius > 0
+          ? (Math.min(this.#width, this.#height) * VIGNETTE_CLEAR) / this.#radius
+          : 0,
+        depth: VIGNETTE_DEPTH,
+      },
+      dispersion: RIM_DISPERSION,
+    });
+
+    if (!drawn) {
+      return false;
+    }
+
+    this.#ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.#ctx.globalCompositeOperation = 'source-over';
+    this.#ctx.globalAlpha = 1;
+    this.#ctx.drawImage(shader.canvas, 0, 0);
+
+    return true;
   }
 
   /**

@@ -11,37 +11,19 @@ unaffordable before it.
 
 ## The renderer
 
-### Move compositing to WebGL2
+### ~~Move compositing to WebGL2~~ — done
 
-The single decision everything else hangs off. Today the mirrors are made by
-drawing: six clipped triangles into a hexagon, that hexagon stamped across the
-field on a lattice. It is exact, and it is the reason the interesting effects
-are all out of reach — every one of them is per-pixel.
+`lib/compositor.ts` and `lib/fold.ts`. The figure is a fold rather than a
+drawing: each pixel is reflected back into the source triangle instead of each
+triangle being placed. See "The mirrors, folded instead of drawn" in the README
+for the arithmetic and the measurements.
 
-In a fragment shader the same figure is one fold. For each screen pixel, reflect
-its coordinates into the fundamental triangle and sample the source there. No
-hexagon, no stamping, no lattice, no seam bookkeeping, and it is *more* correct
-than what we do now: reflections stay exact at any zoom instead of resampling a
-pre-drawn hexagon.
+Everything **GL** below is now unblocked.
 
-What it unlocks: refraction, chromatic aberration, glitter, fluids, bloom, the
-glass bead, and depth of field — all of §2, §3 and most of §4 below.
-
-What it costs: `renderer.ts` is 925 lines and its tests are 410. The physics
-does not move — `lib/` stays plain TypeScript and the solver is untouched. The
-PNG save path needs `preserveDrawingBuffer` or a `readPixels` copy.
-
-Target WebGL2, which iOS Safari has had since version 15. Keep the 2D path as a
-fallback rather than deleting it.
-
-### Pick the thinnest library that does it
-
-The whole render is three passes: draw the chamber to a texture, fold and
-sample, then post-process. That is not a scene graph, and a scene-graph engine
-is mostly weight we would carry and not use.
-
-Unpacked sizes, as published — not what ships, which needs measuring against a
-real build before choosing:
+No library in the end. The whole render is three passes, which is not a scene
+graph, and a scene-graph engine would have been weight carried and not used —
+so it is raw WebGL2 and costs 4.7 KB gzipped. The sizes that were on the table,
+kept for whenever a later effect needs more than three passes:
 
 | | version | unpacked |
 | --- | --- | --- |
@@ -51,8 +33,9 @@ real build before choosing:
 | `three` | 0.185.1 | 23.2 MB |
 | `pixi.js` | 8.19.0 | 72.4 MB |
 
-`ogl` is the one to try first. Raw WebGL2 with our own small helper is also a
-real answer for three passes, and costs nothing at all.
+The 2D path stayed. It still paints the source triangle for both renderers, it
+still exports the seamless tile, and it is the whole renderer where WebGL2 is
+missing.
 
 ### Add a web app manifest
 
@@ -82,6 +65,11 @@ the mapping is right before any shader is written.
 Glass balls separate colour hard at the edge. Red and blue pull apart visibly in
 the outer third. Falls out of the bead mapping almost for free once it exists.
 **GL.**
+
+A first version of this already ships as part of the fold: the outer channels
+are read from folds of their own, so the split obeys the mirrors rather than
+smearing across them. It is small and tied to distance from the axis. The bead
+wants a much stronger version, tied to the sphere's own rim.
 
 ### The highlight on the bead
 
