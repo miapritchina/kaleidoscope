@@ -69,6 +69,65 @@ a matching margin. Without both halves of that, two antialiased clip edges each 
 boundary pixel about halfway and composite to roughly 75%, letting the backdrop show
 through as dark spokes.
 
+### The mirrors, folded instead of drawn
+
+Steps 4 and 5 above describe the figure being *drawn*. On any browser with WebGL2 it is
+not: `lib/compositor.ts` runs those two steps as a fragment shader, which asks the
+opposite question. Rather than working out where to put each triangle, it takes each pixel
+and folds it back into the one triangle the source is painted in. `lib/fold.ts` is that
+arithmetic, in plain TypeScript, and the shader is a transliteration of it — the two are
+meant to stay the same routine.
+
+The fold works in a skewed frame where the tiling is whole numbers. Writing
+
+    u = x/side - y/(side*sqrt(3))      v = 2y/(side*sqrt(3))      w = 1 - u - v
+
+makes `(w, u, v)` barycentric coordinates for the triangle's corners: the source triangle
+is exactly `u, v, w >= 0`, and every mirror in the plane is a line where one of them is a
+whole number. Three quantities then fall out as arithmetic rather than bookkeeping —
+**which mirror to reflect in** is whichever went negative, **how many mirrors were
+crossed** is how many whole numbers lie in between, and **how far the nearest join is** is
+the distance to the nearest whole number.
+
+Reflecting until all three are positive does terminate, but it takes a step per mirror
+crossed and the corner of a phone screen is thirty-odd mirrors out. So the point is first
+moved by a whole number of lattice steps — one jump, in closed form — which lands it in the
+hexagon around the origin, where the six triangles are a dihedral group of order six and
+nothing is more than three reflections from home.
+
+Three things come out better for it, and all three are the same thing: the shader knows per
+pixel what drawing only knows per triangle.
+
+- **The bounce count is exact.** The falloff below stops being a radial gradient standing
+  in for the count and becomes the count, so the dimming follows the tiling instead of a
+  circle drawn over it.
+- **The joins are measured, not stroked** — solid across the cut and softened over the last
+  pixel either side, at any size.
+- **Reflections stay sharp.** Nothing is resampled off a pre-drawn hexagon.
+
+It also buys a thing the 2D path cannot fake at all: a little dispersion at the rim, where
+the outer channels are read from folds of their own rather than nudged, so the split obeys
+the mirrors instead of smearing across them.
+
+The 2D path is not a legacy. It still paints the source triangle for both renderers, it
+still exports the seamless tile, and it is the whole renderer wherever WebGL2 is missing —
+so the shader is a branch, not a rewrite. The shader draws onto a surface of its own that
+is blitted onto the visible 2D canvas, which is what keeps the debug overlay and the PNG
+save working against one surface holding the finished frame.
+
+Both paths were driven over the same frozen frame — one scene, settled by a fixed number of
+fixed steps, so that the comparison is not of two different simulations. They agree
+everywhere except in the falloff: **mean difference 11 levels out of 255, worst 40, and
+100% of the frame within 32.** The falloff difference is deliberate and is the whole point
+— brightness against distance from the middle comes out at a ratio of 1.000 at the centre,
+0.955 halfway out and 0.859 at the far corner, because the true wall-crossing count is
+about 1.9x the estimate `2r / (side * sqrt(3))` the gradient uses. The rim is darker than it
+was, and it is darker because it should be.
+
+Timings were taken under a software rasteriser (SwiftShader), where per-pixel work is far
+more expensive than on any real GPU, so they bound the risk rather than predict a phone:
+157 ms/frame against the 2D path's 335 ms on the same machine.
+
 ### The mirrors are not free
 
 Each bounce loses a few percent of the light, and it loses it unevenly: a household mirror
@@ -76,12 +135,17 @@ is silvered behind a sheet of glass the light has to cross twice, and glass abso
 which is why the far end of a corridor of mirrors is green. The cell you are looking
 straight down has taken no bounces; every cell further out has taken more.
 
-That count is what sets the falloff. Neighbouring cells sit one lattice step apart and a
-step is two reflections, so a point `r` out from the middle has been through about
-`2r / (side * sqrt(3))` of them — and the view is multiplied by a radial gradient whose
-stops are `reflectance ^ bounces` per channel. Brightest and truest on the axis, dimmer and
-greener towards the rim, and it applies to the bare backdrop as much as to the pieces,
-because the mirrors do not know the difference.
+That count is what sets the falloff, and the view is multiplied by `reflectance ^ bounces`
+per channel. Brightest and truest on the axis, dimmer and greener towards the rim, and it
+applies to the bare backdrop as much as to the pieces, because the mirrors do not know the
+difference.
+
+Where the count comes from is the difference between the two paths. The shader has it
+exactly, per pixel, out of the fold. The 2D path cannot, so it estimates: neighbouring
+cells sit one lattice step apart and a step is two reflections, so a point `r` out has been
+through about `2r / (side * sqrt(3))` of them, drawn as a radial gradient. That estimate is
+low by about 1.9x, because walking outwards crosses all three families of mirror lines and
+not just the one the lattice step is measured along.
 
 ### The joins, and the barrel
 
