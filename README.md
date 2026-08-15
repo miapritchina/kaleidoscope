@@ -8,6 +8,8 @@ chamber of tumbling objects, a photo of your own, or a live camera feed. Built w
 Swipe across the artwork to turn the cell. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
 
+What might come next, and what it would cost, is in [ROADMAP.md](ROADMAP.md).
+
 ## Getting started
 
 ```bash
