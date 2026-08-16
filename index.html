@@ -14,6 +14,20 @@
     />
     <title>Kaleidoscope</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
+
+    <!-- Added to the home screen it opens without browser chrome, which is the
+         whole difference between a page about a kaleidoscope and a thing you
+         pick up and turn. `start_url` and `scope` in the manifest are relative
+         for the same reason `base` is: this is served from a project subpath. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Still read by iOS, which does not take the modern name above. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- The artwork already reaches under the status bar — see `viewport-fit`
+         above — so the bar is laid over it rather than given a strip of its own. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#000000" />
   </head>
   <body>
     <div id="root"></div>
