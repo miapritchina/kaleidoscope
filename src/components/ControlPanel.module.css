@@ -85,3 +85,73 @@
   color: var(--text-muted);
   font-size: 0.8rem;
 }
+
+/* The three kinds of instrument. Wide enough to hit with a thumb, and the
+   chosen one is filled rather than outlined so it reads at a glance. */
+.tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.tab {
+  display: grid;
+  justify-items: center;
+  gap: 0.25rem;
+  padding: 0.55rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 3px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.here {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.tabLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* The actions are icons now, so they want to be square rather than to stretch
+   across the panel the way a row of labelled buttons did. */
+.actions button {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-color: var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.actions button:hover {
+  background: var(--surface-input);
+}
+
+.build {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  text-align: center;
+  opacity: 0.75;
+}

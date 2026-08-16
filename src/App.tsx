@@ -306,13 +306,12 @@ export function App() {
           </div>
 
           <p className={styles.subtitle}>
-            Three mirrors and a chamber of objects. Swipe the artwork to turn it.
+            Swipe the artwork to turn it. Pinch to size the pieces.
           </p>
 
           <ControlPanel
             settings={settings}
             onChange={set}
-            onRandomize={randomize}
             onReset={reset}
             onSave={handleSave}
             onShare={handleShare}

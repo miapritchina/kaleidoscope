@@ -267,6 +267,14 @@ physically motivated. **2D.**
 
 ## Housekeeping
 
+### A Liquid tab
+
+The panel's three tabs — Shards, Photo, Camera — are the three instruments that
+exist. A fourth was asked for and is not here yet, because there is nothing to
+put behind it: an oil cell and a real fluid are both still on this list. When
+one of them lands it is a tab, not a checkbox, because a chamber of liquid is a
+different instrument and not a setting of the glass one.
+
 ### Replace or drop `bright-gems` and `cut-stones`
 
 The two remaining stand-ins, keyed out of flattened stock previews, not cleared
