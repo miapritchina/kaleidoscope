@@ -109,7 +109,9 @@ Brief specular hits on individual pieces as they tumble, alpha driven by each
 piece's `rotation` against a virtual light. One small radial gradient per lit
 piece. Makes a settling pile feel alive rather than merely animated. **2D.**
 
-### Glitter
+### ~~Glitter~~ — done
+
+`glitterAt` in `lib/compositor.ts`, behind a **Glitter** slider.
 
 Real glitter is thousands of tiny flat mirrors at random orientations, and it
 does not glow — it *flashes*, one flake at a time, as the angle between you, the

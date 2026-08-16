@@ -9,6 +9,7 @@ const CHANGES = [
   ['source', 'camera'],
   ['cameraFacing', 'user'],
   ['shards', 40],
+  ['glitter', 0.8],
   ['sourceScale', 1.5],
   ['debug', true],
   ['objects', 'custom'],

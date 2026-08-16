@@ -54,6 +54,7 @@ describe('sanitizeSettings', () => {
       source: DEFAULT_SETTINGS.source,
       cameraFacing: DEFAULT_SETTINGS.cameraFacing,
       shards: 30,
+      glitter: DEFAULT_SETTINGS.glitter,
       sourceScale: DEFAULT_SETTINGS.sourceScale,
       objects: DEFAULT_SETTINGS.objects,
       zoom: 1.5,

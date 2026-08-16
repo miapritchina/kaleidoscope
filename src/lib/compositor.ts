@@ -60,6 +60,10 @@ uniform vec3 uTint;
 uniform vec2 uVignette;
 /** How far apart the channels are pulled at the rim, in pixels. */
 uniform float uDispersion;
+/** How much glitter is in the chamber, and how coarse it is, in pixels. */
+uniform vec2 uGlitter;
+/** Which way the room's light is coming from, as the phone is being held. */
+uniform vec3 uLight;
 
 out vec4 fragColor;
 
@@ -165,6 +169,70 @@ float cellNoise(ivec2 cell) {
   return float(hash) / 4294967296.0;
 }
 
+/** Three unrelated numbers in [0, 1) from one pair of whole ones. */
+vec3 hash3(vec2 cell) {
+  uvec2 c = uvec2(ivec2(cell) + 4096);
+  uint h = c.x * 0x27d4eb2du ^ c.y * 0x165667b1u;
+  h = (h ^ (h >> 15)) * 0x2545f491u;
+  h ^= h >> 13;
+  uint a = h * 0x9e3779b9u;
+  uint b = a * 0x85ebca6bu;
+
+  return vec3(h & 0xffffu, a >> 16, b >> 16) / 65535.0;
+}
+
+/**
+ * Glitter suspended in the chamber.
+ *
+ * Real glitter is thousands of tiny flat mirrors lying at every angle, and it
+ * does not glow — it *flashes*, one flake at a time, as the angle between the
+ * eye, the flake and the light passes through alignment. Drawn as sparkly dots
+ * it always looks stuck on, because the flashes are not driven by anything. So
+ * each flake here gets a normal of its own and is lit properly: what makes them
+ * fire is uLight, which is where the room's light is coming from given how the
+ * phone is being held. Tip the phone and they go off in waves.
+ *
+ * Laid out in the source triangle's own frame, before the mirrors, so the same
+ * flake appears in all six reflections of a hexagon exactly as a real speck in
+ * a real chamber would. One flake per square of a grid, placed away from the
+ * edges so a pixel only ever has to look at the square it is in.
+ */
+vec3 glitterAt(vec2 point) {
+  if (uGlitter.x <= 0.0) {
+    return vec3(0.0);
+  }
+
+  vec2 cell = floor(point / uGlitter.y);
+  vec3 dice = hash3(cell);
+  // Kept inside the middle of its square, so no flake straddles a boundary.
+  vec2 flake = (cell + 0.25 + dice.xy * 0.5) * uGlitter.y;
+  float spread = length(point - flake) / (uGlitter.y * 0.16);
+
+  if (spread > 1.0) {
+    return vec3(0.0);
+  }
+
+  // A flat flake at some angle. Squared, so most lie nearly face up and only a
+  // few stand well over — which is what settles how many are alight at once.
+  // Spread evenly over a wide cone instead, and with a specular this sharp,
+  // essentially none of them ever line up and the whole thing is invisible.
+  float lean = dice.z * dice.z * 1.1;
+  float turn = dice.x * 6.2831853;
+  vec3 normal = normalize(vec3(sin(lean) * cos(turn), sin(lean) * sin(turn), cos(lean)));
+  // The eye is straight ahead, so the half-vector is the light tipped halfway.
+  // Not called "half", which GLSL ES reserves.
+  vec3 midway = normalize(uLight + vec3(0.0, 0.0, 1.0));
+  // High, because a flake is a mirror and not a matte speck: dark until it is
+  // nearly right, then very bright. This number and the lean above are one
+  // decision — together they set what share of the flakes are lit at any
+  // moment, and a few percent is what reads as glitter rather than as frost.
+  float lit = pow(max(dot(normal, midway), 0.0), 90.0);
+  // Round, and soft at the edge, so it reads as a point of light and not a disc.
+  float shape = 1.0 - spread * spread;
+
+  return vec3(lit * shape * shape * uGlitter.x);
+}
+
 /** Where a screen pixel lands in the field: the view's placement, undone. */
 vec2 toField(vec2 pixel) {
   vec2 fromMiddle = pixel - uResolution * 0.5;
@@ -229,6 +297,11 @@ void main() {
   float join = 1.0 - smoothstep(uSeam.x - 0.5, uSeam.x + 0.5, folded.seam);
   colour *= 1.0 - join * uSeam.y;
 
+  // Added before the mirrors take their cut, because the glitter is inside the
+  // chamber: a flake seen six bounces out has been through six mirrors, and
+  // dims and greens along with everything else at that depth.
+  colour += glitterAt(folded.point);
+
   // What the mirrors take out of the light, at the count of bounces this pixel
   // actually took. A mirror is not free: silvered behind glass the light
   // crosses twice, a few percent goes each time, and the red goes fastest —
@@ -274,6 +347,12 @@ export interface CompositeOptions {
   vignette: { clear: number; depth: number };
   /** How far apart the channels are pulled at the rim, in device pixels. */
   dispersion: number;
+  /** How much glitter is in the chamber, from none to plenty. */
+  glitter: number;
+  /** How far apart the flakes are, in device pixels. */
+  grain: number;
+  /** Which way the room's light comes from, given how the phone is held. */
+  light: { x: number; y: number; z: number };
 }
 
 /**
@@ -425,6 +504,8 @@ export class Compositor {
     this.#set3f('uTint', options.tint.r, options.tint.g, options.tint.b);
     this.#set2f('uVignette', options.vignette.clear, options.vignette.depth);
     this.#set1f('uDispersion', options.dispersion);
+    this.#set2f('uGlitter', options.glitter, options.grain);
+    this.#set3f('uLight', options.light.x, options.light.y, options.light.z);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
