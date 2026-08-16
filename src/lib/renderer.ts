@@ -639,6 +639,19 @@ export class KaleidoscopeRenderer {
         z: 1,
       },
       bead: settings.bead,
+      // The triangle's middle, for both kinds of source.
+      //
+      // Not right for a photograph, and known not to be: `drawMedia` centres a
+      // picture on the apex, so the lens axis sits off the picture and a photo
+      // is seen through the edge of the marble rather than its centre — which
+      // a grid photograph shows plainly. Centring on the apex instead was
+      // tried and is worse: the apex sits two pixels into the surface, most of
+      // the picture is clipped away off-canvas around it, and inverting about
+      // it samples nothing at all — the whole figure goes black. Fixing it
+      // properly means giving the media somewhere to be drawn around that is
+      // actually on the surface, which is a change to the wedge and not to
+      // this line.
+      beadAt: triangleCentre(side),
       // The bead covers the objective, and the triangle is the window onto it,
       // so its rim is about half a triangle out from the middle.
       beadReach: side * 0.6,
