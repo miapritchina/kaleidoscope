@@ -166,6 +166,62 @@ Needs `ctx.filter` in 2D, which wants Safari 17+ and a fallback; free in **GL.**
 
 ## The chamber
 
+### Two things that were tried and did not work
+
+Both were proposed off the back of the WebGL move, on the reasoning that
+compositing had left the CPU and the freed budget should go into physics. Both
+were measured and neither paid. Written down because they are the obvious ideas,
+and without the numbers they will be had again.
+
+**A broad phase.** The solver tests every pair against every other, so cost goes
+up as the square: thirty pieces to four hundred is thirteen times the glass and
+fifty-two times the work. A uniform grid over the chamber does prune well — 71%
+of pairs at sixty pieces, 74% at four hundred. It was still **slower**: 0.435
+ms/frame against 0.332 at sixty pieces.
+
+The reason is that the pairs it prunes are two subtractions and a compare, while
+every pair it keeps costs a function call through the visitor. Measured with the
+grid disabled but the callback still in place, sixty pieces cost 0.427 ms — so
+almost all of the loss was indirection, not the grid. Inlining the traversal into
+the solver would recover that, and the whole thing would still only matter past a
+hundred-odd pieces, which is more than the instrument wants.
+
+**More substeps.** The theory is Macklin's, and it is why there are four rather
+than one. Going further does nothing:
+
+| substeps | ms/frame | overlap mean / 95th | creep |
+| --- | --- | --- | --- |
+| 2 | 0.184 | 6.75% / 19.3% | 0.025 |
+| 4 | 0.358 | 6.64% / 20.6% | 0.055 |
+| 8 | 0.677 | 6.68% / 21.4% | 0.144 |
+| 16 | 1.347 | 6.93% / 19.2% | 0.196 |
+
+Accuracy is flat and the pile jitters roughly eight times as much, for seven
+times the cost.
+
+### Make the solver rate-independent
+
+Which is what the table above is really saying. The constants are all *per pass*
+— `SEPARATION` resolves 80% of an overlap per pass, `FRICTION` converts 55% of
+the slip per pass, and the sleep thresholds are velocities. So changing the
+number of passes changes the material rather than refining the answer, and there
+is no reason for accuracy to improve.
+
+Creep rising is the same fact from the other end: velocity is read back as
+`(x - previous) / step`, so a correction of a fixed size reads back as a larger
+velocity when the step is smaller, and a settled pile stops falling under
+`SLEEP_SPEED` and never gets to sleep.
+
+The fix is to say those things in units that do not depend on the step —
+compliance for the contact rather than a fraction, a Coulomb coefficient against
+the actual normal impulse rather than a share of the separation, and sleep
+measured on how far a piece moved rather than how fast it is going. Then
+substeps would converge, and the chamber would be tunable in numbers that mean
+something.
+
+Worth doing, and not casually: it re-tunes a feel that took a long time to get
+right, and every number in it would move. **2D** — nothing here needs the GPU.
+
 ### An oil cell
 
 Many real kaleidoscopes suspend the glass in oil, and the pieces drift and
