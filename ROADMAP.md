@@ -50,6 +50,24 @@ so Android's circular mask lands inside the figure rather than on an edge.
 
 ## The glass bead
 
+### ~~A glass bead over the end~~ — done, as a model
+
+`throughBead` in `lib/compositor.ts`, behind a **Bead** slider that sits with
+the mirrors because it is an optic rather than a content — so it applies to the
+chamber, a photograph and the camera alike.
+
+It is a model and not a ray trace: a gain curve shaped to behave like the real
+thing, magnifying the middle and reaching far at the rim, rather than Snell's
+law across two surfaces. Two bugs worth remembering, both found by looking at
+the picture rather than at a number. Inverting about the triangle's corner
+instead of the middle of the painted source sent every coordinate negative, and
+the glass vanished into bare ground. And the wedge surface was only painted over
+the part the current zoom used, so anything the bead sampled beyond it came back
+as transparent black — holes punched clean through the figure.
+
+Still wanted: the specular highlight below, and a rim dispersion tied to the
+bead's own edge rather than to distance from the axis.
+
 ### Teleidoscope optics in camera mode
 
 The biggest single change in what the app *is*. A real teleidoscope has a solid

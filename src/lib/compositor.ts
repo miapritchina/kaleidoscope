@@ -64,6 +64,10 @@ uniform float uDispersion;
 uniform vec2 uGlitter;
 /** Which way the room's light is coming from, as the phone is being held. */
 uniform vec3 uLight;
+/** How much bead there is, and how far across the source it reaches. */
+uniform vec2 uBead;
+/** The middle of the painted source, which is what the bead is centred on. */
+uniform vec2 uBeadAt;
 
 out vec4 fragColor;
 
@@ -251,8 +255,47 @@ vec2 toField(vec2 pixel) {
  * Not called "sample", which GLSL ES 3.00 reserves. Backticks are out too:
  * this whole shader lives in a template literal.
  */
+/**
+ * Where a point is looking, once there is a glass bead in the way.
+ *
+ * A teleidoscope is a kaleidoscope with an open end and a solid glass sphere
+ * over it, and that sphere is not a decoration. Ordinary glass has an index
+ * near 1.5, which puts a sphere's focus just outside its own surface, so it
+ * gathers the whole hemisphere in front of it into a disc — upside down, and
+ * packed hardest at the rim, where the last few degrees of the world are
+ * squeezed into the last few pixels of glass.
+ *
+ * Both halves matter. Inverting without compressing is a rotation; compressing
+ * without inverting is a fisheye. It is the pair together that reads as looking
+ * into a marble.
+ *
+ * A model, not a ray trace: the gain is a curve shaped to behave like the real
+ * thing — middle magnified, rim reaching far — rather than derived from Snell's
+ * law across two surfaces. Applied in the source's own frame, so the bead sits
+ * in front of the mirrors as the real one does and every reflection shows the
+ * same beaded image rather than a bead of its own.
+ */
+vec2 throughBead(vec2 point) {
+  if (uBead.x <= 0.0) {
+    return point;
+  }
+
+  float reach = max(1.0, uBead.y);
+  // About the middle of what is painted, not about the triangle's corner.
+  // Inverting about the corner sends every coordinate negative, they clamp to
+  // the edge of the surface, and the glass disappears into bare ground — which
+  // is exactly what the first version of this did.
+  vec2 from = point - uBeadAt;
+  float across = length(from) / reach;
+  float gain = mix(1.0, 0.42 + 1.5 * across * across, uBead.x);
+
+  // Subtracted rather than added, because a sphere hands the world back upside
+  // down. That inversion is half of what makes it read as a marble.
+  return uBeadAt - from * gain;
+}
+
 vec3 readSource(Fold folded) {
-  vec2 at = (folded.point + uSurface.y) / uSurface.x;
+  vec2 at = (throughBead(folded.point) + uSurface.y) / uSurface.x;
 
   return texture(uSource, at).rgb;
 }
@@ -353,6 +396,10 @@ export interface CompositeOptions {
   grain: number;
   /** Which way the room's light comes from, given how the phone is held. */
   light: { x: number; y: number; z: number };
+  /** How much glass bead is over the end, from none to all. */
+  bead: number;
+  /** How far across the source the bead reaches, in device pixels. */
+  beadReach: number;
 }
 
 /**
@@ -506,6 +553,8 @@ export class Compositor {
     this.#set1f('uDispersion', options.dispersion);
     this.#set2f('uGlitter', options.glitter, options.grain);
     this.#set3f('uLight', options.light.x, options.light.y, options.light.z);
+    this.#set2f('uBead', options.bead, options.beadReach);
+    this.#set2f('uBeadAt', options.centre.x, options.centre.y);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 

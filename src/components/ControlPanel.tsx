@@ -36,24 +36,31 @@ export interface ControlPanelProps {
 }
 
 /**
- * The three kinds of kaleidoscope, as tabs.
+ * The two kinds of kaleidoscope, as tabs.
  *
  * They were a dropdown of every object set and both mirror sources in one list,
- * which asked the wrong question. "A chamber of glass, a photograph, or the
- * room in front of you" is a choice between three instruments; which picture
- * the chamber is loaded with is a choice you only make once you are holding the
- * first of them. Flattening the two into one list made the important choice
- * look like a detail among nine.
+ * which asked the wrong question. "A chamber of glass, or something from
+ * outside it" is a choice between instruments; which picture the chamber is
+ * loaded with is one you only make once you are holding the first. Flattening
+ * the two made the important choice look like a detail among nine.
  *
- * Tabs also carry their own settings, so a seed and a piece count are not on
- * screen while a photograph is being mirrored, and the panel is short enough to
- * read without scrolling.
+ * A still and a live feed are not two of those instruments. Both are the
+ * mirrors pointed at something that is not in the tube, differing only in
+ * whether it moves — so they share a tab and a switch, and the two most similar
+ * choices in the app are no longer the two furthest apart.
+ *
+ * Tabs carry their own settings, so a seed and a piece count are not on screen
+ * while a photograph is being mirrored.
  */
 const KINDS: { id: SourceId; label: string; icon: IconName }[] = [
   { id: 'objects', label: 'Shards', icon: 'shards' },
-  { id: 'image', label: 'Photo', icon: 'photo' },
-  { id: 'camera', label: 'Camera', icon: 'camera' },
+  { id: 'image', label: 'View', icon: 'photo' },
 ];
+
+/** The tab a source belongs to. Both mirror sources share one. */
+function tabFor(source: SourceId): SourceId {
+  return source === 'objects' ? 'objects' : 'image';
+}
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
   environment: 'Back',
@@ -111,7 +118,11 @@ export function ControlPanel({
     setSeedDraft(settings.seed);
   }
 
-  const kind = settings.source;
+  // A still and a live feed are the same instrument pointed at two things, so
+  // they share a tab and a switch rather than each having a tab of its own.
+  // Separating them put the two most similar choices furthest apart.
+  const kind = tabFor(settings.source);
+  const live = settings.source === 'camera';
   const tiltHint = TILT_HINTS[tiltStatus];
   const cameraHint = cameraMessage ?? CAMERA_HINTS[cameraStatus];
 
@@ -229,42 +240,52 @@ export function ControlPanel({
 
         {kind === 'image' && (
           <>
-            <FileField
-              label="Picture"
-              accept="image/*"
-              fileName={imageName}
-              buttonLabel={imageName ? 'Replace picture' : 'Choose picture'}
-              onSelect={onSelectImage}
-            />
-            <p className={styles.hint}>Or drop one onto the artwork.</p>
-            {imageName ? (
-              <button type="button" className={styles.ghost} onClick={onClearImage}>
-                Remove picture
-              </button>
-            ) : null}
-            {imageError ? (
-              <p className={styles.error} role="alert">
-                {imageError}
-              </p>
-            ) : null}
-          </>
-        )}
-
-        {kind === 'camera' && (
-          <>
-            <SelectField
-              label="Facing"
-              value={settings.cameraFacing}
-              options={CAMERA_OPTIONS}
-              onChange={(value) => {
-                onChange('cameraFacing', value);
+            <ToggleField
+              label="Live camera"
+              checked={live}
+              onChange={(checked) => {
+                onChange('source', checked ? 'camera' : 'image');
               }}
             />
-            {cameraHint ? (
-              <p className={styles.error} role="status">
-                {cameraHint}
-              </p>
-            ) : null}
+
+            {live ? (
+              <>
+                <SelectField
+                  label="Facing"
+                  value={settings.cameraFacing}
+                  options={CAMERA_OPTIONS}
+                  onChange={(value) => {
+                    onChange('cameraFacing', value);
+                  }}
+                />
+                {cameraHint ? (
+                  <p className={styles.error} role="status">
+                    {cameraHint}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <FileField
+                  label="Picture"
+                  accept="image/*"
+                  fileName={imageName}
+                  buttonLabel={imageName ? 'Replace picture' : 'Choose picture'}
+                  onSelect={onSelectImage}
+                />
+                <p className={styles.hint}>Or drop one onto the artwork.</p>
+                {imageName ? (
+                  <button type="button" className={styles.ghost} onClick={onClearImage}>
+                    Remove picture
+                  </button>
+                ) : null}
+                {imageError ? (
+                  <p className={styles.error} role="alert">
+                    {imageError}
+                  </p>
+                ) : null}
+              </>
+            )}
           </>
         )}
       </div>
@@ -287,6 +308,16 @@ export function ControlPanel({
           format={(value) => `${String(value)}°`}
           onChange={(value) => {
             onChange('angle', value);
+          }}
+        />
+
+        <RangeField
+          label="Bead"
+          value={settings.bead}
+          limit={LIMITS.bead}
+          format={(value) => (value === 0 ? 'none' : `${String(Math.round(value * 100))}%`)}
+          onChange={(value) => {
+            onChange('bead', value);
           }}
         />
 

@@ -473,10 +473,7 @@ export class KaleidoscopeRenderer {
   #paintWedge(source: WedgeSource, triangleSide: number): void {
     const { scene, settings, sprites, mode, media, skin, patches } = source;
     const ctx = this.#wedgeCtx;
-    // Only the triangle is ever sampled, so the source is painted over its side
-    // rather than the whole surface, which is sized for the largest zoom.
     const reach = Math.ceil(triangleSide);
-    const size = reach + SEAM_BLEED * 2;
 
     // Painted from scratch every frame. It cannot be built up by fading what is
     // already there and drawing over it: the pieces composite with `multiply`
@@ -486,7 +483,11 @@ export class KaleidoscopeRenderer {
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     ctx.fillStyle = GROUND;
-    ctx.fillRect(0, 0, size, size);
+    // The whole surface, not just the part this triangle uses. The bead samples
+    // outside the triangle's own reach, and anything it finds unpainted comes
+    // back as transparent black — which showed up as holes punched through the
+    // figure. Painting the surface costs nothing and has no such edge.
+    ctx.fillRect(0, 0, this.#wedge.width, this.#wedge.height);
 
     if (mode === 'media' && media) {
       ctx.save();
@@ -637,6 +638,10 @@ export class KaleidoscopeRenderer {
         y: Math.cos(tilt) * LIGHT_THROW,
         z: 1,
       },
+      bead: settings.bead,
+      // The bead covers the objective, and the triangle is the window onto it,
+      // so its rim is about half a triangle out from the middle.
+      beadReach: side * 0.6,
     });
 
     if (!drawn) {
