@@ -400,6 +400,8 @@ export interface CompositeOptions {
   bead: number;
   /** How far across the source the bead reaches, in device pixels. */
   beadReach: number;
+  /** Where the bead's axis sits, which is wherever the source is drawn around. */
+  beadAt: { x: number; y: number };
 }
 
 /**
@@ -554,7 +556,7 @@ export class Compositor {
     this.#set2f('uGlitter', options.glitter, options.grain);
     this.#set3f('uLight', options.light.x, options.light.y, options.light.z);
     this.#set2f('uBead', options.bead, options.beadReach);
-    this.#set2f('uBeadAt', options.centre.x, options.centre.y);
+    this.#set2f('uBeadAt', options.beadAt.x, options.beadAt.y);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 

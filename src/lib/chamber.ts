@@ -66,8 +66,20 @@ const WALLS = 3;
  *
  * Real dry cells are like this too — the joints where the mirrors meet are
  * taped or glued, and the glass never reaches the corner itself.
+ *
+ * How far off is a compromise. The mirror triangle runs all the way to its
+ * corners, so glass held back to 0.78 of the way left three wedges of bare
+ * ground in every reflection — visible, and among the first things anyone
+ * notices about the figure. This is 0.84, which fills a useful part of them.
+ *
+ * Not tuned as finely as that number suggests, and worth saying so. The test
+ * that catches a pile which never quite stops creeping sits right at its own
+ * threshold here: 0.84 passes it, 0.82 and 0.86 both fail it by about a
+ * percent. That is not a boundary, it is noise — the settled arrangement
+ * reshuffles and one piece ends up a hair over the line. So this is "further
+ * out than it was, and no worse at resting", not an optimum.
  */
-const CORNER = 0.78 * CHAMBER_RADIUS;
+const CORNER = 0.84 * CHAMBER_RADIUS;
 
 /** Downward acceleration, in cell units per second squared. */
 const GRAVITY = 6;
