@@ -23,19 +23,25 @@ import type { Bead } from './shape';
 /**
  * Circumradius of the cell, in cell units — the distance to each of its corners.
  *
- * The cell is the triangle between the mirrors, not a disc around it. Plenty of
- * kaleidoscopes are built each way: a wheel of glass turning behind a fixed
- * triangular window, or a dry cell whose walls *are* the three mirrors, with a
- * pane at either end. This is the second, and here it is the better of the two
- * by a long way — everything simulated is inside the triangle, so everything
- * simulated can be seen.
+ * The cell is the triangle between the mirrors, not a disc around it — and that
+ * is very likely wrong, so read the rest of this before building on it.
  *
- * A disc around the triangle looks reasonable and behaves badly. Only 41% of it
- * falls inside the triangle at all, and a settled pile lies along its rim, which
- * is outside the triangle everywhere except near the three corners. Measured on
- * the built app with ten pieces in the cell, the triangle came out between 0%
- * and 4% covered depending on which way the instrument was held: the glass fell
- * out of view, and turning the mirrors changed which corner it peeked into.
+ * Kaleidoscopes are built both ways: a dry cell whose walls *are* the three
+ * mirrors, with a pane at either end, or a round object cell capping a
+ * cylindrical tube with the mirror triangle inscribed in it. The second is the
+ * common one. This is the first.
+ *
+ * It was chosen on a measurement that does not support it. A disc around the
+ * triangle was tried and came out with the triangle between 0% and 4% covered,
+ * the glass falling into the crescent below the view — but that was measured
+ * with *ten pieces in the cell*. What it showed is that a nearly empty disc
+ * behaves badly, which is not the same as a disc behaving badly. A real object
+ * cell is packed, which is why a real kaleidoscope never shows bare margins.
+ *
+ * The bare margins this build does show — a strip along whichever wall the
+ * heap has fallen away from — are the same fact from the other side: the
+ * chamber is under-filled, and the triangular cell hides it by shrinking the
+ * space rather than fixing it. See ROADMAP.md, "Make the chamber round".
  */
 export const CHAMBER_RADIUS = 1.15;
 

@@ -191,6 +191,61 @@ Needs `ctx.filter` in 2D, which wants Safari 17+ and a fallback; free in **GL.**
 
 ## The chamber
 
+### Make the chamber round — next, and start here
+
+The object cell is a triangle whose walls are the mirrors. That is a real way
+to build a kaleidoscope, but it is the less common one, and it was chosen on a
+measurement that does not support it — see the note on `CHAMBER_RADIUS` in
+`lib/chamber.ts`. The usual build is a cylindrical tube with the mirror triangle
+inscribed in it and a **round** object cell capping the end, and that is what
+this should be.
+
+**Why it is the fix and not a preference.** A circle is rotation-invariant, so
+no wall can be the one the glass falls away from — which is the defect the owner
+photographed, a bare strip along whichever edge the heap has left. It also
+retires corner wedging, and with it `CORNER` and the compromise around it.
+
+**Why the earlier disc measurement is not evidence against it.** That test put
+*ten* pieces in a disc and found the triangle 0–4% covered. It showed that a
+nearly empty disc behaves badly. A real object cell is packed; that is why a
+real instrument never shows bare margins.
+
+**The cost, honestly.** The triangle sees `3*sqrt(3)/(4*pi)` = 41% of its own
+circumcircle, so filling the view takes appreciably more glass than 30–60
+pieces. That runs straight into the solver being `O(n^2)`:
+
+| pieces | ms/frame |
+| --- | --- |
+| 30 | 0.16 |
+| 60 | 0.33 |
+| 120 | 0.95 |
+| 250 | 3.55 |
+| 400 | 8.22 |
+
+So this is three changes that only work together: **round cell**, **more
+pieces**, and **a broad phase to afford them**. The broad phase was built once
+and reverted — it pruned 71% of pairs and was still slower, because every pair
+it kept went through a visitor callback. Build it again with the traversal
+inlined into `separate` and `tumble`, not behind a closure. The measurements are
+under "Two things that were tried and did not work" below.
+
+**Verifying it.** Two rules, both learned the hard way in this repo:
+
+1. Never compare across page loads. The physics settles differently each time,
+   so two loads are two different piles of glass and the difference is noise.
+   Render one settled scene repeatedly and change only the thing under test.
+2. Look at the picture. Two separate harnesses reported "no difference" while
+   the render was plainly broken — one was comparing reloads, the other was
+   rendering an empty chamber. A number that agrees with a broken image is
+   measuring the wrong thing.
+
+**While in here:** the bead's axis is the triangle's middle, which is wrong for
+a photograph, because `drawMedia` centres a picture on the apex. Centring on the
+apex is worse — most of the picture is clipped off-canvas around it and the
+figure goes black. It needs the media given somewhere on the surface to be drawn
+around. A grid photograph shows the fault immediately and is the test to use.
+
+
 ### Two things that were tried and did not work
 
 Both were proposed off the back of the WebGL move, on the reasoning that
