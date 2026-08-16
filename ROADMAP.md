@@ -37,11 +37,16 @@ The 2D path stayed. It still paints the source triangle for both renderers, it
 still exports the seamless tile, and it is the whole renderer where WebGL2 is
 missing.
 
-### Add a web app manifest
+### ~~Add a web app manifest~~ — done
 
-Free, quick, and it makes the thing feel like an instrument instead of a web
-page: added to the home screen it opens full screen with no browser chrome.
-**2D.**
+`public/manifest.webmanifest`. Added to the home screen it opens with no browser
+chrome, which is the difference between a page about a kaleidoscope and a thing
+you pick up and turn.
+
+The icon came with it. What was there was a placeholder logo from a template,
+with nothing to do with this app — so the icons are now renders of the
+instrument itself, framed on a rosette, with a wider crop for the maskable one
+so Android's circular mask lands inside the figure rather than on an edge.
 
 ## The glass bead
 
@@ -125,17 +130,17 @@ shader's home ground and a 2D canvas's worst case.
 Soap-bubble colours mapped from piece thickness. Physically motivated rather
 than invented. **GL.**
 
-### Mirrors that are green
+### ~~Mirrors that are green~~ — already done when this list was written
 
 Silvered mirrors are green — iron in the glass — and every bounce multiplies it.
 Photograph a real kaleidoscope and the outer reflections go dimmer *and* greener
 while the middle stays neutral.
 
-We already dim by distance in `#mirrorFalloff`, and `#stampField` already varies
-each hexagon by `cellNoise(i, j)`, so tinting by bounce count is a handful of
-lines on machinery that exists. Small change, disproportionate payoff: it is the
-kind of thing that reads as photographic without anyone being able to say why.
-**2D.** Do this one early — it is nearly free.
+Listing this was a mistake on my part: `MIRROR_TINT` has been per-channel since
+long before, at `{0.958, 0.983, 0.975}`, and both renderers raise it to the
+bounce count. The shader made it *more* right, because the count it is raised to
+is now exact rather than a radial estimate — but the green itself was never
+missing.
 
 ### Bloom on the bright facets
 

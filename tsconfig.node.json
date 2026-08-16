@@ -18,5 +18,8 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["vite.config.ts", "eslint.config.js"]
+  // `test` holds the checks that are about the repository rather than about the
+  // app — the manifest and the files it points at. They read the filesystem, so
+  // they belong to the project that has Node's types rather than the DOM's.
+  "include": ["vite.config.ts", "eslint.config.js", "test"]
 }
