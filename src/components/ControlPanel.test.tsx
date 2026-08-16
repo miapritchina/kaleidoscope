@@ -189,9 +189,9 @@ describe('ControlPanel', () => {
     it('reports a change to a slider', () => {
       const { props } = renderPanel();
 
-      fireEvent.change(screen.getByLabelText('Pieces'), { target: { value: '20' } });
+      fireEvent.change(screen.getByLabelText('Pieces'), { target: { value: '120' } });
 
-      expect(props.onChange).toHaveBeenCalledWith('shards', 20);
+      expect(props.onChange).toHaveBeenCalledWith('shards', 120);
     });
 
     it('says what a slider is set to, in its own units', () => {

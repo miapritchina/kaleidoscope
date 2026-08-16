@@ -114,7 +114,15 @@ export interface NumericLimit {
  * value can never reach the renderer.
  */
 export const LIMITS = {
-  shards: { min: 4, max: 60, step: 1 },
+  // The cell is round and the mirror triangle sees 41% of it, so these are
+  // counts for a disc, not the 4-60 the old triangular cell wore. The top end
+  // is a measured ceiling, not a taste: at about three quarters packed the
+  // pile still rests and still avalanches when turned, and by 160
+  // default-sized pieces it wedges solid — nothing moves and the instrument
+  // is a picture. So the cell comes as full as the mechanism affords, and the
+  // slider only empties it; the low end is deliberately sparse, a few beads
+  // tumbling being a look someone can choose.
+  shards: { min: 30, max: 150, step: 1 },
   glitter: { min: 0, max: 1, step: 0.05 },
   bead: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
@@ -127,7 +135,9 @@ export const LIMITS = {
 export const DEFAULT_SETTINGS: Settings = {
   source: 'objects',
   cameraFacing: 'environment',
-  shards: 30,
+  // Full: the most glass the mechanism affords, which is also what keeps the
+  // mirror triangle covered. See LIMITS.
+  shards: 150,
   // Enough to catch the light without becoming the subject.
   glitter: 0.35,
   bead: 0.6,

@@ -191,59 +191,57 @@ Needs `ctx.filter` in 2D, which wants Safari 17+ and a fallback; free in **GL.**
 
 ## The chamber
 
-### Make the chamber round — next, and start here
+### ~~Make the chamber round~~ — done
 
-The object cell is a triangle whose walls are the mirrors. That is a real way
-to build a kaleidoscope, but it is the less common one, and it was chosen on a
-measurement that does not support it — see the note on `CHAMBER_RADIUS` in
-`lib/chamber.ts`. The usual build is a cylindrical tube with the mirror triangle
-inscribed in it and a **round** object cell capping the end, and that is what
-this should be.
+The cell is now the disc the mirror triangle is inscribed in, which is how
+most real instruments are built. `lib/chamber.ts` keeps a single circular wall
+and none of the three flat ones; `CORNER` and the corner-wedging compromise
+went with them, and so did the `bounds` parameter — a circle is
+rotation-invariant, so turning the tube is gravity's business alone.
 
-**Why it is the fix and not a preference.** A circle is rotation-invariant, so
-no wall can be the one the glass falls away from — which is the defect the owner
-photographed, a bare strip along whichever edge the heap has left. It also
-retires corner wedging, and with it `CORNER` and the compromise around it.
+The broad phase went in with it, inlined this time: the pair loops in
+`separate` and `tumble` sweep the pieces in left-edge order from a persistent
+sorted array, insertion-sorted each pass because a settled pile barely moves
+between passes, with no callback anywhere near the pairs that survive. This
+time it paid — same process, same machine:
 
-**Why the earlier disc measurement is not evidence against it.** That test put
-*ten* pieces in a disc and found the triangle 0–4% covered. It showed that a
-nearly empty disc behaves badly. A real object cell is packed; that is why a
-real instrument never shows bare margins.
+| pieces | ms/frame, pairwise | ms/frame, swept |
+| --- | --- | --- |
+| 60 | 0.49 | 0.26 |
+| 120 | 1.50 | 0.63 |
+| 250 | 5.36 | 2.06 |
+| 400 | 13.2 | 4.72 |
 
-**The cost, honestly.** The triangle sees `3*sqrt(3)/(4*pi)` = 41% of its own
-circumcircle, so filling the view takes appreciably more glass than 30–60
-pieces. That runs straight into the solver being `O(n^2)`:
+What the plan did not anticipate: **"more pieces" has a ceiling of its own,
+and it arrives before full coverage does.** Measured on settled piles of
+default-sized glass, at about three quarters packed by collision area the pile
+still rests and still avalanches when turned; by 160 pieces it wedges solid —
+tip it and nothing moves, which takes the whole mechanism with it, the same
+death the sixty-degree corners used to cause, now caused by fill. Between
+"rests" and "wedges" there is also a band where the pile never stops creeping.
+So the default is 150 pieces, the most the mechanism affords; the shard slider
+treats that as full and only empties from there. At that fill the mirror
+triangle measures about 97% covered with the worst wall band in the low
+eighties — against 43% covered and one wall fully bare for the old default —
+and what remains is a chink of ground that can open at the apex corners at
+rest. Closing the last of it means raising the ceiling, not the count: the
+rate-independent solver below is the road, since what wedges the pile is
+per-pass corrections specified in step-sized units.
 
-| pieces | ms/frame |
-| --- | --- |
-| 30 | 0.16 |
-| 60 | 0.33 |
-| 120 | 0.95 |
-| 250 | 3.55 |
-| 400 | 8.22 |
+Verified both ways this repo insists on: the table above is a one-process
+comparison, and the picture was looked at — the old default renders as
+garlands of glass on bare ground, the new one as a full field. A coverage test
+in `scene.test.ts` now samples the settled triangle so the bare strip cannot
+quietly come back.
 
-So this is three changes that only work together: **round cell**, **more
-pieces**, and **a broad phase to afford them**. The broad phase was built once
-and reverted — it pruned 71% of pairs and was still slower, because every pair
-it kept went through a visitor callback. Build it again with the traversal
-inlined into `separate` and `tumble`, not behind a closure. The measurements are
-under "Two things that were tried and did not work" below.
+### The media axis, still wrong for photographs
 
-**Verifying it.** Two rules, both learned the hard way in this repo:
-
-1. Never compare across page loads. The physics settles differently each time,
-   so two loads are two different piles of glass and the difference is noise.
-   Render one settled scene repeatedly and change only the thing under test.
-2. Look at the picture. Two separate harnesses reported "no difference" while
-   the render was plainly broken — one was comparing reloads, the other was
-   rendering an empty chamber. A number that agrees with a broken image is
-   measuring the wrong thing.
-
-**While in here:** the bead's axis is the triangle's middle, which is wrong for
-a photograph, because `drawMedia` centres a picture on the apex. Centring on the
-apex is worse — most of the picture is clipped off-canvas around it and the
-figure goes black. It needs the media given somewhere on the surface to be drawn
-around. A grid photograph shows the fault immediately and is the test to use.
+Carried over from the round-cell notes, and still to do: the bead's axis is
+the triangle's middle, which is wrong for a photograph, because `drawMedia`
+centres a picture on the apex. Centring on the apex is worse — most of the
+picture is clipped off-canvas around it and the figure goes black. It needs
+the media given somewhere on the surface to be drawn around. A grid photograph
+shows the fault immediately and is the test to use.
 
 
 ### Two things that were tried and did not work
@@ -262,9 +260,11 @@ ms/frame against 0.332 at sixty pieces.
 The reason is that the pairs it prunes are two subtractions and a compare, while
 every pair it keeps costs a function call through the visitor. Measured with the
 grid disabled but the callback still in place, sixty pieces cost 0.427 ms — so
-almost all of the loss was indirection, not the grid. Inlining the traversal into
-the solver would recover that, and the whole thing would still only matter past a
-hundred-odd pieces, which is more than the instrument wants.
+almost all of the loss was indirection, not the grid.
+
+Since rebuilt, inlined, as part of the round cell above — a sweep rather than a
+grid, and it pays at every count now that the round cell wants a hundred and
+fifty pieces. These numbers stand as the record of why the first build did not.
 
 **More substeps.** The theory is Macklin's, and it is why there are four rather
 than one. Going further does nothing:
@@ -301,6 +301,13 @@ something.
 
 Worth doing, and not casually: it re-tunes a feel that took a long time to get
 right, and every number in it would move. **2D** — nothing here needs the GPU.
+
+The round cell raised what this is worth. A full disc of glass never gets every
+piece under the sleep thresholds at once, so `settleChamber` pays its whole cap
+on load rather than returning at rest; and the fill ceiling recorded above —
+rest at three quarters packed, wedged solid at 160 pieces — is made of the same
+step-sized units. Raising that ceiling is what would close the last chinks of
+bare ground at the apex corners.
 
 ### An oil cell
 
