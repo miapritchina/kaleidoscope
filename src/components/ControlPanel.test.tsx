@@ -42,8 +42,7 @@ describe('ControlPanel', () => {
 
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'Shards',
-        'Photo',
-        'Camera',
+        'View',
       ]);
       expect(screen.getByRole('tab', { name: 'Shards' })).toHaveAttribute('aria-selected', 'true');
     });
@@ -52,9 +51,9 @@ describe('ControlPanel', () => {
       const user = userEvent.setup();
       const { props } = renderPanel();
 
-      await user.click(screen.getByRole('tab', { name: 'Camera' }));
+      await user.click(screen.getByRole('tab', { name: 'View' }));
 
-      expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
+      expect(props.onChange).toHaveBeenCalledWith('source', 'image');
     });
 
     // A tablist is expected to move on the arrows rather than on Tab, which is
@@ -76,14 +75,14 @@ describe('ControlPanel', () => {
       screen.getByRole('tab', { name: 'Shards' }).focus();
       await user.keyboard('{ArrowLeft}');
 
-      expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
+      expect(props.onChange).toHaveBeenCalledWith('source', 'image');
     });
 
     it('keeps only the chosen tab in the tab order', () => {
       renderPanel();
 
       expect(screen.getByRole('tab', { name: 'Shards' })).toHaveAttribute('tabindex', '0');
-      expect(screen.getByRole('tab', { name: 'Photo' })).toHaveAttribute('tabindex', '-1');
+      expect(screen.getByRole('tab', { name: 'View' })).toHaveAttribute('tabindex', '-1');
     });
 
     it('names the panel after the tab that opened it', () => {
@@ -115,11 +114,33 @@ describe('ControlPanel', () => {
       expect(screen.getByLabelText('Picture')).toBeInTheDocument();
     });
 
-    it('offers the camera only on its own tab', () => {
+    // A still and a live feed share a tab, because they are the same instrument
+    // pointed at two things. The switch between them is inside it.
+    it('switches to the camera from inside the view tab', async () => {
+      const user = userEvent.setup();
+      const { props } = withSettings({ source: 'image' });
+
+      await user.click(screen.getByLabelText('Live camera'));
+
+      expect(props.onChange).toHaveBeenCalledWith('source', 'camera');
+    });
+
+    it('offers the lens only once the camera is live', () => {
+      withSettings({ source: 'image' });
+      expect(screen.queryByLabelText('Facing')).not.toBeInTheDocument();
+
+      withSettings({ source: 'camera' });
+      expect(screen.getByLabelText('Facing')).toBeInTheDocument();
+    });
+
+    it('keeps the camera on the view tab, not one of its own', () => {
       withSettings({ source: 'camera' });
 
-      expect(screen.getByLabelText('Facing')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Pieces')).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: 'View' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(screen.queryByRole('tab', { name: 'Camera' })).not.toBeInTheDocument();
     });
 
     it('keeps the mirrors on every tab, since they are the instrument', () => {
@@ -129,6 +150,7 @@ describe('ControlPanel', () => {
         expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
         expect(screen.getByLabelText('Mirror angle')).toBeInTheDocument();
         expect(screen.getByLabelText('Real gravity')).toBeInTheDocument();
+        expect(screen.getByLabelText('Bead')).toBeInTheDocument();
         unmount();
       }
     });

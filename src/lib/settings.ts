@@ -41,6 +41,18 @@ export interface Settings {
    */
   glitter: number;
   /**
+   * How much of a glass bead is in front of the mirrors, from none to all.
+   *
+   * A teleidoscope — the kind with an open end — has a solid glass sphere where
+   * this one has a chamber, and its optics are specific: a sphere of ordinary
+   * glass focuses just outside its own surface, so it packs the whole hemisphere
+   * in front of it into a disc, upside down, squeezed hardest at the rim.
+   *
+   * An optic rather than a content, so it sits with the mirrors and applies to
+   * whatever they are pointed at.
+   */
+  bead: number;
+  /**
    * How big the things in the source are, as a multiplier.
    *
    * The pieces in the chamber, or the magnification of a photo. Pinched and
@@ -104,6 +116,7 @@ export interface NumericLimit {
 export const LIMITS = {
   shards: { min: 4, max: 60, step: 1 },
   glitter: { min: 0, max: 1, step: 0.05 },
+  bead: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
   // A third of a turn is the whole of it: the framework is unchanged by 120
@@ -117,6 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shards: 30,
   // Enough to catch the light without becoming the subject.
   glitter: 0.35,
+  bead: 0.6,
   sourceScale: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
@@ -158,6 +172,7 @@ export function sanitizeSettings(input: unknown): Settings {
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     glitter: clampToLimit(toNumber(raw.glitter, DEFAULT_SETTINGS.glitter), LIMITS.glitter),
+    bead: clampToLimit(toNumber(raw.bead, DEFAULT_SETTINGS.bead), LIMITS.bead),
     sourceScale: clampToLimit(
       toNumber(raw.sourceScale, DEFAULT_SETTINGS.sourceScale),
       LIMITS.sourceScale,
@@ -186,6 +201,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     shards: String(settings.shards),
     glitter: String(settings.glitter),
+    bead: String(settings.bead),
     sourceScale: String(settings.sourceScale),
     objects: settings.objects,
     zoom: String(settings.zoom),
@@ -234,6 +250,7 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
   return sanitizeSettings({
     shards: params.get('shards'),
     glitter: params.get('glitter'),
+    bead: params.get('bead'),
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),
     objects: params.get('objects'),
     zoom: params.get('zoom'),
