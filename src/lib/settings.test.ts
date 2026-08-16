@@ -18,8 +18,8 @@ describe('clampToLimit', () => {
   });
 
   it('snaps to the step without overshooting the maximum', () => {
-    expect(clampToLimit(5.4, LIMITS.shards)).toBe(5);
-    expect(clampToLimit(59.9, LIMITS.shards)).toBe(LIMITS.shards.max);
+    expect(clampToLimit(45.4, LIMITS.shards)).toBe(45);
+    expect(clampToLimit(LIMITS.shards.max - 0.1, LIMITS.shards)).toBe(LIMITS.shards.max);
   });
 
   it('falls back to the minimum for non-finite input', () => {

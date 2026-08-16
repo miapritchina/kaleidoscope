@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import { createChipSprites } from './chips';
-import { CHAMBER_RADIUS } from './chamber';
-import { createScene, drawChamber, SHARD_KINDS, updateScene } from './scene';
+import { CHAMBER_RADIUS, settleChamber } from './chamber';
+import { createScene, DEPTH_OVERLAP, drawChamber, SHARD_KINDS, updateScene } from './scene';
+import { DEFAULT_SETTINGS } from './settings';
 
 // jsdom has no canvas backend, so chip sprites are rendered onto recorders
 // instead. They still come back as drawable images, which is all drawCell needs
@@ -55,6 +56,80 @@ describe('createScene', () => {
       scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
     expect(centreOfMass).toBeGreaterThan(0);
   });
+
+  // The test that looks at the picture. The round cell exists to fix a bare
+  // strip along whichever wall the heap had fallen away from, and the same
+  // mistake has been made twice in this repo by trusting a number measured on
+  // an under-filled chamber — so this asks the only question that matters:
+  // settled at the default piece count, does the glass keep the mirror
+  // triangle covered whichever way the cell has been turned?
+  it('keeps the mirror triangle covered at the default piece count', () => {
+    // The triangle the renderer inscribes in the cell: corners at 90, 210 and
+    // 330 degrees on the wall, so every point of it lies within half the
+    // radius of the middle along each of the three wall normals.
+    const wall = CHAMBER_RADIUS / 2;
+    const normals = [Math.PI / 6, (5 * Math.PI) / 6, (3 * Math.PI) / 2].map((facing) => ({
+      x: Math.cos(facing),
+      y: Math.sin(facing),
+    }));
+
+    const scene = createScene('coverage', DEFAULT_SETTINGS.shards);
+
+    for (const turn of [0, Math.PI / 3, Math.PI]) {
+      settleChamber(scene.shards, turn);
+
+      let inside = 0;
+      let covered = 0;
+      // The thinnest cover along any one wall, sampled in a band beside it —
+      // where the bare strip opened. Coverage of the whole triangle would
+      // average it away.
+      const bandInside = [0, 0, 0];
+      const bandCovered = [0, 0, 0];
+
+      for (let x = -1.2; x <= 1.2; x += 0.03) {
+        for (let y = -1.2; y <= 1.2; y += 0.03) {
+          const depths = normals.map((normal) => wall - (x * normal.x + y * normal.y));
+
+          if (depths.some((depth) => depth < 0)) {
+            continue;
+          }
+
+          inside += 1;
+          const hit = scene.shards.some(
+            (shard) =>
+              (shard.x - x) ** 2 + (shard.y - y) ** 2 <= (shard.radius * DEPTH_OVERLAP) ** 2,
+          );
+
+          if (hit) {
+            covered += 1;
+          }
+
+          depths.forEach((depth, side) => {
+            if (depth < 0.08) {
+              bandInside[side]! += 1;
+
+              if (hit) {
+                bandCovered[side]! += 1;
+              }
+            }
+          });
+        }
+      }
+
+      // Floors against regression rather than aspirations. The default fill
+      // measures about 97% covered with the worst wall band in the low
+      // eighties — chinks of ground near the far corners, the last of which
+      // only a fill past the mechanism's own ceiling closes (see LIMITS in
+      // lib/settings.ts). The old default was 43% covered with a wall at zero:
+      // a strip of bare ground, which is the defect these floors keep out.
+      const at = `cell turned to ${(turn / Math.PI).toFixed(2)} pi`;
+      expect(covered / inside, at).toBeGreaterThan(0.93);
+
+      for (const [side, total] of bandInside.entries()) {
+        expect(bandCovered[side]! / total, `${at}, wall ${String(side)}`).toBeGreaterThan(0.7);
+      }
+    }
+  }, 60000);
 });
 
 describe('updateScene', () => {

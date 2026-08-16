@@ -171,14 +171,12 @@ describe('updateChamber', () => {
     ] as const) {
       const chip = glass[0]!;
       chip.x = 0;
-      // Resting on one of the mirrors, moving along it. The cell is turned so
-      // that a wall is underneath rather than a corner, which is what a chip
-      // rolls along; the walls are half a circumradius from the middle.
-      chip.y = CHAMBER_RADIUS / 2 - chip.radius;
+      // Resting at the bottom of the wall, moving along it.
+      chip.y = CHAMBER_RADIUS - chip.radius;
       chip.vx = direction;
 
       for (let i = 0; i < 10; i += 1) {
-        updateChamber(glass, { dt: 1 / 60, angle: 0, bounds: -Math.PI / 3 });
+        updateChamber(glass, { dt: 1 / 60, angle: 0 });
       }
     }
 
@@ -395,9 +393,7 @@ describe('shape', () => {
       rotation: Math.PI / 2 - 0.25,
     };
 
-    // Turned so a wall is underneath rather than a corner: a splinter dropped
-    // into a corner wedges there, which is a different thing from lying down.
-    settleChamber([upright], 0, 20, -Math.PI / 3);
+    settleChamber([upright], 0, 20);
 
     // Its long axis runs along `rotation`; flat means that is across the floor.
     expect(Math.abs(Math.sin(upright.rotation))).toBeLessThan(0.5);

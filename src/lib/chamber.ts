@@ -21,71 +21,28 @@ import type { Bead } from './shape';
  */
 
 /**
- * Circumradius of the cell, in cell units — the distance to each of its corners.
+ * Radius of the cell, in cell units.
  *
- * The cell is the triangle between the mirrors, not a disc around it — and that
- * is very likely wrong, so read the rest of this before building on it.
+ * The cell is round: a cylindrical tube with the mirror triangle inscribed in
+ * it and a round object cell capping the end, which is how most kaleidoscopes
+ * are built. The renderer maps this radius onto the triangle's circumradius,
+ * so the corners of the view touch the wall, everything the mirrors can see is
+ * simulated, and the glass beyond a mirror is the glass that would sit behind
+ * it in a real tube.
  *
- * Kaleidoscopes are built both ways: a dry cell whose walls *are* the three
- * mirrors, with a pane at either end, or a round object cell capping a
- * cylindrical tube with the mirror triangle inscribed in it. The second is the
- * common one. This is the first.
- *
- * It was chosen on a measurement that does not support it. A disc around the
- * triangle was tried and came out with the triangle between 0% and 4% covered,
- * the glass falling into the crescent below the view — but that was measured
- * with *ten pieces in the cell*. What it showed is that a nearly empty disc
- * behaves badly, which is not the same as a disc behaving badly. A real object
- * cell is packed, which is why a real kaleidoscope never shows bare margins.
- *
- * The bare margins this build does show — a strip along whichever wall the
- * heap has fallen away from — are the same fact from the other side: the
- * chamber is under-filled, and the triangular cell hides it by shrinking the
- * space rather than fixing it. See ROADMAP.md, "Make the chamber round".
+ * It used to be a triangle whose walls were the mirrors — a real but less
+ * common construction, chosen on a measurement that did not support it: a disc
+ * tried with *ten pieces in it* came out nearly bare, which shows that an
+ * empty disc behaves badly, not that a disc does. A circle holds no direction
+ * specially, so no wall can be the one the heap has fallen away from — the
+ * bare strip that was the triangular cell's photographed defect — and the
+ * sixty-degree corners the glass used to wedge into are gone, along with the
+ * rounding-off that compromise needed. What the circle asks in exchange is
+ * glass: the triangle is 41% of the disc, so the cell only reads as full when
+ * it holds more than twice the pieces the triangle needed. See ROADMAP.md,
+ * "Make the chamber round".
  */
 export const CHAMBER_RADIUS = 1.15;
-
-/**
- * Distance from the middle of the cell to each of its walls.
- *
- * Half the circumradius, for an equilateral triangle.
- */
-const WALL = CHAMBER_RADIUS / 2;
-
-/**
- * Which way the cell's three walls face, before the cell is turned.
- *
- * The mirror triangle has its corners towards 90, 210 and 330 degrees — one
- * of them straight down — so the walls between them face 30, 150 and 270.
- */
-const FIRST_WALL = Math.PI / 6;
-const WALLS = 3;
-
-/**
- * How far into the corners the glass may go, as a share of the circumradius.
- *
- * The corners are taken off. Where two mirrors meet at sixty degrees the glass
- * wedges, and a pile that has settled into one will not come out again: tip the
- * instrument through a right angle and it does not move at all, which takes the
- * whole mechanism with it. Rounded off, the pile rides round the corner the way
- * it used to ride round the barrel.
- *
- * Real dry cells are like this too — the joints where the mirrors meet are
- * taped or glued, and the glass never reaches the corner itself.
- *
- * How far off is a compromise. The mirror triangle runs all the way to its
- * corners, so glass held back to 0.78 of the way left three wedges of bare
- * ground in every reflection — visible, and among the first things anyone
- * notices about the figure. This is 0.84, which fills a useful part of them.
- *
- * Not tuned as finely as that number suggests, and worth saying so. The test
- * that catches a pile which never quite stops creeping sits right at its own
- * threshold here: 0.84 passes it, 0.82 and 0.86 both fail it by about a
- * percent. That is not a boundary, it is noise — the settled arrangement
- * reshuffles and one piece ends up a hair over the line. So this is "further
- * out than it was, and no worse at resting", not an optimum.
- */
-const CORNER = 0.84 * CHAMBER_RADIUS;
 
 /** Downward acceleration, in cell units per second squared. */
 const GRAVITY = 6;
@@ -167,16 +124,6 @@ export interface ChamberUpdate {
   dt: number;
   /** Angle the cell has been turned to, radians. This is what tips the pile. */
   angle: number;
-  /**
-   * How far the cell has been turned against the mirrors, in radians.
-   *
-   * The walls are the mirrors and the mirrors do not move, so seen from inside
-   * the cell — which is the frame everything here is in — they turn backwards
-   * by this as the cell is turned. Which corner of the triangle is the low one
-   * therefore changes as the tube is turned, and that is what makes turning it
-   * tip the pile from corner to corner.
-   */
-  bounds?: number | undefined;
 }
 
 /**
@@ -190,7 +137,7 @@ export interface ChamberUpdate {
  * fully take out; here a chip that is held in place simply records no movement,
  * and so comes to rest.
  */
-export function updateChamber(shards: Shard[], { dt, angle, bounds = 0 }: ChamberUpdate): void {
+export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): void {
   if (dt <= 0 || shards.length === 0) {
     return;
   }
@@ -228,7 +175,7 @@ export function updateChamber(shards: Shard[], { dt, angle, bounds = 0 }: Chambe
       separate(shards);
 
       for (const shard of shards) {
-        confine(shard, bounds);
+        confine(shard);
       }
     }
 
@@ -238,7 +185,7 @@ export function updateChamber(shards: Shard[], { dt, angle, bounds = 0 }: Chambe
       shard.spin = (shard.rotation - (previousAngle.get(shard) ?? shard.rotation)) / step;
     }
 
-    tumble(shards, bounds);
+    tumble(shards);
 
     for (const shard of shards) {
       // A settled pile still creeps by a hair each frame, and left to turn that
@@ -282,6 +229,54 @@ const there = { x: 0, y: 0, r: 0 };
 /** How far apart two pieces are, squared. */
 function apart(a: Shard, b: Shard): number {
   return (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+}
+
+/**
+ * The pieces ordered by the left edge of the circle each was cut to fit — the
+ * broad phase, kept between calls so keeping it ordered is nearly free.
+ *
+ * The pair loops are the solver's square: every piece against every other,
+ * fifty-two times the work for thirteen times the glass. A pruned pair is only
+ * worth pruning if skipping it costs less than the two subtractions and a
+ * compare it would have cost to test — a uniform grid built here once pruned
+ * 71% of pairs and was still slower than no pruning at all, because every pair
+ * it *kept* went through a visitor callback (see ROADMAP.md, "Two things that
+ * were tried and did not work"). So the traversal is inlined into the pair
+ * loops instead: swept in this order, a piece is tested only against
+ * neighbours until the first whose left edge starts beyond its right, and the
+ * rest of the row is skipped in one `break`.
+ */
+let sweep: Shard[] = [];
+
+/** Whose pieces {@link sweep} currently holds. */
+let swept: Shard[] | null = null;
+
+/**
+ * Brings {@link sweep} up to date with where the glass is now.
+ *
+ * Insertion sort, deliberately: the pile barely moves between passes, so the
+ * order is already almost right and one comparison per piece settles most of
+ * it. The identity check is what detects a different chamber — a scene's array
+ * is replaced when its glass is, never grown in place.
+ */
+function order(shards: Shard[]): void {
+  if (swept !== shards || sweep.length !== shards.length) {
+    swept = shards;
+    sweep = shards.slice();
+  }
+
+  for (let i = 1; i < sweep.length; i += 1) {
+    const shard = sweep[i]!;
+    const edge = shard.x - shard.radius;
+    let j = i - 1;
+
+    while (j >= 0 && sweep[j]!.x - sweep[j]!.radius > edge) {
+      sweep[j + 1] = sweep[j]!;
+      j -= 1;
+    }
+
+    sweep[j + 1] = shard;
+  }
 }
 
 /**
@@ -329,14 +324,23 @@ function turnedSin(shard: Shard): number {
  * with area, so a piece twice across is four times as hard to shift.
  */
 function separate(shards: Shard[]): void {
-  for (let i = 0; i < shards.length; i += 1) {
-    const a = shards[i]!;
+  order(shards);
 
-    for (let j = i + 1; j < shards.length; j += 1) {
-      const b = shards[j]!;
+  for (let i = 0; i < sweep.length; i += 1) {
+    const a = sweep[i]!;
+    const reach = a.x + a.radius;
 
-      // Broad phase on the circles the two were cut to fit, which contain every
-      // one of their own circles. Squared, to keep a root out of the innermost
+    for (let j = i + 1; j < sweep.length; j += 1) {
+      const b = sweep[j]!;
+
+      // The sweep: sorted by left edge, the first piece that starts beyond
+      // this one's right edge ends the row.
+      if (b.x - b.radius >= reach) {
+        break;
+      }
+
+      // Then on the circles the two were cut to fit, which contain every one
+      // of their own circles. Squared, to keep a root out of the innermost
       // thing the chamber does.
       if (apart(a, b) >= (a.radius + b.radius) ** 2) {
         continue;
@@ -489,62 +493,28 @@ function travelledY(shard: Shard, armX: number): number {
   return shard.y - (previousY.get(shard) ?? shard.y) + turned * armX;
 }
 
-/** Keeps a piece inside the three mirrors, and lets them grip it. */
-function confine(shard: Shard, bounds: number): void {
+/** Keeps a piece inside the cell's wall, and lets the wall grip it. */
+function confine(shard: Shard): void {
   const cos = turnedCos(shard);
   const sin = turnedSin(shard);
-
-  for (let wall = 0; wall < WALLS; wall += 1) {
-    const facing = FIRST_WALL + (wall * 2 * Math.PI) / WALLS - bounds;
-    const normalX = Math.cos(facing);
-    const normalY = Math.sin(facing);
-
-    for (const bead of shard.shape.beads) {
-      place(shard, bead, cos, sin, here);
-
-      if (!pressFlat(shard, normalX, normalY)) {
-        return;
-      }
-    }
-  }
 
   for (const bead of shard.shape.beads) {
     place(shard, bead, cos, sin, here);
 
-    if (!pressRound(shard)) {
+    if (!press(shard)) {
       return;
     }
   }
 }
 
 /**
- * Presses the bead in `here` back inside one of the mirrors.
+ * Presses the bead in `here` back inside the wall.
  *
  * @returns False when the piece is too big for the cell to hold at all, which
  *   leaves it in the middle and is the end of the matter.
  */
-function pressFlat(shard: Shard, normalX: number, normalY: number): boolean {
-  if (WALL - here.r <= 0) {
-    shard.x = 0;
-    shard.y = 0;
-    return false;
-  }
-
-  const beyond = here.x * normalX + here.y * normalY - WALL;
-  const overlap = beyond + here.r;
-
-  if (overlap > 0) {
-    // Where the circle meets the mirror: where it is pressed, and what it turns
-    // about.
-    grip(shard, here.x - beyond * normalX, here.y - beyond * normalY, normalX, normalY, overlap);
-  }
-
-  return true;
-}
-
-/** The same, against the arc that takes the corners off. */
-function pressRound(shard: Shard): boolean {
-  const limit = CORNER - here.r;
+function press(shard: Shard): boolean {
+  const limit = CHAMBER_RADIUS - here.r;
 
   if (limit <= 0) {
     shard.x = 0;
@@ -561,7 +531,14 @@ function pressRound(shard: Shard): boolean {
   const normalX = here.x / distance;
   const normalY = here.y / distance;
 
-  grip(shard, normalX * CORNER, normalY * CORNER, normalX, normalY, distance - limit);
+  grip(
+    shard,
+    normalX * CHAMBER_RADIUS,
+    normalY * CHAMBER_RADIUS,
+    normalX,
+    normalY,
+    distance - limit,
+  );
 
   return true;
 }
@@ -646,12 +623,19 @@ function against(
  * the plain mass, which is where the old thirds came from and why the radius
  * used to cancel.
  */
-function tumble(shards: Shard[], bounds: number): void {
-  for (let i = 0; i < shards.length; i += 1) {
-    const a = shards[i]!;
+function tumble(shards: Shard[]): void {
+  order(shards);
 
-    for (let j = i + 1; j < shards.length; j += 1) {
-      const b = shards[j]!;
+  for (let i = 0; i < sweep.length; i += 1) {
+    const a = sweep[i]!;
+    const reach = a.x + a.radius + CONTACT_SLOP;
+
+    for (let j = i + 1; j < sweep.length; j += 1) {
+      const b = sweep[j]!;
+
+      if (b.x - b.radius > reach) {
+        break;
+      }
 
       if (apart(a, b) > (a.radius + b.radius + CONTACT_SLOP) ** 2) {
         continue;
@@ -676,50 +660,42 @@ function tumble(shards: Shard[], bounds: number): void {
     const cos = turnedCos(shard);
     const sin = turnedSin(shard);
 
-    for (let wall = 0; wall <= WALLS; wall += 1) {
-      const facing = FIRST_WALL + (wall * 2 * Math.PI) / WALLS - bounds;
-      const flat = wall < WALLS;
-      const normalX = Math.cos(facing);
-      const normalY = Math.sin(facing);
+    for (const bead of shard.shape.beads) {
+      place(shard, bead, cos, sin, here);
 
-      for (const bead of shard.shape.beads) {
-        place(shard, bead, cos, sin, here);
+      // The wall is an arc, so its normal is wherever the piece happens to be
+      // rather than a fixed direction.
+      const distance = Math.hypot(here.x, here.y);
+      const outX = distance === 0 ? 0 : here.x / distance;
+      const outY = distance === 0 ? 1 : here.y / distance;
+      const beyond = distance - CHAMBER_RADIUS;
 
-        // The last time round is the arc across the corners, whose normal is
-        // wherever the piece happens to be rather than a fixed direction.
-        const distance = Math.hypot(here.x, here.y);
-        const outX = flat ? normalX : distance === 0 ? 0 : here.x / distance;
-        const outY = flat ? normalY : distance === 0 ? 1 : here.y / distance;
-        const reach = flat ? WALL : CORNER;
-        const beyond = here.x * outX + here.y * outY - reach;
-
-        if (beyond + here.r < -CONTACT_SLOP) {
-          continue;
-        }
-
-        // The mirror is fixed, so its surface contributes nothing to the slip.
-        const armX = here.x - beyond * outX - shard.x;
-        const armY = here.y - beyond * outY - shard.y;
-        const tangentX = -outY;
-        const tangentY = outX;
-        const turn = armX * tangentY - armY * tangentX;
-        const shift = 1 / mass(shard);
-        const twist = 1 / inertia(shard);
-        // How fast the piece's surface is moving across the mirror: its travel
-        // plus whatever its own spin adds where it touches.
-        const slip = shard.vx * tangentX + shard.vy * tangentY + shard.spin * turn;
-        const share = shift + turn * turn * twist;
-
-        if (slip === 0 || share === 0) {
-          continue;
-        }
-
-        const impulse = (-FRICTION * slip) / share;
-
-        shard.vx += impulse * tangentX * shift;
-        shard.vy += impulse * tangentY * shift;
-        shard.spin += impulse * turn * twist;
+      if (beyond + here.r < -CONTACT_SLOP) {
+        continue;
       }
+
+      // The wall is fixed, so its surface contributes nothing to the slip.
+      const armX = here.x - beyond * outX - shard.x;
+      const armY = here.y - beyond * outY - shard.y;
+      const tangentX = -outY;
+      const tangentY = outX;
+      const turn = armX * tangentY - armY * tangentX;
+      const shift = 1 / mass(shard);
+      const twist = 1 / inertia(shard);
+      // How fast the piece's surface is moving across the wall: its travel
+      // plus whatever its own spin adds where it touches.
+      const slip = shard.vx * tangentX + shard.vy * tangentY + shard.spin * turn;
+      const share = shift + turn * turn * twist;
+
+      if (slip === 0 || share === 0) {
+        continue;
+      }
+
+      const impulse = (-FRICTION * slip) / share;
+
+      shard.vx += impulse * tangentX * shift;
+      shard.vy += impulse * tangentY * shift;
+      shard.spin += impulse * turn * twist;
     }
   }
 }
@@ -784,12 +760,12 @@ function rub(a: Shard, b: Shard): void {
  * on load. The cap is a backstop for a chamber packed too tightly to ever fully
  * settle.
  */
-export function settleChamber(shards: Shard[], angle = 0, maxSeconds = 12, bounds = 0): void {
+export function settleChamber(shards: Shard[], angle = 0, maxSeconds = 12): void {
   const step = 1 / 60;
   const checkEvery = 15;
 
   for (let frame = 0; frame < maxSeconds / step; frame += 1) {
-    updateChamber(shards, { dt: step, angle, bounds });
+    updateChamber(shards, { dt: step, angle });
 
     if (frame % checkEvery === checkEvery - 1 && atRest(shards)) {
       return;

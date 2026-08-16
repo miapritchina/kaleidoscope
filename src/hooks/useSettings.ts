@@ -26,7 +26,7 @@ const STORAGE_KEY = 'kaleidoscope:settings';
  * that moves this. That is why it is a number to move deliberately and not a
  * hash of the defaults: most releases should leave saved settings alone.
  */
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 
 /** How settings are written down: the release they were formed under, and them. */
 interface StoredSettings {

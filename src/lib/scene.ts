@@ -128,8 +128,12 @@ export const DRAG_CELLS = 0.5;
  * size of the glass. Drawn at exactly that radius nothing ever overlaps
  * anything, and the whole point of glass over glass — that it deepens, and that
  * a green over a red goes nearly black — never once happens.
+ *
+ * Exported for the test that watches the picture rather than the physics: what
+ * the view shows as covered is the glass at this drawn size, not the collision
+ * footprint.
  */
-const DEPTH_OVERLAP = 1.3;
+export const DEPTH_OVERLAP = 1.3;
 
 /**
  * How quickly the contents catch up with the cell, per second.
@@ -154,14 +158,10 @@ const MAX_LAG = 0.3;
 /**
  * How big a piece is, in cell units, before the size gesture scales it.
  *
- * Sized so the glass packs the cell to around three quarters by area: a real
- * cell is full, so tipping it rearranges the pile rather than emptying most of
- * the view. The range is wide because a real one holds everything from a
- * splinter to a bead.
- *
- * The cell is the mirror triangle, whose area is `3 sqrt(3) / 4` of its
- * circumradius squared — a little over four tenths of the disc that would go
- * round it. Pieces cut for that disc pack a triangle half again too tightly.
+ * The range is wide because a real cell holds everything from a splinter to a
+ * bead. How *full* the cell is lives in the piece count rather than here — see
+ * the `shards` default and limits in `lib/settings.ts`, which fill the cell as
+ * far as the pile can stand while still resting and still avalanching.
  */
 const PIECE_SMALLEST = 0.038;
 const PIECE_LARGEST = 0.12;
@@ -173,12 +173,17 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
   const shards: Shard[] = [];
 
   for (let i = 0; i < count; i += 1) {
+    // Sized before it is placed, so it can be born clear of the wall.
+    // Scaled here rather than at draw time, because a bigger piece is a
+    // bigger piece: it displaces its neighbours, packs differently and piles
+    // differently. Scaling only the sprite leaves every arrangement identical
+    // and just draws it smaller, which is a picture of the same chamber.
+    const radius = randomBetween(rng, PIECE_SMALLEST, PIECE_LARGEST) * Math.max(0.05, chipScale);
     // Scattered over the disc by area, not by radius, so the middle does not
-    // come out crowded.
+    // come out crowded — and held inside the wall by its own radius, so
+    // nothing starts beyond it and has to be shoved in.
     const angle = rng() * Math.PI * 2;
-    // Inside the largest circle the cell's three walls will hold, so nothing
-    // starts outside them and has to be shoved in.
-    const distance = Math.sqrt(rng()) * (CHAMBER_RADIUS / 2) * 0.8;
+    const distance = Math.sqrt(rng()) * Math.max(0, CHAMBER_RADIUS - radius);
 
     shards.push({
       kind: randomItem(rng, SHARD_KINDS),
@@ -187,15 +192,7 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
       y: Math.sin(angle) * distance,
       vx: 0,
       vy: 0,
-      // Sized so the glass packs the chamber to around three quarters by area:
-      // a real cell is full, so tipping it rearranges the pile rather than
-      // emptying most of the view. The range is wide because a real one holds
-      // everything from a splinter to a bead.
-      // Scaled here rather than at draw time, because a bigger piece is a
-      // bigger piece: it displaces its neighbours, packs differently and piles
-      // differently. Scaling only the sprite leaves every arrangement identical
-      // and just draws it smaller, which is a picture of the same chamber.
-      radius: randomBetween(rng, PIECE_SMALLEST, PIECE_LARGEST) * Math.max(0.05, chipScale),
+      radius,
       // Until a picture says otherwise the drawn shapes are round enough to
       // collide as the single circle they are cut to.
       shape: ROUND,
@@ -296,10 +293,6 @@ export function updateScene(
   updateChamber(scene.shards, {
     dt: step,
     angle: scene.cell + framework + tilt,
-    // The mirrors do not turn with the cell, so from inside it they turn
-    // backwards — which is what tips the pile out of one corner and into the
-    // next as the tube is turned.
-    bounds: scene.cell,
   });
 
   return scene;
