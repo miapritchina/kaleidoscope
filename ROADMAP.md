@@ -74,13 +74,15 @@ flipped the chamber's gravity. The pile hung from the ceiling, opposite the
 debug arrow, and every avalanche was crushed into the rings around the apex
 corners, because the inversion maps the pile's active surface onto them. The
 triangular cell had hidden it completely: glass pinned inside the one visible
-triangle looks much the same either way up. The fix is in `#paintWedge`: the
-chamber is painted turned half around the bead's own axis and the bead turns
-it back upright, keeping the magnification and losing the flip — photographs
-and the camera keep the true inversion, because for them it is the optics and
-there is no gravity to contradict. Worth remembering the shape of the hunt:
-the renderer's mapping was point-exact when measured in isolation, and the
-"bug" was a correct model applied to the one source that cannot bear it.
+triangle looks much the same either way up. A half-turn of the painted cell
+was tried first, cancelling the inversion and keeping the magnification; the
+owner's ruling is simpler and final — **the bead never touches the chamber.**
+A real instrument with an object cell has no open end to put a marble over,
+so the compositor sends the shader no bead at all when the chamber is the
+source, and the slider is the teleidoscope optic for a photograph and the
+camera alone. Worth remembering the shape of the hunt: the renderer's mapping
+was point-exact when measured in isolation, and the bug was a correct model
+applied to the one source that cannot bear it.
 
 ### Teleidoscope optics in camera mode
 
@@ -113,14 +115,12 @@ wants a much stronger version, tied to the sphere's own rim.
 One bright specular spot, fixed to the room rather than to the pattern. It is
 what gives the bead roundness; without it the fisheye reads as a filter. **2D.**
 
-### The bead over the object chamber too
+### ~~The bead over the object chamber too~~ — answered: never
 
-Not just camera. It already applies — the Bead slider covers every source —
-and the open question got half an answer when the round cell landed: the
-bead's *inversion* muddies, badly enough to read as broken gravity, and is now
-cancelled for the chamber (see "A glass bead over the end" above). Whether the
-remaining magnification helps or merely blurs is still the open question.
-**GL.**
+The open question closed when the round cell landed and the bead's inversion
+hung the pile against gravity (see "A glass bead over the end" above). The
+owner's ruling: the bead does not affect the chamber, ever. It is the
+teleidoscope optic, for a photograph and the camera.
 
 ## Light and colour
 

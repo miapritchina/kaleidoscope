@@ -514,29 +514,16 @@ export class KaleidoscopeRenderer {
       // most of the simulation outside the view, and turning sweeps the pile
       // clean out of it.
       ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
-      // The bead hands the figure back upside down — its whole model does, at
-      // any setting above none, and for a photograph or the camera that is what
-      // a marble truly does. Over the chamber it would flip gravity: the pile
-      // hangs from the ceiling, and every avalanche is crushed into the rings
-      // around the apex corners, both of which read as the physics being broken
-      // rather than as an optic. So the cell is painted turned half around the
-      // bead's own axis — the same point this surface is centred on — and the
-      // bead turns it back upright, leaving only its magnification. Only when
-      // the shader will read this surface: the 2D path has no bead to undo.
-      const inverted = settings.bead > 0 && this.#theShader() !== null;
       drawChamber(ctx, scene, {
         // The triangle's circumradius: the cell reaches all three corners and no
         // further, so every chip that is simulated has a chance of being seen.
         scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
         // The cell turns inside the fixed mirrors. What the glass does within it
         // is the physics' business, not this rotation's.
-        rotation: scene.cell + (inverted ? Math.PI : 0),
-        // The pan is applied before the rotation, so turning the cell half
-        // around does not turn the pan with it — it has to be reflected here
-        // for the drawn cell to be the exact point-reflection the bead undoes.
+        rotation: scene.cell,
         pan: {
-          x: scene.drag.x * DRAG_CELLS * (inverted ? -1 : 1),
-          y: scene.drag.y * DRAG_CELLS * (inverted ? -1 : 1),
+          x: scene.drag.x * DRAG_CELLS,
+          y: scene.drag.y * DRAG_CELLS,
         },
         sprites,
         skin,
@@ -597,14 +584,7 @@ export class KaleidoscopeRenderer {
    * to the screen. That keeps one surface holding the finished frame, which is
    * what the debug overlay draws onto and what the PNG save reads back.
    */
-  /**
-   * The shader, made on first asking, or `null` where there is none to have.
-   *
-   * Asked by the wedge painter as well as the compositor, because what goes
-   * onto the wedge depends on which renderer will read it — see the bead note
-   * in {@link #paintWedge} — so the answer has to exist before the wedge is
-   * painted, not only when the tiling is composited.
-   */
+  /** The shader, made on first asking, or `null` where there is none to have. */
   #theShader(): Compositor | null {
     if (!this.#shaderTried) {
       this.#shaderTried = true;
@@ -665,7 +645,15 @@ export class KaleidoscopeRenderer {
         y: Math.cos(tilt) * LIGHT_THROW,
         z: 1,
       },
-      bead: settings.bead,
+      // Never over the chamber. The bead is a marble over the objective, and a
+      // real instrument with an object cell has no objective to put one over —
+      // the cell caps the tube. It was tried applying to everything, and over
+      // the chamber it inverted gravity: the pile hung opposite the arrow,
+      // with every avalanche crushed into the rings around the apex corners.
+      // A half-turn of the painted cell cancelled that, but the owner's call
+      // is simpler and truer: the bead does not touch the glass, ever. It
+      // remains the teleidoscope optic, for a photograph and the camera.
+      bead: this.#source?.mode === 'chamber' ? 0 : settings.bead,
       // The triangle's middle, for both kinds of source.
       //
       // Not right for a photograph, and known not to be: `drawMedia` centres a

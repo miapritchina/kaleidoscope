@@ -48,8 +48,11 @@ export interface Settings {
    * glass focuses just outside its own surface, so it packs the whole hemisphere
    * in front of it into a disc, upside down, squeezed hardest at the rim.
    *
-   * An optic rather than a content, so it sits with the mirrors and applies to
-   * whatever they are pointed at.
+   * An optic rather than a content, so it sits with the mirrors — but it never
+   * touches the chamber. A real instrument with an object cell has no open end
+   * to put a marble over, and applied anyway the sphere's inversion hung the
+   * pile upside down against gravity. The bead is for a photograph and the
+   * camera, where it is the teleidoscope it names.
    */
   bead: number;
   /**
