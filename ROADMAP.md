@@ -68,6 +68,20 @@ as transparent black — holes punched clean through the figure.
 Still wanted: the specular highlight below, and a rim dispersion tied to the
 bead's own edge rather than to distance from the axis.
 
+A third bug, found only once the round cell gave the pile a direction: the
+bead's inversion — real marble optics, and half of what makes it read as one —
+flipped the chamber's gravity. The pile hung from the ceiling, opposite the
+debug arrow, and every avalanche was crushed into the rings around the apex
+corners, because the inversion maps the pile's active surface onto them. The
+triangular cell had hidden it completely: glass pinned inside the one visible
+triangle looks much the same either way up. The fix is in `#paintWedge`: the
+chamber is painted turned half around the bead's own axis and the bead turns
+it back upright, keeping the magnification and losing the flip — photographs
+and the camera keep the true inversion, because for them it is the optics and
+there is no gravity to contradict. Worth remembering the shape of the hunt:
+the renderer's mapping was point-exact when measured in isolation, and the
+"bug" was a correct model applied to the one source that cannot bear it.
+
 ### Teleidoscope optics in camera mode
 
 The biggest single change in what the app *is*. A real teleidoscope has a solid
@@ -101,8 +115,12 @@ what gives the bead roundness; without it the fisheye reads as a filter. **2D.**
 
 ### The bead over the object chamber too
 
-Not just camera. Open question whether it helps or muddies — worth trying once
-the mapping exists, and cheap to try. **GL.**
+Not just camera. It already applies — the Bead slider covers every source —
+and the open question got half an answer when the round cell landed: the
+bead's *inversion* muddies, badly enough to read as broken gravity, and is now
+cancelled for the chamber (see "A glass bead over the end" above). Whether the
+remaining magnification helps or merely blurs is still the open question.
+**GL.**
 
 ## Light and colour
 
@@ -223,8 +241,9 @@ So the default is 150 pieces, the most the mechanism affords; the shard slider
 treats that as full and only empties from there. At that fill the mirror
 triangle measures about 97% covered with the worst wall band in the low
 eighties — against 43% covered and one wall fully bare for the old default —
-and what remains is a chink of ground that can open at the apex corners at
-rest. Closing the last of it means raising the ceiling, not the count: the
+and what remains is a chink of ground that can open along whichever wall
+stands highest at rest. Closing the last of it means raising the ceiling, not
+the count: the
 rate-independent solver below is the road, since what wedges the pile is
 per-pass corrections specified in step-sized units.
 
