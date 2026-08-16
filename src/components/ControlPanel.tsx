@@ -2,11 +2,13 @@ import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
 import type { TiltStatus } from '../hooks/useDeviceTilt';
+import { buildLine } from '../lib/build';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
-import { isSourceId, LIMITS, type Settings } from '../lib/settings';
+import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
+import { Icon, type IconName } from './controls/Icon';
 import { RangeField } from './controls/RangeField';
 import { PictureField } from './controls/PictureField';
 import { SelectField } from './controls/SelectField';
@@ -17,8 +19,8 @@ import styles from './ControlPanel.module.css';
 export interface ControlPanelProps {
   settings: Settings;
   onChange: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
-  onRandomize: () => void;
   onReset: () => void;
+  /** Saves the frame as it stands, which is not the seamless tile the toolbar saves. */
   onSave: () => void;
   onShare: () => void;
   /** Feedback for the most recent action, announced politely. */
@@ -34,31 +36,24 @@ export interface ControlPanelProps {
 }
 
 /**
- * What the mirrors are pointed at — one list, not two.
+ * The three kinds of kaleidoscope, as tabs.
  *
- * Two controls, one of which decided whether the other was even rendered, meant
- * the object sets could disappear from the panel entirely: leave the input on
- * Photo and there was nowhere left to choose a set, and nothing to say why. A
- * chamber of objects, a flat photograph and the live camera are three answers
- * to the same question, so they are asked as one.
+ * They were a dropdown of every object set and both mirror sources in one list,
+ * which asked the wrong question. "A chamber of glass, a photograph, or the
+ * room in front of you" is a choice between three instruments; which picture
+ * the chamber is loaded with is a choice you only make once you are holding the
+ * first of them. Flattening the two into one list made the important choice
+ * look like a detail among nine.
  *
- * The values are prefixed because a set's id comes from a filename, and a file
- * called `camera.webp` would otherwise collide with the camera.
+ * Tabs also carry their own settings, so a seed and a piece count are not on
+ * screen while a photograph is being mirrored, and the panel is short enough to
+ * read without scrolling.
  */
-const SOURCE_OPTIONS = [
-  ...OBJECT_SETS.map((set) => ({
-    value: `set:${set.id}`,
-    label: set.name,
-    picture: set.thumbnail,
-  })),
-  { value: 'mirror:image', label: 'Mirror a photo', picture: null },
-  { value: 'mirror:camera', label: 'Camera (teleidoscope)', picture: null },
+const KINDS: { id: SourceId; label: string; icon: IconName }[] = [
+  { id: 'objects', label: 'Shards', icon: 'shards' },
+  { id: 'image', label: 'Photo', icon: 'photo' },
+  { id: 'camera', label: 'Camera', icon: 'camera' },
 ];
-
-/** The one option that stands for the current settings. */
-function currentSource(settings: Settings): string {
-  return settings.source === 'objects' ? `set:${settings.objects}` : `mirror:${settings.source}`;
-}
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
   environment: 'Back',
@@ -71,21 +66,20 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
 }));
 
 /**
- * Pointing it at the world is a kaleidoscope with an open end — a teleidoscope,
- * which has a lens or a glass ball where this one has a chamber of objects.
+ * What is worth saying about the state of a permission, and nothing more.
+ *
+ * These used to be sentences of explanation under every control. A panel of
+ * paragraphs is a panel nobody reads, and the ones that mattered — a blocked
+ * permission, a camera that will not start — were lost among the ones that
+ * merely described what the control obviously did.
  */
-const TILT_HINTS: Record<TiltStatus, string> = {
+const TILT_HINTS: Partial<Record<TiltStatus, string>> = {
   unsupported: 'This device cannot tell which way up it is.',
-  idle: 'Tip the phone and the pieces slide. The mirrors stay put.',
-  asking: 'Waiting for permission…',
-  active: 'On. The pieces fall towards whatever is lowest.',
-  denied: 'Motion access is blocked. Allow it in your browser settings.',
+  denied: 'Blocked. Allow motion access in your browser settings.',
 };
 
-const CAMERA_HINTS: Record<CameraStatus, string> = {
-  idle: 'The camera is off.',
+const CAMERA_HINTS: Partial<Record<CameraStatus, string>> = {
   starting: 'Waiting for permission…',
-  active: 'Live. Frames stay in this browser.',
   denied: 'Camera access is blocked.',
   unavailable: 'No camera available.',
   error: 'The camera could not start.',
@@ -94,7 +88,6 @@ const CAMERA_HINTS: Record<CameraStatus, string> = {
 export function ControlPanel({
   settings,
   onChange,
-  onRandomize,
   onReset,
   onSave,
   onShare,
@@ -118,6 +111,10 @@ export function ControlPanel({
     setSeedDraft(settings.seed);
   }
 
+  const kind = settings.source;
+  const tiltHint = TILT_HINTS[tiltStatus];
+  const cameraHint = cameraMessage ?? CAMERA_HINTS[cameraStatus];
+
   return (
     <form
       className={styles.panel}
@@ -125,38 +122,88 @@ export function ControlPanel({
         event.preventDefault();
       }}
     >
-      <fieldset className={styles.group}>
-        <legend className={styles.legend}>Contents</legend>
-
-        <PictureField
-          label="Source"
-          value={currentSource(settings)}
-          options={SOURCE_OPTIONS}
-          onChange={(value) => {
-            const [kind, name = ''] = value.split(':');
-
-            if (kind === 'set') {
-              onChange('source', 'objects');
-              onChange('objects', name);
-            } else if (isSourceId(name)) {
-              onChange('source', name);
-            }
-          }}
-        />
-
-        {settings.source === 'objects' && (
-          <RangeField
-            label="Pieces"
-            value={settings.shards}
-            limit={LIMITS.shards}
-            onChange={(value) => {
-              onChange('shards', value);
+      <div className={styles.tabs} role="tablist" aria-label="Kind">
+        {KINDS.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="tab"
+            id={`kind-${entry.id}`}
+            aria-selected={kind === entry.id}
+            aria-controls={`panel-${entry.id}`}
+            // Only the chosen tab is in the tab order; the arrows move between
+            // them, which is what a tablist is expected to do.
+            tabIndex={kind === entry.id ? 0 : -1}
+            className={kind === entry.id ? `${styles.tab} ${styles.here}` : styles.tab}
+            onClick={() => {
+              onChange('source', entry.id);
             }}
-          />
-        )}
+            onKeyDown={(event) => {
+              const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
 
-        {settings.source === 'objects' && (
+              if (step === 0) {
+                return;
+              }
+
+              event.preventDefault();
+              const at = KINDS.findIndex((other) => other.id === kind);
+              const next = KINDS[(at + step + KINDS.length) % KINDS.length];
+
+              if (next) {
+                onChange('source', next.id);
+                document.getElementById(`kind-${next.id}`)?.focus();
+              }
+            }}
+          >
+            <Icon name={entry.icon} size={1.4} />
+            <span className={styles.tabLabel}>{entry.label}</span>
+          </button>
+        ))}
+      </div>
+
+      <div
+        className={styles.group}
+        role="tabpanel"
+        id={`panel-${kind}`}
+        aria-labelledby={`kind-${kind}`}
+      >
+        {kind === 'objects' && (
           <>
+            <PictureField
+              label="Glass"
+              value={settings.objects}
+              options={OBJECT_SETS.map((set) => ({
+                value: set.id,
+                label: set.name,
+                picture: set.thumbnail,
+              }))}
+              onChange={(value) => {
+                onChange('objects', value);
+              }}
+            />
+
+            {settings.objects === CUSTOM && (
+              <>
+                <FileField
+                  label="Picture"
+                  accept="image/*"
+                  fileName={imageName}
+                  buttonLabel={imageName ? 'Replace picture' : 'Choose picture'}
+                  onSelect={onSelectImage}
+                />
+                <p className={styles.hint}>A PNG of a few objects on a transparent background.</p>
+              </>
+            )}
+
+            <RangeField
+              label="Pieces"
+              value={settings.shards}
+              limit={LIMITS.shards}
+              onChange={(value) => {
+                onChange('shards', value);
+              }}
+            />
+
             <RangeField
               label="Glitter"
               value={settings.glitter}
@@ -166,59 +213,7 @@ export function ControlPanel({
                 onChange('glitter', value);
               }}
             />
-            <p className={styles.hint}>
-              Flakes catch the light one at a time. Turn on Real gravity and tip the phone to
-              set them off.
-            </p>
-          </>
-        )}
 
-        {/* One photo, wanted either to mirror or to cut the pieces out of. */}
-        {(settings.source === 'image' || settings.objects === CUSTOM) && (
-          <>
-            <FileField
-              label="Photo"
-              accept="image/*"
-              fileName={imageName}
-              buttonLabel={imageName ? 'Replace photo' : 'Choose photo'}
-              onSelect={onSelectImage}
-            />
-            <p className={styles.hint}>
-              {settings.objects === CUSTOM
-                ? 'A PNG of a few objects on a transparent background.'
-                : 'Or drop one onto the artwork.'}
-            </p>
-            {imageName ? (
-              <button type="button" className={styles.ghost} onClick={onClearImage}>
-                Remove photo
-              </button>
-            ) : null}
-            {imageError ? (
-              <p className={styles.error} role="alert">
-                {imageError}
-              </p>
-            ) : null}
-          </>
-        )}
-
-        {settings.source === 'camera' && (
-          <>
-            <SelectField
-              label="Camera"
-              value={settings.cameraFacing}
-              options={CAMERA_OPTIONS}
-              onChange={(value) => {
-                onChange('cameraFacing', value);
-              }}
-            />
-            <p className={cameraStatus === 'active' ? styles.hint : styles.error} role="status">
-              {cameraMessage ?? CAMERA_HINTS[cameraStatus]}
-            </p>
-          </>
-        )}
-
-        {settings.source === 'objects' && (
-          <>
             <TextField
               label="Seed"
               value={seedDraft}
@@ -231,11 +226,50 @@ export function ControlPanel({
             />
           </>
         )}
-      </fieldset>
 
-      <fieldset className={styles.group}>
-        <legend className={styles.legend}>Mirrors</legend>
+        {kind === 'image' && (
+          <>
+            <FileField
+              label="Picture"
+              accept="image/*"
+              fileName={imageName}
+              buttonLabel={imageName ? 'Replace picture' : 'Choose picture'}
+              onSelect={onSelectImage}
+            />
+            <p className={styles.hint}>Or drop one onto the artwork.</p>
+            {imageName ? (
+              <button type="button" className={styles.ghost} onClick={onClearImage}>
+                Remove picture
+              </button>
+            ) : null}
+            {imageError ? (
+              <p className={styles.error} role="alert">
+                {imageError}
+              </p>
+            ) : null}
+          </>
+        )}
 
+        {kind === 'camera' && (
+          <>
+            <SelectField
+              label="Facing"
+              value={settings.cameraFacing}
+              options={CAMERA_OPTIONS}
+              onChange={(value) => {
+                onChange('cameraFacing', value);
+              }}
+            />
+            {cameraHint ? (
+              <p className={styles.error} role="status">
+                {cameraHint}
+              </p>
+            ) : null}
+          </>
+        )}
+      </div>
+
+      <div className={styles.group}>
         <RangeField
           label="Mirror size"
           value={settings.zoom}
@@ -256,24 +290,13 @@ export function ControlPanel({
           }}
         />
 
-        <p className={styles.hint}>
-          Which way up you hold the tube. A third of a turn brings it back.
-        </p>
-
-        <p className={styles.hint}>
-          Swipe to turn. Pinch or scroll to size the pieces; drag two fingers to move them.
-        </p>
-
-        {/* The state is the description rather than a line of its own: one
-            control, one thing said about it, and nothing announcing itself from
-            inside a panel that is usually off screen. */}
         <ToggleField
           label="Real gravity"
           checked={settings.tilt}
           onChange={(checked) => {
             onChange('tilt', checked);
           }}
-          description={TILT_HINTS[tiltStatus]}
+          {...(tiltHint ? { description: tiltHint } : {})}
         />
 
         <ToggleField
@@ -282,24 +305,27 @@ export function ControlPanel({
           onChange={(checked) => {
             onChange('debug', checked);
           }}
-          description="Outlines the triangle everything is reflected from, and points at gravity."
         />
-      </fieldset>
+      </div>
 
+      {/* Three verbs, as icons: named for a screen reader and titled for a
+          pointer, so nothing is lost by not spelling them out.
+
+          Reshuffling used to be here too. It is on the toolbar over the
+          artwork, where a hand already is, and having it in both places put two
+          buttons with the same name on screen at once — ambiguous to a screen
+          reader and clutter to everyone else. Saving stays, because the two
+          saves are different: the toolbar writes the seamless tile, this one
+          writes the frame as you are looking at it. */}
       <div className={styles.actions}>
-        {settings.source === 'objects' && (
-          <button type="button" className={styles.primary} onClick={onRandomize}>
-            Randomize
-          </button>
-        )}
-        <button type="button" className={styles.secondary} onClick={onSave}>
-          Save PNG
+        <button type="button" title="Save this frame" aria-label="Save this frame" onClick={onSave}>
+          <Icon name="save" />
         </button>
-        <button type="button" className={styles.secondary} onClick={onShare}>
-          Copy link
+        <button type="button" title="Copy link" aria-label="Copy link" onClick={onShare}>
+          <Icon name="link" />
         </button>
-        <button type="button" className={styles.ghost} onClick={onReset}>
-          Reset
+        <button type="button" title="Reset" aria-label="Reset" onClick={onReset}>
+          <Icon name="reset" />
         </button>
       </div>
 
@@ -308,6 +334,11 @@ export function ControlPanel({
       <p className={styles.status} aria-hidden="true">
         {status}
       </p>
+
+      {/* Which build this is. A cached page looks exactly like a fresh one, and
+          this app is a picture — there is otherwise nothing on screen that
+          would tell you the phone is still running last week's copy. */}
+      <p className={styles.build}>{buildLine()}</p>
     </form>
   );
 }
