@@ -149,8 +149,23 @@ describe('ControlPanel', () => {
 
         expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();
         expect(screen.getByLabelText('Mirror angle')).toBeInTheDocument();
-        expect(screen.getByLabelText('Real gravity')).toBeInTheDocument();
         expect(screen.getByLabelText('Bead')).toBeInTheDocument();
+        unmount();
+      }
+    });
+
+    // Gravity tips the glass in the chamber; a photograph and the camera have
+    // no physics, so on the View tab the switch would do nothing at all.
+    it('offers gravity only where there is a pile for it to move', () => {
+      for (const source of ['objects', 'image', 'camera'] as const) {
+        const { unmount } = withSettings({ source });
+
+        if (source === 'objects') {
+          expect(screen.getByLabelText('Real gravity')).toBeInTheDocument();
+        } else {
+          expect(screen.queryByLabelText('Real gravity')).not.toBeInTheDocument();
+        }
+
         unmount();
       }
     });

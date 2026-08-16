@@ -321,14 +321,19 @@ export function ControlPanel({
           }}
         />
 
-        <ToggleField
-          label="Real gravity"
-          checked={settings.tilt}
-          onChange={(checked) => {
-            onChange('tilt', checked);
-          }}
-          {...(tiltHint ? { description: tiltHint } : {})}
-        />
+        {/* Only where there is a pile for it to move. Gravity tips the glass
+            in the chamber; a photograph and the camera have no physics, so on
+            the View tab the switch would be a control that does nothing. */}
+        {kind === 'objects' && (
+          <ToggleField
+            label="Real gravity"
+            checked={settings.tilt}
+            onChange={(checked) => {
+              onChange('tilt', checked);
+            }}
+            {...(tiltHint ? { description: tiltHint } : {})}
+          />
+        )}
 
         <ToggleField
           label="Show the mirrors"

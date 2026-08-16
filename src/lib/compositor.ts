@@ -287,7 +287,12 @@ vec2 throughBead(vec2 point) {
   // is exactly what the first version of this did.
   vec2 from = point - uBeadAt;
   float across = length(from) / reach;
-  float gain = mix(1.0, 0.42 + 1.5 * across * across, uBead.x);
+  // The middle magnified harder and the rim reaching much further: a real
+  // sphere packs the last degrees of the world into the last pixels of glass,
+  // and the earlier curve (0.42 + 1.5 a^2) read as a mild filter rather than a
+  // marble. The quartic is what packs the rim — the gain stays near flat over
+  // the middle and takes off in the outer third.
+  float gain = mix(1.0, 0.24 + 0.9 * across * across + 2.8 * across * across * across * across, uBead.x);
 
   // Subtracted rather than added, because a sphere hands the world back upside
   // down. That inversion is half of what makes it read as a marble.

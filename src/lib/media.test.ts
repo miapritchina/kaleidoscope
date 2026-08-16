@@ -94,27 +94,28 @@ describe('drawMedia', () => {
     expect(drawn!.h).toBe(400);
   });
 
-  it('never zooms below cover, which would expose the backdrop', () => {
-    const atCover = draw(fakeImage(400, 400), { zoom: 1 }).drawn;
-    const zoomedOut = draw(fakeImage(400, 400), { zoom: 0.5 }).drawn;
+  it('shrinks below cover when asked, since where the picture sits is a choice', () => {
+    const { drawn } = draw(fakeImage(400, 400), { zoom: 0.5 });
 
-    expect(zoomedOut).toEqual(atCover);
+    expect(drawn!.w).toBe(100);
+    expect(drawn!.h).toBe(100);
   });
 
-  it('pans by the slack the media has outside the covered square', () => {
-    // At zoom 2 a square image is 400 wide against a 200 span: 100 of slack.
+  it('pans by the wedge reach plus the slack outside the covered square', () => {
+    // At zoom 2 a square image is 400 wide against a 200 span: 100 of slack,
+    // plus the wedge's own 100 of reach.
     const { offset } = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: -1 } });
 
-    expect(offset).toEqual({ x: 100, y: -100 });
+    expect(offset).toEqual({ x: 200, y: -200 });
   });
 
-  it('cannot pan when the media exactly covers', () => {
+  it('still pans when the media exactly covers, by the wedge reach', () => {
     const { offset } = draw(fakeImage(400, 400), { pan: { x: 1, y: 1 } });
 
-    expect(offset).toEqual({ x: 0, y: 0 });
+    expect(offset).toEqual({ x: 100, y: 100 });
   });
 
-  it('clamps pan beyond the edges', () => {
+  it('clamps pan beyond its full travel', () => {
     const pinned = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 1, y: 1 } }).offset;
     const overshot = draw(fakeImage(400, 400), { zoom: 2, pan: { x: 9, y: 9 } }).offset;
 
@@ -154,35 +155,11 @@ describe('drawMedia', () => {
     });
 
     // Same screen-space translation before the rotation is applied.
-    expect(upright.offset).toEqual({ x: 100, y: 0 });
+    expect(upright.offset).toEqual({ x: 200, y: 0 });
     expect({
       x: Math.round(turned.offset!.x),
       y: Math.round(turned.offset!.y),
-    }).toEqual({ x: 100, y: 0 });
-  });
-
-  it('keeps a diagonal drag from pulling an edge in once rotated', () => {
-    // A wide photo has slack on one axis only; a diagonal drag rotated by 45
-    // degrees would otherwise exceed it.
-    const { ctx } = draw(fakeImage(800, 200), {
-      zoom: 1.5,
-      rotation: Math.PI / 4,
-      pan: { x: 1, y: 1 },
-    });
-    const [dx, dy] = (ctx.argsOf('translate')[0] ?? [0, 0]) as [number, number];
-
-    const { drawn } = draw(fakeImage(800, 200), { zoom: 1.5 });
-    const slackX = (drawn!.w - 200) / 2;
-    const slackY = (drawn!.h - 200) / 2;
-
-    // Back in the media's own frame the offset stays within its slack.
-    const cos = Math.cos(-Math.PI / 4);
-    const sin = Math.sin(-Math.PI / 4);
-    const u = Math.abs(dx * cos - dy * sin);
-    const v = Math.abs(dx * sin + dy * cos);
-
-    expect(u).toBeLessThanOrEqual(slackX + 0.001);
-    expect(v).toBeLessThanOrEqual(slackY + 0.001);
+    }).toEqual({ x: 200, y: 0 });
   });
 
   it('balances save with restore', () => {

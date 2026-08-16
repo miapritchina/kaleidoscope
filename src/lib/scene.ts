@@ -72,8 +72,9 @@ export interface Scene {
    * Where the viewer has dragged the source to, each axis in `[-1, 1]`.
    *
    * A position rather than a velocity: the source follows the pointer and stays
-   * where it is let go, which is what dragging something means. A photo cannot
-   * tile, so its travel is bounded by however much hangs outside the wedge.
+   * where it is let go, which is what dragging something means. A photo's
+   * travel reaches the wedge's own span plus whatever hangs outside it, so its
+   * edges may be dragged into view but some of it always remains.
    */
   drag: { x: number; y: number };
   /**
