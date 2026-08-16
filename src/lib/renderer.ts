@@ -89,6 +89,27 @@ const VIGNETTE_CLEAR = 0.16;
  */
 const RIM_DISPERSION = 1.4;
 
+/**
+ * How far apart the flakes of glitter are, as a fraction of the triangle.
+ *
+ * One flake to a square of this side. Fine enough that a hexagon holds a few
+ * hundred, coarse enough that two never land on the same pixel — and tied to
+ * the triangle rather than to the screen, so zooming in magnifies the glitter
+ * along with everything else instead of leaving it a constant screen-sized
+ * speckle, which is the tell of an effect laid over a picture.
+ */
+const GLITTER_GRAIN = 0.035;
+
+/**
+ * How far the room's light tips away from straight ahead.
+ *
+ * A phone lying flat under a ceiling light is looking straight up it; held over
+ * at an angle, the light arrives across the glass. This is how much of that
+ * travel a full tip is worth, and it is what turns a tilt into a wave of
+ * flashes rather than a uniform brightening.
+ */
+const LIGHT_THROW = 0.55;
+
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
 
@@ -313,7 +334,7 @@ export class KaleidoscopeRenderer {
 
     this.#source = source;
     this.#paintWedge(source, triangle);
-    this.#compositeTiling(triangle, framework);
+    this.#compositeTiling(triangle, framework, settings, scene.tilt);
 
     if (settings.debug) {
       this.#drawDebug(triangle, scene.tilt, framework);
@@ -519,10 +540,10 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(side: number, angle: number): void {
+  #compositeTiling(side: number, angle: number, settings: Settings, tilt: number): void {
     const ctx = this.#ctx;
 
-    if (this.#compositeWithShader(side, angle)) {
+    if (this.#compositeWithShader(side, angle, settings, tilt)) {
       return;
     }
 
@@ -562,7 +583,7 @@ export class KaleidoscopeRenderer {
    * to the screen. That keeps one surface holding the finished frame, which is
    * what the debug overlay draws onto and what the PNG save reads back.
    */
-  #compositeWithShader(side: number, angle: number): boolean {
+  #compositeWithShader(side: number, angle: number, settings: Settings, tilt: number): boolean {
     if (!this.#shaderTried) {
       this.#shaderTried = true;
       // Its own surface, not one from the wedge factory: that factory makes
@@ -605,6 +626,17 @@ export class KaleidoscopeRenderer {
         depth: VIGNETTE_DEPTH,
       },
       dispersion: RIM_DISPERSION,
+      glitter: settings.glitter,
+      grain: Math.max(1, side * GLITTER_GRAIN),
+      // Where the room's light is, seen from a phone being held at `tilt`. The
+      // light stays where it is and the instrument turns under it, so this is
+      // the tilt read back into the screen's own axes — which is why the flakes
+      // fire in waves as the phone moves and sit still when it does not.
+      light: {
+        x: Math.sin(tilt) * LIGHT_THROW,
+        y: Math.cos(tilt) * LIGHT_THROW,
+        z: 1,
+      },
     });
 
     if (!drawn) {

@@ -155,6 +155,24 @@ export function ControlPanel({
           />
         )}
 
+        {settings.source === 'objects' && (
+          <>
+            <RangeField
+              label="Glitter"
+              value={settings.glitter}
+              limit={LIMITS.glitter}
+              format={(value) => (value === 0 ? 'none' : `${String(Math.round(value * 100))}%`)}
+              onChange={(value) => {
+                onChange('glitter', value);
+              }}
+            />
+            <p className={styles.hint}>
+              Flakes catch the light one at a time. Turn on Real gravity and tip the phone to
+              set them off.
+            </p>
+          </>
+        )}
+
         {/* One photo, wanted either to mirror or to cut the pieces out of. */}
         {(settings.source === 'image' || settings.objects === CUSTOM) && (
           <>

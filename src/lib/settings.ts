@@ -31,6 +31,16 @@ export interface Settings {
   /** How many shards live in the source cell. */
   shards: number;
   /**
+   * How much glitter is suspended in the chamber, from none to plenty.
+   *
+   * Real glitter is thousands of tiny flat mirrors at random orientations, and
+   * it does not glow — it *flashes*, one flake at a time, as the angle between
+   * you, the flake and the light passes through alignment. So this is only
+   * half a look: the other half is the phone moving, and it comes alive when
+   * **Real gravity** is on and the room's light starts sweeping across it.
+   */
+  glitter: number;
+  /**
    * How big the things in the source are, as a multiplier.
    *
    * The pieces in the chamber, or the magnification of a photo. Pinched and
@@ -93,6 +103,7 @@ export interface NumericLimit {
  */
 export const LIMITS = {
   shards: { min: 4, max: 60, step: 1 },
+  glitter: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
   // A third of a turn is the whole of it: the framework is unchanged by 120
@@ -104,6 +115,8 @@ export const DEFAULT_SETTINGS: Settings = {
   source: 'objects',
   cameraFacing: 'environment',
   shards: 30,
+  // Enough to catch the light without becoming the subject.
+  glitter: 0.35,
   sourceScale: 1,
   objects: DEFAULT_OBJECTS,
   zoom: 1.2,
@@ -144,6 +157,7 @@ export function sanitizeSettings(input: unknown): Settings {
       ? raw.cameraFacing
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
+    glitter: clampToLimit(toNumber(raw.glitter, DEFAULT_SETTINGS.glitter), LIMITS.glitter),
     sourceScale: clampToLimit(
       toNumber(raw.sourceScale, DEFAULT_SETTINGS.sourceScale),
       LIMITS.sourceScale,
@@ -171,6 +185,7 @@ export function randomizeSeed(settings: Settings): Settings {
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   return new URLSearchParams({
     shards: String(settings.shards),
+    glitter: String(settings.glitter),
     sourceScale: String(settings.sourceScale),
     objects: settings.objects,
     zoom: String(settings.zoom),
@@ -218,6 +233,7 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
   return sanitizeSettings({
     shards: params.get('shards'),
+    glitter: params.get('glitter'),
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),
     objects: params.get('objects'),
     zoom: params.get('zoom'),
