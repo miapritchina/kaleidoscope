@@ -286,17 +286,30 @@ vec2 throughBead(vec2 point) {
   // the edge of the surface, and the glass disappears into bare ground — which
   // is exactly what the first version of this did.
   vec2 from = point - uBeadAt;
-  float across = length(from) / reach;
-  // The middle magnified harder and the rim reaching much further: a real
+  // Capped at the rim: past its own edge the sphere is over, and the mapping
+  // carries on at the rim's scale rather than running on up the curve. The
+  // corner tips of the triangle sit just outside the bead, and uncapped they
+  // sampled several spans off the surface.
+  float across = min(length(from) / reach, 1.0);
+  // The middle magnified hard and the rim packed with a quartic: a real
   // sphere packs the last degrees of the world into the last pixels of glass,
-  // and the earlier curve (0.42 + 1.5 a^2) read as a mild filter rather than a
-  // marble. The quartic is what packs the rim — the gain stays near flat over
-  // the middle and takes off in the outer third.
-  float gain = mix(1.0, 0.24 + 0.9 * across * across + 2.8 * across * across * across * across, uBead.x);
+  // and the earlier curve (0.42 + 1.5 a^2) read as a mild filter rather than
+  // a marble. The rim's gain is bounded by what is painted — reach far past
+  // the source and the texture clamps to its edge and streaks, which showed
+  // as pale fans punched through every corner.
+  float gain = mix(1.0, 0.2 + 0.5 * across * across + across * across * across * across, uBead.x);
 
   // Subtracted rather than added, because a sphere hands the world back upside
   // down. That inversion is half of what makes it read as a marble.
-  return uBeadAt - from * gain;
+  vec2 through = uBeadAt - from * gain;
+
+  // Never further than the painted source: it covers a wedge-span around the
+  // apex, which is this frame's origin. What little would land beyond is laid
+  // on the rim instead — which is where a marble puts the last of the world.
+  float limit = uSide * 0.98;
+  float throw_ = length(through);
+
+  return throw_ > limit ? through * (limit / throw_) : through;
 }
 
 vec3 readSource(Fold folded) {
