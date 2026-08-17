@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObject } from 'react';
 
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
@@ -21,6 +21,14 @@ const WHEEL_ZOOM = 0.0015;
 
 /** Radians per degree, for the one setting that is kept in degrees. */
 const DEGREES = Math.PI / 180;
+
+/**
+ * How long the piece size has to hold still before the glass is recut to it.
+ *
+ * Long enough that a pinch in progress never pays for a scene build, short
+ * enough that the pile reappears at its new size as the fingers lift.
+ */
+const RECUT_DELAY_MS = 250;
 
 export interface KaleidoscopeHandle {
   /** Returns the current frame as a PNG data URL, or `null` before first paint. */
@@ -91,9 +99,31 @@ export function Kaleidoscope({
   // because it is geometry: bigger pieces displace their neighbours and settle
   // into a different pile, which cannot be done by scaling what is already
   // there.
+  //
+  // The size waits for the hand to stop, though. Building a scene settles the
+  // pile, which takes an appreciable slice of a second at a full chamber — and
+  // a pinch changes the scale on every pointer move, so rebuilding on each one
+  // froze the whole app mid-gesture, on every tab, whether or not the chamber
+  // was even on screen. A photo and the camera read the live value; only the
+  // glass is worth recutting, once, when the size has come to rest.
+  const [chamberScale, setChamberScale] = useState(settings.sourceScale);
+  useEffect(() => {
+    if (chamberScale === settings.sourceScale) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setChamberScale(settings.sourceScale);
+    }, RECUT_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [chamberScale, settings.sourceScale]);
+
   const scene = useMemo(
-    () => createScene(settings.seed, settings.shards, settings.sourceScale),
-    [settings.seed, settings.shards, settings.sourceScale],
+    () => createScene(settings.seed, settings.shards, chamberScale),
+    [settings.seed, settings.shards, chamberScale],
   );
 
   useImperativeHandle(
