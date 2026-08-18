@@ -84,13 +84,40 @@ export function useDeviceTilt(enabled: boolean): DeviceTilt {
     const ask = (window.DeviceOrientationEvent as unknown as OrientationPermission)
       .requestPermission;
 
-    if (typeof ask === 'function') {
+    // iOS refuses even to ask unless the asking happens inside a user gesture.
+    // A fresh open of an installed app with the switch already on has no
+    // gesture to offer — the first attempt below is rejected outright, which is
+    // the question being refused and not the permission being denied. So a
+    // refusal arms one retry on the first touch, whatever it is for, and iOS
+    // grants an origin it has granted before without showing anything. Without
+    // this, every reopen showed the switch on and the pile deaf to the phone
+    // until it was switched off and on again by hand.
+    const onFirstTouch = () => {
+      attempt();
+    };
+
+    const arm = () => {
+      window.addEventListener('pointerdown', onFirstTouch, { once: true });
+    };
+
+    const disarm = () => {
+      window.removeEventListener('pointerdown', onFirstTouch);
+    };
+
+    const attempt = () => {
+      if (typeof ask !== 'function') {
+        listen();
+        return;
+      }
+
+      disarm();
       ask()
         .then((state) => {
           if (!live) {
             return;
           }
 
+          // An answer, from a person: only here is "denied" the truth.
           if (state === 'granted') {
             listen();
           } else {
@@ -99,17 +126,18 @@ export function useDeviceTilt(enabled: boolean): DeviceTilt {
         })
         .catch(() => {
           if (live) {
-            setDenied(true);
+            arm();
           }
         });
-    } else {
-      listen();
-    }
+    };
+
+    attempt();
 
     return () => {
       live = false;
       angleRef.current = null;
       setReading(false);
+      disarm();
       window.removeEventListener('deviceorientation', onOrientation);
     };
   }, [enabled, supported]);
