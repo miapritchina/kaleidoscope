@@ -8,6 +8,7 @@ import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import {
   coverWithHexagons,
+  frameworkRadians,
   hexLattice,
   traceHexagon,
   traceTriangle,
@@ -137,9 +138,6 @@ const DEBUG_HALO = 2.6;
 
 /** Length of the gravity arrow, as a fraction of the smaller viewport edge. */
 const DEBUG_ARROW = 0.18;
-
-/** Radians per degree, for the one setting that is kept in degrees. */
-const DEGREES = Math.PI / 180;
 
 /**
  * Pixel size of the exported tile: one period of the figure.
@@ -330,7 +328,7 @@ export class KaleidoscopeRenderer {
       patches,
     };
 
-    const framework = settings.angle * DEGREES;
+    const framework = frameworkRadians(settings.angle);
 
     this.#source = source;
     this.#paintWedge(source, triangle);

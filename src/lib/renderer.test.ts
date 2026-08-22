@@ -4,7 +4,7 @@ import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanv
 import { KaleidoscopeRenderer, TILE } from './renderer';
 import { createScene } from './scene';
 import { DEFAULT_SETTINGS } from './settings';
-import { latticePeriod } from './tiling';
+import { frameworkRadians, latticePeriod } from './tiling';
 
 interface Harness {
   renderer: KaleidoscopeRenderer;
@@ -291,16 +291,18 @@ describe('KaleidoscopeRenderer', () => {
     renderer.resize(240, 240, 1);
     renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, angle: 30 });
 
-    expect(main.argsOf('rotate')).toContainEqual([Math.PI / 6]);
+    expect(main.argsOf('rotate')).toContainEqual([frameworkRadians(30)]);
   });
 
-  it('leaves it alone at zero, which is the default', () => {
+  // Zero is not an unrotated field: it is the turn that stands the source
+  // triangle on its base, which is what zero degrees means on the slider.
+  it('stands the triangle on its base at zero, which is the default', () => {
     const { renderer, main } = createRenderer();
 
     renderer.resize(240, 240, 1);
     renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
 
-    expect(main.argsOf('rotate')).toEqual([[0]]);
+    expect(main.argsOf('rotate')).toEqual([[frameworkRadians(0)]]);
   });
 
   it('exposes the frame as a data url', () => {
