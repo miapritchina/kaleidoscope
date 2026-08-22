@@ -33,9 +33,12 @@
 }
 
 /*
- * Faint on purpose. These sit on top of the thing they are for, and a solid
- * pill in the corner of it is the first thing the eye lands on — which is the
- * wrong thing. Enough contrast to find, not enough to look at.
+ * Faint on purpose, and made fainter again at the owner's asking. These sit
+ * on top of the thing they are for, and a solid pill in the corner of it is
+ * the first thing the eye lands on — which is the wrong thing. Enough
+ * contrast to find under a hand that goes looking, not enough to look at;
+ * hovering or focusing one brings it forward, so a keyboard is never asked
+ * to aim at a ghost.
  */
 .tool {
   display: grid;
@@ -43,20 +46,31 @@
   width: 2.5rem;
   height: 2.5rem;
   padding: 0;
-  border: 1px solid rgb(255 255 255 / 0.14);
+  border: 1px solid rgb(255 255 255 / 0.07);
   border-radius: 999px;
-  background: rgb(7 7 13 / 0.38);
+  background: rgb(7 7 13 / 0.16);
   backdrop-filter: blur(8px);
   cursor: pointer;
+  opacity: 0.55;
   transition:
     background-color 150ms ease,
-    border-color 150ms ease;
+    border-color 150ms ease,
+    opacity 150ms ease;
 }
 
 .tool:hover,
 .tool:focus-visible {
   border-color: rgb(255 255 255 / 0.32);
   background: rgb(7 7 13 / 0.72);
+  opacity: 1;
+}
+
+/* A toggle that is on holds its own against the faintness, or there is no
+   telling the instrument's state from across the room. */
+.tool[aria-pressed='true'] {
+  border-color: rgb(122 92 255 / 0.55);
+  background: rgb(122 92 255 / 0.28);
+  opacity: 0.9;
 }
 
 /* Drawn rather than an icon font, so they need no network and no glyph. */

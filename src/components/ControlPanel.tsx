@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import type { CameraStatus } from '../hooks/useCamera';
-import type { TiltStatus } from '../hooks/useDeviceTilt';
+
 import { buildLine } from '../lib/build';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
@@ -32,7 +32,6 @@ export interface ControlPanelProps {
   onClearImage: () => void;
   cameraStatus: CameraStatus;
   cameraMessage?: string | null;
-  tiltStatus: TiltStatus;
 }
 
 /**
@@ -80,11 +79,6 @@ const CAMERA_OPTIONS = CAMERA_FACINGS.map((facing) => ({
  * permission, a camera that will not start — were lost among the ones that
  * merely described what the control obviously did.
  */
-const TILT_HINTS: Partial<Record<TiltStatus, string>> = {
-  unsupported: 'This device cannot tell which way up it is.',
-  denied: 'Blocked. Allow motion access in your browser settings.',
-};
-
 const CAMERA_HINTS: Partial<Record<CameraStatus, string>> = {
   starting: 'Waiting for permission…',
   denied: 'Camera access is blocked.',
@@ -105,7 +99,6 @@ export function ControlPanel({
   onClearImage,
   cameraStatus,
   cameraMessage,
-  tiltStatus,
 }: ControlPanelProps) {
   // The seed input keeps its own draft so the field can be emptied while typing
   // without the sanitiser snapping it back mid-keystroke. When the seed changes
@@ -123,7 +116,6 @@ export function ControlPanel({
   // Separating them put the two most similar choices furthest apart.
   const kind = tabFor(settings.source);
   const live = settings.source === 'camera';
-  const tiltHint = TILT_HINTS[tiltStatus];
   const cameraHint = cameraMessage ?? CAMERA_HINTS[cameraStatus];
 
   return (
@@ -321,20 +313,9 @@ export function ControlPanel({
           }}
         />
 
-        {/* Only where there is a pile for it to move. Gravity tips the glass
-            in the chamber; a photograph and the camera have no physics, so on
-            the View tab the switch would be a control that does nothing. */}
-        {kind === 'objects' && (
-          <ToggleField
-            label="Real gravity"
-            checked={settings.tilt}
-            onChange={(checked) => {
-              onChange('tilt', checked);
-            }}
-            {...(tiltHint ? { description: tiltHint } : {})}
-          />
-        )}
-
+        {/* Real gravity is not here: its switch lives on the artwork's own
+            toolbar, because switching it on is the tap iOS demands before the
+            sensor may even be asked for. */}
         <ToggleField
           label="Show the mirrors"
           checked={settings.debug}

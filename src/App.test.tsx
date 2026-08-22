@@ -110,7 +110,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Kaleidoscope' })).toBeInTheDocument();
   });
 
-  // The three worth reaching without opening anything.
+  // The ones worth reaching without opening anything.
   it('leaves saving and reshuffling on the artwork, not behind the panel', () => {
     render(<App />);
 
@@ -119,13 +119,31 @@ describe('App', () => {
     expect(drawer()).toBeNull();
   });
 
+  // Switching it on is itself the tap iOS demands before the sensor may be
+  // asked for, so the switch lives on the artwork and starts off, whatever
+  // was saved.
+  it('offers gravity as a toolbar toggle, off until pressed', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const gravity = () => screen.getByRole('button', { name: 'Real gravity' });
+    expect(gravity()).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(gravity());
+    expect(gravity()).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent(/Real gravity on|cannot tell/);
+
+    await user.click(gravity());
+    expect(gravity()).toHaveAttribute('aria-pressed', 'false');
+  });
+
   // Drawn, not written: three words laid over the artwork is three things
   // competing with the thing they are for. The name is in the accessibility
   // tree, where it costs the picture nothing.
   it('names them for a screen reader without printing anything on the picture', () => {
     render(<App />);
 
-    for (const name of ['Save pattern', 'New arrangement', 'Controls']) {
+    for (const name of ['Real gravity', 'Save pattern', 'New arrangement', 'Controls']) {
       expect(screen.getByRole('button', { name }).textContent).toBe('');
     }
   });

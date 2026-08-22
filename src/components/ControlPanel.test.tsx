@@ -23,7 +23,6 @@ function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
     onSelectImage: vi.fn(),
     onClearImage: vi.fn(),
     cameraStatus: 'idle',
-    tiltStatus: 'idle',
     ...overrides,
   };
 
@@ -154,20 +153,12 @@ describe('ControlPanel', () => {
       }
     });
 
-    // Gravity tips the glass in the chamber; a photograph and the camera have
-    // no physics, so on the View tab the switch would do nothing at all.
-    it('offers gravity only where there is a pile for it to move', () => {
-      for (const source of ['objects', 'image', 'camera'] as const) {
-        const { unmount } = withSettings({ source });
+    // Its switch lives on the artwork's own toolbar, where pressing it is the
+    // tap iOS demands before the sensor may even be asked for.
+    it('does not carry the gravity switch', () => {
+      renderPanel();
 
-        if (source === 'objects') {
-          expect(screen.getByLabelText('Real gravity')).toBeInTheDocument();
-        } else {
-          expect(screen.queryByLabelText('Real gravity')).not.toBeInTheDocument();
-        }
-
-        unmount();
-      }
+      expect(screen.queryByLabelText('Real gravity')).not.toBeInTheDocument();
     });
   });
 
@@ -227,10 +218,8 @@ describe('ControlPanel', () => {
       const { props } = renderPanel();
 
       await user.click(screen.getByLabelText('Show the mirrors'));
-      await user.click(screen.getByLabelText('Real gravity'));
 
       expect(props.onChange).toHaveBeenCalledWith('debug', true);
-      expect(props.onChange).toHaveBeenCalledWith('tilt', true);
     });
   });
 
@@ -262,18 +251,6 @@ describe('ControlPanel', () => {
   describe('what it says out loud', () => {
     // Explanations of what a control obviously does were removed; the ones that
     // report a state nobody can otherwise see were not.
-    it('says when motion is blocked', () => {
-      renderPanel({ tiltStatus: 'denied' });
-
-      expect(screen.getByText(/allow motion access/i)).toBeInTheDocument();
-    });
-
-    it('says nothing about tilting when there is nothing to say', () => {
-      renderPanel({ tiltStatus: 'idle' });
-
-      expect(screen.queryByText(/allow motion access/i)).not.toBeInTheDocument();
-    });
-
     it('says when the camera will not start', () => {
       withSettings({ source: 'camera' }, { cameraStatus: 'denied' });
 

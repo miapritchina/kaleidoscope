@@ -123,7 +123,17 @@ function readInitialSettings(): Settings {
       // A photo and a camera stream cannot be restored: the file is gone and
       // reopening on `camera` would fire a permission prompt nobody asked for
       // on page load. Open on the chamber and let them choose again.
-      return restored.source === 'objects' ? restored : { ...restored, source: 'objects' };
+      //
+      // Real gravity starts off every launch for the same kind of reason:
+      // iOS only lets the sensor be asked for from inside a tap, so restoring
+      // it on showed a switch that was on and a pile that was deaf. Switching
+      // it on is one press of the motion button, and that press is the
+      // gesture the platform wants.
+      return {
+        ...restored,
+        source: restored.source === 'objects' ? restored.source : 'objects',
+        tilt: false,
+      };
     }
   } catch {
     // Corrupt or unreadable storage falls back to the defaults below.
