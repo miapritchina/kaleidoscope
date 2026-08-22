@@ -79,6 +79,21 @@ export function triangleCentre(side: number): Vector {
   return { x: side / 2, y: side / (2 * SQRT3) };
 }
 
+/**
+ * How far the framework is turned, in radians, for the mirror-angle setting.
+ *
+ * Zero degrees means the source triangle stands on its base. The triangle
+ * {@link traceTriangle} draws comes out apex-down once it is centred in the
+ * view, and a figure resting on a point reads as a figure something is wrong
+ * with — the owner said so more than once, and kept a sixty-degree turn dialled
+ * in by hand to right it. That turn now lives here, once, so the tiling, the
+ * physics' idea of which way gravity lies within the framework, and the debug
+ * outline all agree on what zero looks like.
+ */
+export function frameworkRadians(angleDegrees: number): number {
+  return (angleDegrees + 60) * (Math.PI / 180);
+}
+
 /** A hexagon in the tiling: where it sits, and which cell of the lattice it is. */
 export interface HexagonCell extends Vector {
   /** Steps along the lattice's two primitive translations. */

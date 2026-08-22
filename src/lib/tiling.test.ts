@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import {
   coverWithHexagons,
+  frameworkRadians,
   hexLattice,
   latticePeriod,
   triangleCentre,
@@ -110,6 +111,38 @@ describe('triangleCentre', () => {
     ]) {
       expect(Math.hypot(corner.x - centre.x, corner.y - centre.y)).toBeCloseTo(side / SQRT3, 9);
     }
+  });
+});
+
+describe('frameworkRadians', () => {
+  // Zero degrees means the triangle stands on its base. The triangle
+  // traceTriangle draws comes out apex-down once centred in the view, and a
+  // figure resting on a point reads as a figure something is wrong with.
+  it('stands the source triangle on its base at zero degrees', () => {
+    const side = 30;
+    const centre = triangleCentre(side);
+    const turn = frameworkRadians(0);
+    const cos = Math.cos(turn);
+    const sin = Math.sin(turn);
+    const corners = [
+      { x: 0, y: 0 },
+      { x: side, y: 0 },
+      { x: side / 2, y: (side * SQRT3) / 2 },
+    ].map(({ x, y }) => ({
+      x: (x - centre.x) * cos - (y - centre.y) * sin,
+      y: (x - centre.x) * sin + (y - centre.y) * cos,
+    }));
+
+    const ys = corners.map((corner) => corner.y).sort((a, b) => a - b);
+
+    // Canvas y grows downwards: two corners level at the bottom are the base,
+    // and the lone corner at the top is the apex.
+    expect(ys[1]).toBeCloseTo(ys[2]!, 9);
+    expect(ys[0]).toBeLessThan(ys[1]!);
+  });
+
+  it('turns with the setting, a degree for a degree', () => {
+    expect(frameworkRadians(30) - frameworkRadians(0)).toBeCloseTo(Math.PI / 6, 9);
   });
 });
 

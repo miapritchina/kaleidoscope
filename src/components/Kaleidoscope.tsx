@@ -8,6 +8,7 @@ import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene } from '../lib/scene';
 import type { Settings } from '../lib/settings';
+import { frameworkRadians } from '../lib/tiling';
 
 import styles from './Kaleidoscope.module.css';
 
@@ -18,9 +19,6 @@ import styles from './Kaleidoscope.module.css';
  * wherever it starts — the way a pinch is.
  */
 const WHEEL_ZOOM = 0.0015;
-
-/** Radians per degree, for the one setting that is kept in degrees. */
-const DEGREES = Math.PI / 180;
 
 /**
  * How long the piece size has to hold still before the glass is recut to it.
@@ -191,7 +189,9 @@ export function Kaleidoscope({
         tilt: tiltRef?.current ?? 0,
         // The cell is drawn inside the framework, so the framework's angle has
         // to come off gravity's or the pile would lean with the instrument.
-        framework: settings.angle * DEGREES,
+        // Derived by the same function the renderer uses, upright offset and
+        // all — computed separately the pile leans by the difference.
+        framework: frameworkRadians(settings.angle),
       });
       renderer.render(scene, settings, media, skin);
     },
