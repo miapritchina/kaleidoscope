@@ -64,6 +64,21 @@ describe('App', () => {
     expect(controls()).toHaveFocus();
   });
 
+  // The panel covers the thing the app is about, so reaching for the picture
+  // is the plainest way of saying you are done with the controls.
+  it('closes on a tap outside it, and stays open for taps within', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(controls());
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByLabelText('Pieces') });
+    expect(drawer()).not.toBeNull();
+
+    await user.pointer({ keys: '[MouseLeft]', target: screen.getByRole('main') });
+    expect(drawer()).toBeNull();
+    expect(controls()).toHaveAttribute('aria-expanded', 'false');
+  });
+
   // Opening it should land a keyboard on the controls rather than leaving the
   // focus on the artwork behind them.
   it('moves the focus into the panel when it opens', async () => {
@@ -119,13 +134,18 @@ describe('App', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(controls());
     const seed = () => screen.getByLabelText('Seed').getAttribute('value');
-    const before = seed();
 
+    // The panel is visited twice rather than left open: the toolbar sits on
+    // the artwork, so pressing it counts as a tap outside and closes the
+    // panel along the way.
+    await user.click(controls());
+    const before = seed();
     await user.click(screen.getByRole('button', { name: 'New arrangement' }));
 
-    expect(seed()).not.toBe(before);
     expect(screen.getByRole('status')).toHaveTextContent('A new arrangement of the pieces.');
+
+    await user.click(controls());
+    expect(seed()).not.toBe(before);
   });
 });

@@ -85,6 +85,38 @@ export function App() {
     };
   }, [controlsOpen]);
 
+  // A tap on the artwork puts the artwork back: the panel covers the thing
+  // the app is about, and reaching for the picture is the plainest way of
+  // saying you are done with the controls. The toggle stays out of it — its
+  // own press would otherwise close the panel here and reopen it on the
+  // click. Focus is left where the tap put it; a pointer asked, so no
+  // keyboard is waiting to be returned anywhere.
+  useEffect(() => {
+    if (!controlsOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (controlsRef.current?.contains(target) || toggleRef.current?.contains(target)) {
+        return;
+      }
+
+      setControlsOpen(false);
+    };
+
+    window.addEventListener('pointerdown', onPointerDown);
+
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [controlsOpen]);
+
   // Opening it moves the focus in, so a keyboard reaches the controls without
   // tabbing back through the artwork.
   useEffect(() => {
