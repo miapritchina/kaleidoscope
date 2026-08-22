@@ -665,10 +665,12 @@ export class KaleidoscopeRenderer {
       // actually on the surface, which is a change to the wedge and not to
       // this line.
       beadAt: triangleCentre(side),
-      // The bead's diameter is the triangle's height, so the bead spans the
-      // whole of the view: its rim runs inside the triangle with only the
-      // corner tips outside it, and they carry on at the rim's own scale.
-      beadReach: (side * Math.sqrt(3)) / 4,
+      // The bead's rim is the triangle's circumcircle — the circle through
+      // its corners — so the whole of the view sits inside the glass. The
+      // height of the triangle was tried as the diameter first and read as a
+      // ball floating in the figure, its rim visibly indoors; the owner drew
+      // the circle wanted, and it was this one.
+      beadReach: side / Math.sqrt(3),
     });
 
     if (!drawn) {
