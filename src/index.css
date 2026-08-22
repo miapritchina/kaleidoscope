@@ -42,6 +42,19 @@ body,
   height: 100dvh;
 }
 
+/* Installed to the home screen there is no address bar to dodge, and iOS
+   measures the dynamic viewport *inside* the safe areas there — which left a
+   black band behind the status bar and the home indicator where the artwork
+   should run. Plain 100% is the whole screen in standalone; the controls keep
+   clear of the notch with their own insets, as they always have. */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+}
+
 body {
   margin: 0;
   /* Nothing on this page scrolls but the drawer's own contents. Left scrollable

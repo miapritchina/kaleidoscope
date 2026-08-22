@@ -146,6 +146,19 @@ export function App() {
   // down somewhere else entirely.
   useShake(reshuffle, tilt.status === 'active');
 
+  // A refusal arrives after the press that asked, so it is announced when it
+  // lands rather than guessed at when the button was tapped. Synced during
+  // render, the way the panel's seed draft is, rather than from an effect.
+  const [seenTiltStatus, setSeenTiltStatus] = useState(tilt.status);
+
+  if (seenTiltStatus !== tilt.status) {
+    setSeenTiltStatus(tilt.status);
+
+    if (tilt.status === 'denied') {
+      setStatus('Motion access is blocked. Allow it in your browser settings.');
+    }
+  }
+
   const handleZoom = useCallback(
     (scale: number) => {
       set('sourceScale', clampToLimit(scale, LIMITS.sourceScale));
@@ -269,10 +282,39 @@ export function App() {
         <video ref={setVideo} className={styles.hiddenVideo} muted playsInline aria-hidden="true" />
       </main>
 
-      {/* The three things worth reaching without opening anything. Named for a
+      {/* The things worth reaching without opening anything. Named for a
           screen reader and drawn for everyone else: a word beside each would be
-          three labels laid over the artwork, and the artwork is the point. */}
+          labels laid over the artwork, and the artwork is the point. */}
       <div className={styles.toolbar}>
+        {/* On the artwork rather than in the panel, because switching it on is
+            itself the point of contact iOS demands: the sensor can only be
+            asked for from inside a tap, and this is that tap. Off at every
+            launch — see useSettings — so the asking always has one. */}
+        <button
+          type="button"
+          className={styles.tool}
+          aria-label="Real gravity"
+          aria-pressed={settings.tilt}
+          onClick={() => {
+            const next = !settings.tilt;
+
+            set('tilt', next);
+            announce(
+              tilt.status === 'unsupported'
+                ? 'This device cannot tell which way up it is.'
+                : next
+                  ? 'Real gravity on — tip the phone and the glass follows.'
+                  : 'Real gravity off.',
+            );
+          }}
+        >
+          <svg className={styles.icon} viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10.5 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 2v12h3V6h-3Z" />
+            <path d="M5.4 16.6a6.6 6.6 0 0 1 0-9.2l1.4 1.4a4.6 4.6 0 0 0 0 6.4l-1.4 1.4Z" />
+            <path d="M18.6 16.6l-1.4-1.4a4.6 4.6 0 0 0 0-6.4l1.4-1.4a6.6 6.6 0 0 1 0 9.2Z" />
+          </svg>
+        </button>
+
         <button
           type="button"
           className={styles.tool}
@@ -354,7 +396,6 @@ export function App() {
             onClearImage={image.clear}
             cameraStatus={camera.status}
             cameraMessage={camera.message}
-            tiltStatus={tilt.status}
           />
 
           {prefersReducedMotion && (
