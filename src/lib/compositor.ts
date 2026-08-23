@@ -38,8 +38,11 @@ precision highp float;
 uniform sampler2D uSource;
 /** Viewport, in device pixels. */
 uniform vec2 uResolution;
-/** Side of the wedge surface, and how far into it the triangle's apex sits. */
+/** Size of the wedge surface, in device pixels. Taller than wide: the extra is
+    the bead's headroom above the apex. */
 uniform vec2 uSurface;
+/** Where the triangle's apex sits on that surface. */
+uniform vec2 uApex;
 /** Side of the mirror triangle, in device pixels. */
 uniform float uSide;
 /** How far the framework is turned. */
@@ -287,33 +290,26 @@ vec2 throughBead(vec2 point) {
   // is exactly what the first version of this did.
   vec2 from = point - uBeadAt;
   // Capped at the rim: past its own edge the sphere is over, and the mapping
-  // carries on at the rim's scale rather than running on up the curve. The
-  // corner tips of the triangle sit just outside the bead, and uncapped they
-  // sampled several spans off the surface.
+  // carries on at the rim's scale rather than running on up the curve.
   float across = min(length(from) / reach, 1.0);
-  // The middle magnified hard and the rim packed with a quartic: a real
-  // sphere packs the last degrees of the world into the last pixels of glass,
-  // and the earlier curve (0.42 + 1.5 a^2) read as a mild filter rather than
-  // a marble. The rim's gain is bounded by what is painted — reach far past
-  // the source and the texture clamps to its edge and streaks, which showed
-  // as pale fans punched through every corner.
-  float gain = mix(1.0, 0.2 + 0.5 * across * across + across * across * across * across, uBead.x);
+  // The middle magnified hard and the rim at exactly unity. The rim gains
+  // that reached further were tried twice, and each reach past the painted
+  // source came back as a flat hole where a whole region clamped onto one
+  // spot. With the rim at one, the mapping is an inversion about the bead's
+  // axis whose every sample stays within the triangle's own circumdisc,
+  // mirrored — and the wedge surface carries the whole of that disc, bead
+  // headroom included, so no sample can leave the painted ground at all. The
+  // marble look survives on the gradient: the centre is magnified five-fold
+  // against the rim, which is the compression that reads as glass.
+  float gain = mix(1.0, 0.2 + 0.3 * across * across + 0.5 * across * across * across * across, uBead.x);
 
   // Subtracted rather than added, because a sphere hands the world back upside
   // down. That inversion is half of what makes it read as a marble.
-  vec2 through = uBeadAt - from * gain;
-
-  // Never further than the painted source: it covers a wedge-span around the
-  // apex, which is this frame's origin. What little would land beyond is laid
-  // on the rim instead — which is where a marble puts the last of the world.
-  float limit = uSide * 0.98;
-  float throw_ = length(through);
-
-  return throw_ > limit ? through * (limit / throw_) : through;
+  return uBeadAt - from * gain;
 }
 
 vec3 readSource(Fold folded) {
-  vec2 at = (throughBead(folded.point) + uSurface.y) / uSurface.x;
+  vec2 at = (throughBead(folded.point) + uApex) / uSurface;
 
   return texture(uSource, at).rgb;
 }
@@ -386,8 +382,8 @@ void main() {
 export interface CompositeOptions {
   /** The surface the source triangle is painted on. */
   source: HTMLCanvasElement;
-  /** How far into that surface the triangle's apex sits. */
-  bleed: number;
+  /** Where the triangle's apex sits on that surface. */
+  apex: { x: number; y: number };
   /** Side of the mirror triangle, in device pixels. */
   side: number;
   /** How far the framework is turned, in radians. */
@@ -560,7 +556,8 @@ export class Compositor {
 
     this.#set1i('uSource', 0);
     this.#set2f('uResolution', width, height);
-    this.#set2f('uSurface', source.width, options.bleed);
+    this.#set2f('uSurface', source.width, source.height);
+    this.#set2f('uApex', options.apex.x, options.apex.y);
     this.#set1f('uSide', options.side);
     this.#set1f('uAngle', options.angle);
     this.#set2f('uCentre', options.centre.x, options.centre.y);
