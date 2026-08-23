@@ -410,6 +410,33 @@ describe('drawChamber', () => {
     expect(context.countOf('clip')).toBe(7);
   });
 
+  // A pinch has to be seen while it is happening: the glass is only recut
+  // once the size rests, so until then the sprites run ahead of the cut.
+  it('magnifies the sprites past their cut size when asked', () => {
+    const skin = { width: 400, height: 300 } as unknown as CanvasImageSource;
+    const drawnWidth = (magnify: number) => {
+      const context = createFakeContext();
+
+      drawChamber(asContext(context), createScene('draw', 3), {
+        ...BASE,
+        scale: 100,
+        magnify,
+        skin,
+      });
+
+      const stamp = context.argsOf('drawImage').find((args) => args.length === 9);
+      return stamp?.[7] as number;
+    };
+
+    expect(drawnWidth(2)).toBeCloseTo(drawnWidth(1) * 2, 6);
+  });
+
+  it('remembers the scale it was cut at, floored like the cut itself', () => {
+    expect(createScene('scale', 4, 2).chipScale).toBe(2);
+    expect(createScene('scale', 4, 0).chipScale).toBe(0.05);
+    expect(createScene('scale', 4).chipScale).toBe(1);
+  });
+
   it('draws nothing at a degenerate scale', () => {
     const context = createFakeContext();
 

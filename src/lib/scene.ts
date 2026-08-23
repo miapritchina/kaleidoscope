@@ -49,6 +49,16 @@ export interface Shard {
 export interface Scene {
   readonly seed: string;
   readonly shards: Shard[];
+  /**
+   * The piece-size multiplier this glass was cut at.
+   *
+   * The glass is only recut once a pinch has come to rest — rebuilding and
+   * resettling the pile is too much work to do per pointer move — but the hand
+   * still has to see something growing under it. The renderer divides the live
+   * setting by this to know how far the drawn glass is running ahead of the
+   * cut, and magnifies the sprites by the difference until the recut lands.
+   */
+  readonly chipScale: number;
   /** Accumulated pan of the cell, in cells. */
   pan: { x: number; y: number };
   /**
@@ -206,6 +216,7 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
   const scene: Scene = {
     seed,
     shards,
+    chipScale: Math.max(0.05, chipScale),
     pan: { x: 0, y: 0 },
     cell: 0,
     tilt: 0,
@@ -302,6 +313,16 @@ export function updateScene(
 export interface DrawChamberOptions {
   /** Cell units to device pixels. */
   scale: number;
+  /**
+   * Draws every piece this much larger than the size it collides at.
+   *
+   * The live feedback for a pinch in progress: the glass is only recut once
+   * the size holds still, but the hand has to see it growing under the
+   * fingers, so the sprites run ahead of the cut by this much until it lands.
+   * The physics is untouched — pieces overlap a little while it is above one,
+   * and the recut resolves it.
+   */
+  magnify?: number;
   /** Rotation of the chamber about its own centre, in radians. */
   rotation: number;
   /** Offset of the chamber from the apex, in cell units. */
@@ -336,7 +357,7 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, rotation, pan, sprites, skin = null, patches = null }: DrawChamberOptions,
+  { scale, magnify = 1, rotation, pan, sprites, skin = null, patches = null }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
@@ -350,7 +371,7 @@ export function drawChamber(
   ctx.rotate(rotation);
 
   for (const shard of scene.shards) {
-    const radius = shard.radius * scale * DEPTH_OVERLAP;
+    const radius = shard.radius * scale * DEPTH_OVERLAP * magnify;
 
     // Nothing is drawn without a picture to cut it out of. There is no
     // generated piece to fall back to any more, and a chamber of nothing is a
