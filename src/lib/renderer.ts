@@ -46,6 +46,22 @@ interface WedgeSource {
 const SEAM_BLEED = 2;
 
 /**
+ * Where the triangle's apex sits on the wedge surface, for a given side.
+ *
+ * The seam bleed on every edge, plus headroom *above* the apex for the bead.
+ * The bead samples by inversion about the triangle's centre, so the point it
+ * asks for on behalf of the top corner is that corner reflected through the
+ * centre — which lands above the apex by exactly the centre's own height, the
+ * inradius. Without painted ground there, every rosette centre grew a blank
+ * patch: all the pixels around the apex clamped onto the same unpainted spot
+ * and came back as one flat hole. Only the top needs the room — the inverted
+ * triangle's other reaches stay within the old square.
+ */
+function wedgeApex(side: number): { x: number; y: number } {
+  return { x: SEAM_BLEED, y: SEAM_BLEED + Math.ceil(triangleCentre(side).y) };
+}
+
+/**
  * What one bounce off a mirror leaves of the light, per channel.
  *
  * Silvered behind glass the light crosses twice, so a few percent goes each
@@ -262,8 +278,11 @@ export class KaleidoscopeRenderer {
     // Sized for the largest triangle the zoom range can ask for, so a zoom
     // change never has to reallocate — and never overruns the surface either.
     // The margin around the apex is what lets the bled clip find painted pixels
-    // there rather than empty canvas, which would leave the seam showing.
-    this.#resizeWedge(Math.ceil(this.#maxTriangleSide()) + SEAM_BLEED * 2);
+    // there rather than empty canvas, which would leave the seam showing; the
+    // extra height above is the bead's headroom — see wedgeApex.
+    const largest = Math.ceil(this.#maxTriangleSide());
+
+    this.#resizeWedge(largest + SEAM_BLEED * 2, largest + SEAM_BLEED + wedgeApex(largest).y);
 
     this.#falloff = null;
     this.#vignetteCache = null;
@@ -431,20 +450,22 @@ export class KaleidoscopeRenderer {
 
     // The triangle whose period is exactly the tile.
     const side = TILE.width / 3;
-    const wanted = Math.ceil(side) + SEAM_BLEED * 2;
-    const painted = this.#wedge.width;
+    const painted = { width: this.#wedge.width, height: this.#wedge.height };
 
     // Grown for this one painting and put back after: the screen's surface is
     // sized for the largest triangle the slider can ask for, which on a small
     // window is smaller than the tile wants.
-    this.#resizeWedge(wanted);
+    this.#resizeWedge(
+      Math.ceil(side) + SEAM_BLEED * 2,
+      Math.ceil(side) + SEAM_BLEED + wedgeApex(side).y,
+    );
     this.#paintWedge(source, side);
     // Squarely upright, whatever angle the instrument is being held at: the
     // period is a rectangle of the lattice's own, and a rotated one does not
     // line up with the sides of a picture. How you are holding the tube is not
     // a property of the pattern.
     this.#stampField(tileCtx, TILE.width, TILE.height, side, 0, true);
-    this.#resizeWedge(painted);
+    this.#resizeWedge(painted.width, painted.height);
 
     // A blob rather than a data URL: it is what the share sheet wants, and it
     // saves encoding a megabyte of base64 only to decode it again.
@@ -460,10 +481,10 @@ export class KaleidoscopeRenderer {
    * frame anyway — it has to be, since the pieces composite with `multiply` and
    * `lighter` and neither survives being stamped over its own remains.
    */
-  #resizeWedge(size: number): void {
-    if (this.#wedge.width !== size) {
-      this.#wedge.width = size;
-      this.#wedge.height = size;
+  #resizeWedge(width: number, height: number): void {
+    if (this.#wedge.width !== width || this.#wedge.height !== height) {
+      this.#wedge.width = width;
+      this.#wedge.height = height;
     }
   }
 
@@ -487,10 +508,12 @@ export class KaleidoscopeRenderer {
     // figure. Painting the surface costs nothing and has no such edge.
     ctx.fillRect(0, 0, this.#wedge.width, this.#wedge.height);
 
+    const apex = wedgeApex(triangleSide);
+
     if (mode === 'media' && media) {
       ctx.save();
       // drawMedia centres on the apex, which sits inside the margin.
-      ctx.translate(SEAM_BLEED, SEAM_BLEED);
+      ctx.translate(apex.x, apex.y);
       drawMedia(ctx, media, {
         size: reach,
         // The source's own magnification, not the tube's: the mirror triangle
@@ -505,7 +528,7 @@ export class KaleidoscopeRenderer {
       ctx.restore();
     } else if (mode === 'chamber') {
       ctx.save();
-      ctx.translate(SEAM_BLEED, SEAM_BLEED);
+      ctx.translate(apex.x, apex.y);
       // The mirror triangle is inscribed in the object cell, the way a real
       // tube's mirrors span the round chamber at the end of it. Hanging the cell
       // off the corner the six triangles are assembled around instead leaves
@@ -612,7 +635,7 @@ export class KaleidoscopeRenderer {
 
     const drawn = shader.draw({
       source: this.#wedge,
-      bleed: SEAM_BLEED,
+      apex: wedgeApex(side),
       side,
       angle,
       centre: triangleCentre(side),
@@ -967,12 +990,14 @@ export class KaleidoscopeRenderer {
     ctx.save();
     ctx.translate(span / 2, span / 2);
 
+    const apex = wedgeApex(side);
+
     for (let index = 0; index < 6; index += 1) {
       ctx.save();
       traceTriangle(ctx, side, index, SEAM_BLEED);
       ctx.clip();
       // The wedge surface holds the source with its apex inside the margin.
-      ctx.drawImage(this.#wedge, -SEAM_BLEED, -SEAM_BLEED);
+      ctx.drawImage(this.#wedge, -apex.x, -apex.y);
 
       // Each cell gets its own exposure. Three mirrors cut and glued by hand
       // are never at exactly sixty degrees to one another and never equally
