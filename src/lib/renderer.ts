@@ -539,6 +539,10 @@ export class KaleidoscopeRenderer {
         // The triangle's circumradius: the cell reaches all three corners and no
         // further, so every chip that is simulated has a chance of being seen.
         scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
+        // A pinch in progress, seen live: the glass is only recut once the
+        // size rests, so until then the sprites run ahead of the cut by the
+        // gap between the live setting and the scale the scene was cut at.
+        magnify: Math.max(0.05, settings.sourceScale) / scene.chipScale,
         // The cell turns inside the fixed mirrors. What the glass does within it
         // is the physics' business, not this rotation's.
         rotation: scene.cell,
