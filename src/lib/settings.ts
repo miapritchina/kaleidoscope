@@ -3,12 +3,26 @@ import { DEFAULT_OBJECTS, sanitizeObjectIds } from './objectSets';
 import { createSeedString } from './random';
 
 /** What the mirrors repeat. */
-export const SOURCES = ['objects', 'image', 'camera'] as const;
+export const SOURCES = ['objects', 'liquid', 'image', 'camera'] as const;
 
 export type SourceId = (typeof SOURCES)[number];
 
 export function isSourceId(value: unknown): value is SourceId {
   return typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
+}
+
+/**
+ * Whether the mirrors are looking at a cell of glass rather than out of the
+ * tube altogether.
+ *
+ * Two of them are: a dry chamber and a liquid one. They are separate sources
+ * and not one source with a switch, because what the glass is suspended in is
+ * not a setting of a kaleidoscope — it is which kaleidoscope you are holding.
+ * Everything that is true of a chamber is true of both, though, so the places
+ * that only care whether there is one ask here rather than naming them.
+ */
+export function isChamberSource(source: SourceId): boolean {
+  return source === 'objects' || source === 'liquid';
 }
 
 /** Everything that describes a kaleidoscope. Serialisable by design. */
@@ -30,6 +44,17 @@ export interface Settings {
   cameraFacing: CameraFacing;
   /** How many shards live in the source cell. */
   shards: number;
+  /**
+   * How thick the liquid cell's fluid is, from a thin oil to a gel.
+   *
+   * Only the liquid cell has one. It moves two things together, because in a
+   * real fluid they move together: how much of the glass's weight the fluid
+   * carries, and how much of its speed the fluid takes. At the thin end a
+   * piece crosses the cell in a few seconds and the pile drifts about the
+   * floor; at the thick end the glass hangs where it is, and the only thing
+   * that moves it is the swirl of turning the tube.
+   */
+  thickness: number;
   /**
    * How much glitter is suspended in the chamber, from none to plenty.
    *
@@ -129,6 +154,7 @@ export const LIMITS = {
   // slider only empties it; the low end is deliberately sparse, a few beads
   // tumbling being a look someone can choose.
   shards: { min: 30, max: 150, step: 1 },
+  thickness: { min: 0, max: 1, step: 0.05 },
   glitter: { min: 0, max: 1, step: 0.05 },
   bead: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
@@ -144,6 +170,11 @@ export const DEFAULT_SETTINGS: Settings = {
   // Full: the most glass the mechanism affords, which is also what keeps the
   // mirror triangle covered. See LIMITS.
   shards: 150,
+  // Oil rather than gel: the glass still sinks, visibly and slowly, which is
+  // what says the cell is full of something. A gel is a look to choose and not
+  // one to open on — nothing appears to be happening in it until the tube is
+  // turned.
+  thickness: 0.35,
   // Enough to catch the light without becoming the subject.
   glitter: 0.35,
   bead: 0.6,
@@ -187,6 +218,7 @@ export function sanitizeSettings(input: unknown): Settings {
       ? raw.cameraFacing
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
+    thickness: clampToLimit(toNumber(raw.thickness, DEFAULT_SETTINGS.thickness), LIMITS.thickness),
     glitter: clampToLimit(toNumber(raw.glitter, DEFAULT_SETTINGS.glitter), LIMITS.glitter),
     bead: clampToLimit(toNumber(raw.bead, DEFAULT_SETTINGS.bead), LIMITS.bead),
     sourceScale: clampToLimit(
@@ -210,11 +242,15 @@ export function randomizeSeed(settings: Settings): Settings {
 /**
  * Encodes settings into a query string suitable for sharing.
  *
- * `source` and `tilt` are deliberately left out: a link cannot carry the
- * recipient's photo or camera, nor say anything useful about their hardware.
+ * `tilt` is deliberately left out: it says something about the recipient's
+ * hardware rather than about the look being shared. `source` travels only when
+ * it names a chamber. A link cannot carry the recipient's photo or camera, so
+ * naming either of those would open a panel on an empty view — but which cell
+ * the glass is suspended in is a property of the look, and a liquid one shared
+ * as a dry one is not the thing that was shared.
  */
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
-  return new URLSearchParams({
+  const params = new URLSearchParams({
     shards: String(settings.shards),
     glitter: String(settings.glitter),
     bead: String(settings.bead),
@@ -222,8 +258,15 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     objects: settings.objects.join(','),
     zoom: String(settings.zoom),
     angle: String(settings.angle),
+    thickness: String(settings.thickness),
     seed: settings.seed,
   });
+
+  if (isChamberSource(settings.source)) {
+    params.set('source', settings.source);
+  }
+
+  return params;
 }
 
 /**
@@ -253,7 +296,6 @@ const KNOWN_PARAMS: readonly string[] = [
   'chipSize',
   'metallic',
   'palette',
-  'source', // Never encoded, but tolerated in a hand-written link.
 ];
 
 /** True when a URL carries anything this module would read. */
@@ -263,8 +305,15 @@ export function hasSettingsParams(params: URLSearchParams): boolean {
 
 /** Decodes a query string produced by {@link settingsToSearchParams}. */
 export function settingsFromSearchParams(params: URLSearchParams): Settings {
+  const source = params.get('source');
+
   return sanitizeSettings({
+    // Only a cell is taken from a link, however that link was written. A
+    // hand-edited one asking for the camera would fire a permission prompt on
+    // page load that nobody at this end asked for.
+    source: isSourceId(source) && isChamberSource(source) ? source : DEFAULT_SETTINGS.source,
     shards: params.get('shards'),
+    thickness: params.get('thickness'),
     glitter: params.get('glitter'),
     bead: params.get('bead'),
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),

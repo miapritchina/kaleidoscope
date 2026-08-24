@@ -13,6 +13,7 @@
 
 export type IconName =
   | 'shards'
+  | 'liquid'
   | 'photo'
   | 'camera'
   | 'shuffle'
@@ -26,6 +27,8 @@ export type IconName =
 const PATHS: Record<IconName, string> = {
   // A cut stone, table uppermost: what the chamber is full of.
   shards: 'M12 2 4 8l8 14 8-14zM4 8h16M12 2 8.5 8 12 22M12 2l3.5 6L12 22',
+  // A drop, and a piece of glass adrift in it: the cell that is not dry.
+  liquid: 'M12 3c3.4 4 5 6.7 5 9a5 5 0 0 1-10 0c0-2.3 1.6-5 5-9ZM12 9.6l2.2 2.6-2.2 2.6-2.2-2.6z',
   photo: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 8.5h.01',
   camera: 'M3 7h4l2-2h6l2 2h4v12H3zM12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
   // Round arrows: another throw of the same dice.

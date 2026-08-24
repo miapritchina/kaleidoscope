@@ -15,7 +15,7 @@ import { useSettings } from './hooks/useSettings';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
 import { sharePicture } from './lib/share';
 import { resolvePlayback } from './lib/playback';
-import { clampToLimit, LIMITS, settingsToSearchParams } from './lib/settings';
+import { clampToLimit, isChamberSource, LIMITS, settingsToSearchParams } from './lib/settings';
 
 export function App() {
   const { settings, set, randomize, reset } = useSettings();
@@ -78,7 +78,7 @@ export function App() {
       ? 'Choose or drop a photo to mirror it.'
       : settings.source === 'camera' && camera.status !== 'active'
         ? (camera.message ?? 'Starting the camera…')
-        : settings.source === 'objects' && skins.length === 0
+        : isChamberSource(settings.source) && skins.length === 0
           ? customSelected
             ? 'Choose or drop a PNG of objects on a transparent background.'
             : 'Pick a glass to fill the chamber.'
@@ -197,13 +197,13 @@ export function App() {
     const link = document.createElement('a');
     link.href = dataUrl;
     // The seed names the pattern only when the shards are the pattern.
-    link.download = `kaleidoscope-${settings.source === 'objects' ? settings.seed : settings.source}.png`;
+    link.download = `kaleidoscope-${isChamberSource(settings.source) ? settings.seed : settings.source}.png`;
     link.click();
     announce('Saved a PNG of the current frame.');
   }, [announce, settings.seed, settings.source]);
 
   const handleSavePattern = useCallback(() => {
-    const name = `kaleidoscope-pattern-${settings.source === 'objects' ? settings.seed : settings.source}.png`;
+    const name = `kaleidoscope-pattern-${isChamberSource(settings.source) ? settings.seed : settings.source}.png`;
 
     void (async () => {
       const blob = await kaleidoscopeRef.current?.capturePattern();

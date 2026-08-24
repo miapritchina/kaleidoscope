@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
+import {
+  advanceFlow,
+  AIR,
+  CHAMBER_RADIUS,
+  FRESH_LIQUID,
+  liquidCell,
+  settleChamber,
+  updateChamber,
+  type Medium,
+} from './chamber';
 import { createScene, type Shard } from './scene';
 import { ROUND, shapeOf } from './shape';
 
@@ -440,6 +449,151 @@ describe('friction', () => {
 
     expect(held).toBeLessThan(0.05);
     expect(slid).toBeGreaterThan(held * 4);
+  });
+});
+
+describe('the liquid cell', () => {
+  const OIL = liquidCell(0.35);
+
+  /** How long a lone piece takes to fall from the top of the cell to the floor. */
+  function fall(medium: Medium): number {
+    const glass = chips(1);
+    const [piece] = glass as [Shard];
+
+    piece.x = 0;
+    piece.y = -0.9;
+
+    for (let frame = 0; frame < 60 * 60; frame += 1) {
+      updateChamber(glass, { dt: 1 / 60, angle: 0, medium });
+
+      if (piece.y > 0.8) {
+        return frame / 60;
+      }
+    }
+
+    return Number.POSITIVE_INFINITY;
+  }
+
+  // The whole of what an oil cell is: the same fall, taking long enough to
+  // watch. Measured rather than asserted as a number, because the number is a
+  // taste and the ordering is the physics.
+  it('sinks the glass rather than dropping it', () => {
+    const dry = fall(AIR);
+    const wet = fall(OIL);
+
+    expect(dry).toBeLessThan(2);
+    expect(wet).toBeGreaterThan(dry * 3);
+  });
+
+  it('all but suspends it in a gel', () => {
+    const glass = chips(1);
+    const [piece] = glass as [Shard];
+
+    piece.x = 0;
+    piece.y = 0;
+
+    for (let frame = 0; frame < 60; frame += 1) {
+      updateChamber(glass, { dt: 1 / 60, angle: 0, medium: liquidCell(1) });
+    }
+
+    // A twentieth of the cell in a second: moving, and only just.
+    expect(piece.y).toBeGreaterThan(0);
+    expect(piece.y).toBeLessThan(0.1);
+  });
+
+  // The thresholds that stop a dry pile jittering would stop a slow sink dead,
+  // and a liquid cell that freezes is not a liquid cell.
+  it('never puts a piece to sleep', () => {
+    const glass = chips(12);
+
+    settleChamber(glass, 0, 20, OIL);
+
+    expect(glass.some((shard) => Math.hypot(shard.vx, shard.vy) > 0)).toBe(true);
+  });
+
+  it('is the dry cell when it is filled with air', () => {
+    const stated = chips(9);
+    const assumed = chips(9);
+
+    for (let frame = 0; frame < 120; frame += 1) {
+      updateChamber(stated, { dt: 1 / 60, angle: frame * 0.02, medium: AIR, swirl: 3 });
+      updateChamber(assumed, { dt: 1 / 60, angle: frame * 0.02 });
+    }
+
+    // Swirl included, and ignored: a cell with nothing in it to turn has none,
+    // whatever it is handed.
+    expect(stated).toEqual(assumed);
+  });
+
+  describe('the fluid it holds', () => {
+    it('has none to speak of in a dry cell, so nothing ever lags', () => {
+      expect(advanceFlow(0, 1 / 60, 4, AIR)).toBe(4);
+    });
+
+    it('catches the turning wall, and then outlives it', () => {
+      let flow = 0;
+
+      for (let frame = 0; frame < 60; frame += 1) {
+        flow = advanceFlow(flow, 1 / 60, 2, OIL);
+      }
+
+      // Dragged most of the way up to the wall, but not all of it.
+      expect(flow).toBeGreaterThan(1);
+      expect(flow).toBeLessThan(2);
+
+      const released = advanceFlow(flow, 1 / 60, 0, OIL);
+
+      expect(released).toBeGreaterThan(0);
+      expect(released).toBeLessThan(flow);
+    });
+
+    it('keeps what it had while the cell is paused', () => {
+      expect(advanceFlow(1.5, 0, 0, OIL)).toBe(1.5);
+    });
+  });
+
+  /** Where a piece sits around the cell, in radians. */
+  const bearing = (shard: Shard) => Math.atan2(shard.y, shard.x);
+
+  it('holds the glass back as a turn begins, and sweeps it on after it ends', () => {
+    // Level with the middle, so gravity moves it down the screen rather than
+    // around the cell, and what is measured is the fluid's doing.
+    const glass = chips(1);
+    const [piece] = glass as [Shard];
+
+    piece.x = 0.8;
+    piece.y = 0;
+
+    let flow = 0;
+    const started = bearing(piece);
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      flow = advanceFlow(flow, 1 / 60, 2, OIL);
+      updateChamber(glass, { dt: 1 / 60, angle: 0, medium: OIL, swirl: flow - 2 });
+    }
+
+    // The cell has turned under it and the fluid has not caught up, so within
+    // the cell the piece has gone backwards.
+    const trailed = bearing(piece);
+
+    expect(trailed).toBeLessThan(started);
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      flow = advanceFlow(flow, 1 / 60, 0, OIL);
+      updateChamber(glass, { dt: 1 / 60, angle: 0, medium: OIL, swirl: flow });
+    }
+
+    // The tube has stopped and the fluid has not, so now it is carried on.
+    expect(bearing(piece)).toBeGreaterThan(trailed + 0.2);
+  });
+
+  it('leaves the glass where it was scattered rather than piling it up', () => {
+    const dry = createScene('drift', 40);
+    const wet = createScene('drift', 40, 1, FRESH_LIQUID);
+    const depth = (shards: Shard[]) => centre(shards);
+
+    // Down is +y, so a heap that has formed sits below a field that has not.
+    expect(depth(wet.shards)).toBeLessThan(depth(dry.shards));
   });
 });
 

@@ -328,12 +328,46 @@ rest at three quarters packed, wedged solid at 160 pieces — is made of the sam
 step-sized units. Raising that ceiling is what would close the last chinks of
 bare ground at the apex corners.
 
-### An oil cell
+### ~~An oil cell~~ — done
 
-Many real kaleidoscopes suspend the glass in oil, and the pieces drift and
-settle slowly, almost floating. This is damping and buoyancy constants on the
-solver we already have — close to free, and a completely different mood from the
-dry cell. **2D.** Best value on the whole list for the effort.
+`Medium` in `lib/chamber.ts`, behind the **Liquid** tab, with a **Thickness**
+slider running from a thin oil to a gel. It was the best value on this list for
+the effort and it turned out to be that: the solver did not change, it was
+told what the glass is moving through.
+
+Three terms, and the third is the one the plan did not have. Buoyancy is
+Archimedes — a piece falls under `1 - density` of its own weight, the fluid's
+density quoted as a fraction of the glass's — and damping is drag, which turns
+that reduced weight into a terminal drift rather than a slow acceleration. One
+piece dropped the height of the cell takes 1.1 s dry, 3.2 s in a thin oil, 6.9 s
+at the default and 45 s in the gel.
+
+The third is that **a liquid does not turn with the tube**. It lags while the
+tube is turning and then carries on after it has stopped, and that one number —
+how fast the wall drags the body of fluid up to its own rate — is most of what
+the hand feels. Without it a wet cell is only a slow dry one. Drag is taken
+against the fluid rather than against the cell, so a piece riding a swirl feels
+none of it and a piece adrift in one is carried round.
+
+Two things were worth being careful about, both of them about not disturbing
+what was already tuned. Air's density is written as **nought** rather than the
+twelve ten-thousandths it really is, and its stir is read as _no fluid at all_
+rather than as one that catches up instantly — a large finite number would have
+left a whisper of swirl behind on a fast display, which is a retuned chamber
+arriving by the back door. A test drives the two cells side by side and expects
+them equal piece for piece.
+
+And **nothing sleeps in a liquid**: the thresholds that stop a dry pile
+jittering would catch a slow sink and freeze the cell solid. Which means a fresh
+liquid cell cannot be settled by running it until it stops, because it never
+does — so it is _unpacked_ instead, a second and a bit to push the glass out of
+itself, and it opens on the field as it was scattered rather than on a pile on
+the floor. Measured the way the round cell was, the mirror triangle stays about
+99% covered through a minute of sinking at every thickness.
+
+Still a medium and not a fluid: nothing displaces it, there is no surface to
+slosh, and the only current is the one the wall stirs up. The two below are what
+would change that.
 
 ### Actual fluid, on the solver we already built
 
@@ -345,7 +379,10 @@ the loop we have.
 
 That gives real liquid in the cell — glass pieces displacing it, glitter carried
 in the currents, the whole cell sloshing when you tilt the phone, because the
-gravity vector feeding it is already the real one.
+gravity vector feeding it is already the real one. The oil cell above is the
+cheap half of this and is not on the way to it: it is a medium the glass moves
+through, with no liquid of its own to push about. What it does supply is the
+tab, the thickness control and somewhere for this to land when it is built.
 
 Rendered as screen-space metaballs, which is another piece of luck: pieces are
 *already* chains of 2–4 circles for collision, so the metaball field is sitting
@@ -358,6 +395,10 @@ resolution on a phone. Ink drifting through a kaleidoscope chamber is genuinely
 unusual and would look like nothing else. Separate from the liquid above: this
 is a grid, that is particles. **GL.**
 
+The Liquid tab is where this would go, and the swirl the oil cell already
+tracks — one number for how fast the body of fluid is turning — is the velocity
+field's boundary condition waiting to be used.
+
 ### Polarised mode
 
 Polarising film plus cellophane is how real kaleidoscopes get those electric
@@ -366,13 +407,22 @@ physically motivated. **2D.**
 
 ## Housekeeping
 
-### A Liquid tab
+### ~~A Liquid tab~~ — done
 
-The panel's three tabs — Shards, Photo, Camera — are the three instruments that
-exist. A fourth was asked for and is not here yet, because there is nothing to
-put behind it: an oil cell and a real fluid are both still on this list. When
-one of them lands it is a tab, not a checkbox, because a chamber of liquid is a
-different instrument and not a setting of the glass one.
+The oil cell above landed, so it is a tab: **Shards**, **Liquid**, **View**. A
+checkbox on the shard tab would have filed the difference between two
+instruments as a setting of one.
+
+It carries everything the shard tab carries — the glass, the piece count, the
+glitter, the seed — because a liquid cell is a chamber and all of that still
+means what it meant, plus the **Thickness** that is only true of it. It is also
+the first thing about a source that travels in a shared link: which cell the
+glass hangs in is a property of the look, unlike a photo or a camera, which name
+something at the recipient's end that a link cannot carry.
+
+The tabs were three when this was written and are three again; Photo and Camera
+had already merged into View by then, being one instrument pointed at two
+things.
 
 ### Replace or drop `bright-gems` and `cut-stones`
 

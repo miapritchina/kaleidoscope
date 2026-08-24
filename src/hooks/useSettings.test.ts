@@ -9,6 +9,7 @@ const CHANGES = [
   ['source', 'camera'],
   ['cameraFacing', 'user'],
   ['shards', 40],
+  ['thickness', 0.8],
   ['glitter', 0.8],
   ['bead', 0.25],
   ['sourceScale', 1.5],
@@ -112,6 +113,19 @@ describe('useSettings', () => {
     const second = renderHook(() => useSettings());
 
     expect(second.result.current.settings.seed).toBe('lagoon');
+  });
+
+  // A photo is gone and a camera would ask for permission on page load, so
+  // neither is restored. A cell of glass is restored whichever cell it was:
+  // both are entirely this app's to reopen.
+  it('reopens on the cell it was left on, but never on a photo or the camera', () => {
+    store({ ...DEFAULT_SETTINGS, source: 'liquid' });
+    expect(renderHook(() => useSettings()).result.current.settings.source).toBe('liquid');
+
+    for (const source of ['image', 'camera'] as const) {
+      store({ ...DEFAULT_SETTINGS, source });
+      expect(renderHook(() => useSettings()).result.current.settings.source).toBe('objects');
+    }
   });
 
   it('ignores corrupt storage', () => {

@@ -44,11 +44,174 @@ import type { Bead } from './shape';
  */
 export const CHAMBER_RADIUS = 1.15;
 
-/** Downward acceleration, in cell units per second squared. */
+/**
+ * Downward acceleration, in cell units per second squared.
+ *
+ * The room's pull, not the cell's. What a piece actually falls under is less
+ * than this in anything but air, because the fluid it displaces holds part of
+ * its weight up — see {@link Medium.density}.
+ */
 const GRAVITY = 6;
 
-/** Velocity lost per second to drag and friction. Glass in a chamber is damped. */
-const DAMPING = 2.2;
+/**
+ * What the cell is filled with.
+ *
+ * A kaleidoscope's object cell is not always dry. Plenty of real ones suspend
+ * the glass in oil, and it is a different instrument to hold: the pieces sink
+ * instead of falling, they keep sweeping round after the tube has stopped, and
+ * a pile that does form lies flatter, because wet glass slides.
+ *
+ * None of that is a new solver. It is this one told what the glass is moving
+ * through — a density to weigh the pieces against, a drag to spend their speed
+ * on, a body of fluid that has to be dragged round with the cell, and contacts
+ * that hold less. The dry cell is {@link AIR}, and every number in it is the
+ * number this chamber has always used, so a cell filled with nothing behaves
+ * exactly as it did before there was anything to fill it with.
+ */
+export interface Medium {
+  /** Which cell this is, for anything that has to tell them apart. */
+  readonly id: 'air' | 'liquid';
+  /**
+   * Density of the fluid, as a fraction of the glass's own.
+   *
+   * Archimedes: a piece is held up by the weight of what it displaces, so it
+   * falls under `1 - density` of its own weight. Glass is about two and a half
+   * times water and a light oil about nine tenths of it, which leaves a third
+   * of the pull behind; a gel is heavier still and takes nearly all of it.
+   *
+   * Air is nought here rather than the twelve ten-thousandths it really is.
+   * Buoyancy in air is a part in two thousand — finer than any other number in
+   * this file is meant to be — and writing it as nought is what makes the dry
+   * cell provably untouched by any of this rather than merely close to it.
+   */
+  readonly density: number;
+  /** Velocity lost per second to the fluid. Glass in a chamber is damped. */
+  readonly drag: number;
+  /** Spin lost per second. A chip wedged in a full chamber does not twirl on. */
+  readonly angularDrag: number;
+  /**
+   * How fast the body of fluid takes up the cell's own turning, per second.
+   *
+   * A liquid does not turn with the tube. It lags while the tube is turning,
+   * and then carries on after it has stopped, sweeping the glass round with
+   * it — which is most of what tells a hand it is holding a wet cell rather
+   * than a dry one, and it is this one number.
+   *
+   * Nought means the cell holds nothing worth modelling and its contents
+   * simply turn with it. That is the dry cell, and it is exempt here rather
+   * than approximated: a large number would leave a whisper of swirl behind on
+   * a fast display and change the chamber that was tuned.
+   */
+  readonly stir: number;
+  /** How much of the sliding at a contact is turned into spin, per pass. */
+  readonly friction: number;
+  /**
+   * How much sideways movement a contact will hold on to, against how hard the
+   * two pieces are being pressed together.
+   *
+   * This is what gives a pile an angle of repose. Resolving only the overlap
+   * leaves the glass free to slide across whatever it is resting on, so a heap
+   * spreads until it is flat and the least tip sets the whole thing flowing.
+   * Holding the contact against sideways motion up to this share of the
+   * separation gives a heap that stands at a slope, holds through a small tip,
+   * and lets go all at once past a critical one. That is what an avalanche is.
+   */
+  readonly staticFriction: number;
+  /**
+   * Speed below which a chip is treated as at rest, so piles stop jittering.
+   *
+   * Nought in a liquid, and deliberately. A suspended piece is never at rest,
+   * and a threshold that caught a slow sink would freeze the cell solid —
+   * which is the one thing a liquid cell must never do.
+   */
+  readonly sleepSpeed: number;
+  /** Spin below which a chip that has stopped moving is treated as still. */
+  readonly sleepSpin: number;
+  /** How long a fresh cell is given to come to rest before it is shown. */
+  readonly settleSeconds: number;
+}
+
+/** The dry cell: loose glass in air, which is what this chamber has always been. */
+export const AIR: Medium = {
+  id: 'air',
+  // See Medium.density. Nought, not the true twelve ten-thousandths, so that
+  // the dry cell is exactly the chamber that was tuned.
+  density: 0,
+  drag: 2.2,
+  angularDrag: 2.6,
+  // Nothing in there to stir. What lags in a dry cell is the glass itself, and
+  // that is already the solver's business.
+  stir: 0,
+  // Glass on glass is not slippery: a chip dragged down the wall or across the
+  // pile rolls rather than skids, and it is the rolling that reads as tumbling.
+  friction: 0.55,
+  // Coulomb's number for glass on glass is around 0.4 dry, and the pieces here
+  // are ground and faceted rather than polished spheres.
+  staticFriction: 0.45,
+  sleepSpeed: 0.012,
+  // Seven degrees a second. A piece wedged against the wall still creeps by a
+  // hair as the solver resolves it, and left to turn that into spin the whole
+  // pile rotates very slowly for ever.
+  sleepSpin: 0.12,
+  // A backstop rather than a duration: a dry pile is settled the moment it
+  // stops moving, and this is only what a chamber too tightly packed to ever
+  // stop is allowed to cost.
+  settleSeconds: 12,
+};
+
+/**
+ * The liquid cell, from a thin oil at 0 to a gel at 1.
+ *
+ * Both ends are the same fluid described in the same three terms, and the
+ * whole of the difference between them is how much of the glass's weight the
+ * fluid carries and how fast it takes the rest of it back. In the oil a piece
+ * crosses the cell in a few seconds; in the gel it hangs, and what moves is
+ * the swirl when the tube is turned.
+ *
+ * The contacts soften along with it, which is the part that is easy to leave
+ * out and reads wrong when it is missing: a wet heap has a much lower angle of
+ * repose than a dry one, so glass that has reached the bottom of an oil cell
+ * lies in a shallow drift rather than standing in a dry slope.
+ */
+export function liquidCell(thickness: number): Medium {
+  const at = Math.min(1, Math.max(0, thickness));
+
+  return {
+    id: 'liquid',
+    // Light oil against glass, up to a gel that all but floats it.
+    density: mix(0.36, 0.88, at),
+    drag: mix(6, 16, at),
+    angularDrag: mix(7, 18, at),
+    // Thicker fluid grips the wall harder, so it takes up a turn sooner and
+    // gives it back over longer.
+    stir: mix(1.6, 3.5, at),
+    friction: mix(0.3, 0.45, at),
+    staticFriction: mix(0.18, 0.3, at),
+    // Nothing sleeps in a liquid. See Medium.sleepSpeed.
+    sleepSpeed: 0,
+    sleepSpin: 0,
+    // Long enough to push the pieces out of each other, and no longer. A
+    // liquid cell settled properly would open with all its glass lying on the
+    // floor, which is the one arrangement it is worth opening on.
+    settleSeconds: 1.2,
+  };
+}
+
+/**
+ * The fluid a fresh liquid cell is unpacked in.
+ *
+ * Building a cell asks the fluid for one thing only — push the glass out of
+ * itself — and every thickness does that in the same second and a bit. So the
+ * arrangement a liquid cell opens on does not depend on where the thickness
+ * slider happens to be, which is what lets that slider move without rebuilding
+ * and resettling the whole pile under the finger. Whatever it is set to takes
+ * over on the next frame.
+ */
+export const FRESH_LIQUID = liquidCell(0.5);
+
+function mix(from: number, to: number, at: number): number {
+  return from + (to - from) * at;
+}
 
 /**
  * Constraint passes per substep.
@@ -64,51 +227,11 @@ const DAMPING = 2.2;
  */
 const ITERATIONS = 1;
 
-/**
- * How much of the sliding at a contact is turned into spin, per pass.
- *
- * Glass on glass is not slippery: a chip dragged down the wall or across the
- * pile rolls rather than skids, and it is the rolling that reads as tumbling.
- */
-const FRICTION = 0.55;
-
-/** Spin lost per second. A chip wedged in a full chamber does not twirl on. */
-const ANGULAR_DAMPING = 2.6;
-
-/** Speed below which a chip is treated as at rest, so piles stop jittering. */
-const SLEEP_SPEED = 0.012;
-
-/**
- * Spin below which a chip that has stopped moving is treated as still.
- *
- * Seven degrees a second. A piece wedged in a corner of the cell still creeps
- * by a hair as the solver resolves it, and left to turn that into spin the
- * whole pile rotates very slowly for ever.
- */
-const SLEEP_SPIN = 0.12;
-
 /** Gap at which two surfaces still count as touching, in cell units. */
 const CONTACT_SLOP = 0.01;
 
 /** Fraction of an overlap resolved per pass. Below 1 the pile settles softly. */
 const SEPARATION = 0.8;
-
-/**
- * How much sideways movement a contact will hold on to, against how hard the
- * two pieces are being pressed together.
- *
- * This is what gives a pile an angle of repose. Resolving only the overlap
- * leaves the glass free to slide across whatever it is resting on, so a heap
- * spreads until it is flat and the least tip sets the whole thing flowing —
- * which reads as a chamber of liquid rather than one of glass. Holding the
- * contact against sideways motion up to this share of the separation gives a
- * heap that stands at a slope, holds through a small tip, and lets go all at
- * once past a critical one. That is what an avalanche is.
- *
- * Coulomb's number for glass on glass is around 0.4 dry, and the pieces here
- * are ground and faceted rather than polished spheres.
- */
-const STATIC_FRICTION = 0.45;
 
 /**
  * Physics substeps per frame.
@@ -124,6 +247,18 @@ export interface ChamberUpdate {
   dt: number;
   /** Angle the cell has been turned to, radians. This is what tips the pile. */
   angle: number;
+  /** What the cell is filled with. Left out, it is the dry one. */
+  medium?: Medium;
+  /**
+   * How fast the fluid is turning within the cell, in radians per second.
+   *
+   * The cell's own frame, so this is what is left over after the tube's turn
+   * has been taken off: nought while the fluid is riding round with the tube,
+   * negative at the start of a turn while it is still holding still, and
+   * positive after the tube has stopped and the fluid has not. See
+   * {@link advanceFlow}, which is what works it out.
+   */
+  swirl?: number;
 }
 
 /**
@@ -137,10 +272,15 @@ export interface ChamberUpdate {
  * fully take out; here a chip that is held in place simply records no movement,
  * and so comes to rest.
  */
-export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): void {
+export function updateChamber(
+  shards: Shard[],
+  { dt, angle, medium = AIR, swirl = 0 }: ChamberUpdate,
+): void {
   if (dt <= 0 || shards.length === 0) {
     return;
   }
+
+  filled = medium;
 
   const step = dt / SUBSTEPS;
   // World down (+y on screen) expressed in the cell's own frame.
@@ -151,10 +291,15 @@ export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): vo
   // looks like "undo the rotation" — and gravity sweeps the cell at twice the
   // turn rate instead of holding still: a quarter turn puts the pile at the top
   // of the screen, and the whole mechanism reads as no gravity at all.
-  const gravityX = Math.sin(angle) * GRAVITY;
-  const gravityY = Math.cos(angle) * GRAVITY;
-  const damping = Math.max(0, 1 - DAMPING * step);
-  const angularDamping = Math.max(0, 1 - ANGULAR_DAMPING * step);
+  // What is left of the pull once the fluid has taken its share of the weight.
+  const weight = GRAVITY * (1 - medium.density);
+  const gravityX = Math.sin(angle) * weight;
+  const gravityY = Math.cos(angle) * weight;
+  const damping = Math.max(0, 1 - medium.drag * step);
+  const angularDamping = Math.max(0, 1 - medium.angularDrag * step);
+  // A cell with nothing in it to turn has no swirl to speak of, whatever it is
+  // handed. See Medium.stir.
+  const flow = medium.stir > 0 ? swirl : 0;
 
   for (let pass = 0; pass < SUBSTEPS; pass += 1) {
     for (const shard of shards) {
@@ -162,8 +307,15 @@ export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): vo
       previousY.set(shard, shard.y);
       previousAngle.set(shard, shard.rotation);
 
-      shard.vx = (shard.vx + gravityX * step) * damping;
-      shard.vy = (shard.vy + gravityY * step) * damping;
+      // Drag is against the fluid rather than against the cell: a piece adrift
+      // in a swirl is carried round by it, and one already travelling with it
+      // feels no drag at all. In the dry cell `flow` is nought and this is the
+      // plain damping it has always been.
+      const flowX = -flow * shard.y;
+      const flowY = flow * shard.x;
+
+      shard.vx = flowX + (shard.vx + gravityX * step - flowX) * damping;
+      shard.vy = flowY + (shard.vy + gravityY * step - flowY) * damping;
       shard.x += shard.vx * step;
       shard.y += shard.vy * step;
       // Advanced here rather than at the end of the pass, so the contacts below
@@ -190,18 +342,53 @@ export function updateChamber(shards: Shard[], { dt, angle }: ChamberUpdate): vo
     for (const shard of shards) {
       // A settled pile still creeps by a hair each frame, and left to turn that
       // into spin the whole field slowly rotates on a table.
-      if (Math.hypot(shard.vx, shard.vy) < SLEEP_SPEED) {
+      if (Math.hypot(shard.vx, shard.vy) < medium.sleepSpeed) {
         shard.vx = 0;
         shard.vy = 0;
 
-        if (Math.abs(shard.spin) < SLEEP_SPIN) {
+        if (Math.abs(shard.spin) < medium.sleepSpin) {
           shard.spin = 0;
         }
       }
 
-      shard.spin *= angularDamping;
+      // A turning fluid turns the pieces in it as well as carrying them round.
+      shard.spin = flow + (shard.spin - flow) * angularDamping;
     }
   }
+}
+
+/**
+ * Advances the body of fluid the cell holds.
+ *
+ * The fluid is one number — how fast the whole of it is turning — and the wall
+ * drags it towards the tube's own rate. That is enough for what a wet cell
+ * looks like, because the two things worth seeing are both in the lag: start
+ * turning and the glass hangs back, stop and it sails on. A cylinder of liquid
+ * spun about its axis does end up turning as one body, so a single rate is
+ * where this is heading anyway; what it leaves out is the spin-up profile
+ * across the radius, which nothing in a chamber this size would show.
+ *
+ * @param flow The fluid's current rate, radians per second, in the world's
+ *   frame rather than the cell's.
+ * @param dt Seconds to advance.
+ * @param turn How fast the cell itself is being turned, radians per second.
+ * @returns The fluid's new rate. Subtract `turn` from it for the swirl
+ *   {@link updateChamber} wants, which is the same thing seen from the cell.
+ */
+export function advanceFlow(flow: number, dt: number, turn: number, medium: Medium): number {
+  // Nothing in there to lag behind: the dry cell's contents turn with it, so
+  // the swirl this produces is exactly nought rather than nearly it.
+  if (medium.stir <= 0) {
+    return turn;
+  }
+
+  // A paused cell keeps whatever it had. Folding it onto the tube instead
+  // would quietly drain the swirl while nothing was being drawn.
+  if (dt <= 0) {
+    return flow;
+  }
+
+  return flow + (turn - flow) * Math.min(1, medium.stir * dt);
 }
 
 /** Mass: the area of the glass, not of the circle it was cut from. */
@@ -218,6 +405,15 @@ function mass(shard: Shard): number {
 function inertia(shard: Shard): number {
   return mass(shard) * shard.shape.gyration * shard.radius * shard.radius;
 }
+
+/**
+ * What the cell is filled with, for the pass in progress.
+ *
+ * Scratch, like the two circles below: the contacts want it several calls deep
+ * and threading it through every one of them would be a parameter added to
+ * nine functions to carry a value that never changes within a pass.
+ */
+let filled: Medium = AIR;
 
 /** Scratch space, so the solver allocates nothing per frame. */
 const previousX = new WeakMap<Shard, number>();
@@ -434,8 +630,8 @@ function apply(
  *
  * The two pieces have moved and turned since the substep began; whatever part
  * of that was across the contact rather than into it is sliding, and a dry
- * contact takes some of it back. Capped at {@link STATIC_FRICTION} times how
- * hard they are being pressed together, so a piece high on a steep heap still
+ * contact takes some of it back. Capped at the medium's
+ * {@link Medium.staticFriction} times how hard they are being pressed together, so a piece high on a steep heap still
  * gives way — the cap is the difference between a pile and a glued lump.
  *
  * Position-level rather than an impulse: the overlap has just been resolved by
@@ -476,7 +672,7 @@ function hold(
     armBY,
     slideX / slide,
     slideY / slide,
-    Math.min(slide, STATIC_FRICTION * overlap),
+    Math.min(slide, filled.staticFriction * overlap),
   );
 }
 
@@ -578,7 +774,7 @@ function grip(
       armY,
       slideX / slide,
       slideY / slide,
-      Math.min(slide, STATIC_FRICTION * overlap),
+      Math.min(slide, filled.staticFriction * overlap),
     );
   }
 }
@@ -691,7 +887,7 @@ function tumble(shards: Shard[]): void {
         continue;
       }
 
-      const impulse = (-FRICTION * slip) / share;
+      const impulse = (-filled.friction * slip) / share;
 
       shard.vx += impulse * tangentX * shift;
       shard.vy += impulse * tangentY * shift;
@@ -741,7 +937,7 @@ function rub(a: Shard, b: Shard): void {
     return;
   }
 
-  const impulse = (-FRICTION * slip) / share;
+  const impulse = (-filled.friction * slip) / share;
 
   a.vx -= impulse * tangentX * shiftA;
   a.vy -= impulse * tangentY * shiftA;
@@ -760,22 +956,36 @@ function rub(a: Shard, b: Shard): void {
  * on load. The cap is a backstop for a chamber packed too tightly to ever fully
  * settle.
  */
-export function settleChamber(shards: Shard[], angle = 0, maxSeconds = 12): void {
+export function settleChamber(
+  shards: Shard[],
+  angle = 0,
+  maxSeconds = AIR.settleSeconds,
+  medium: Medium = AIR,
+): void {
   const step = 1 / 60;
   const checkEvery = 15;
 
   for (let frame = 0; frame < maxSeconds / step; frame += 1) {
-    updateChamber(shards, { dt: step, angle });
+    updateChamber(shards, { dt: step, angle, medium });
 
-    if (frame % checkEvery === checkEvery - 1 && atRest(shards)) {
+    if (frame % checkEvery === checkEvery - 1 && atRest(shards, medium)) {
       return;
     }
   }
 }
 
-/** True once nothing is sliding or turning faster than the sleep thresholds. */
-function atRest(shards: Shard[]): boolean {
+/**
+ * True once nothing is sliding or turning faster than the sleep thresholds.
+ *
+ * Never, in a liquid: its thresholds are nought, because a piece adrift in oil
+ * is not at rest and must not be treated as though it were. So a liquid cell
+ * spends its whole (much shorter) cap rather than returning early, which is
+ * what {@link Medium.settleSeconds} is sized for.
+ */
+function atRest(shards: Shard[], medium: Medium): boolean {
   return shards.every(
-    (shard) => Math.hypot(shard.vx, shard.vy) <= SLEEP_SPEED && Math.abs(shard.spin) <= SLEEP_SPIN,
+    (shard) =>
+      Math.hypot(shard.vx, shard.vy) <= medium.sleepSpeed &&
+      Math.abs(shard.spin) <= medium.sleepSpin,
   );
 }

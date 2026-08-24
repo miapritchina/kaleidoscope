@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer } from 'react';
 
 import {
   DEFAULT_SETTINGS,
+  isChamberSource,
   hasSettingsParams,
   randomizeSeed,
   sanitizeSettings,
@@ -122,7 +123,9 @@ function readInitialSettings(): Settings {
 
       // A photo and a camera stream cannot be restored: the file is gone and
       // reopening on `camera` would fire a permission prompt nobody asked for
-      // on page load. Open on the chamber and let them choose again.
+      // on page load. Open on a chamber and let them choose again — whichever
+      // chamber it was, since a cell of glass and a cell of oil both come back
+      // exactly as they were left.
       //
       // Real gravity starts off every launch for the same kind of reason:
       // iOS only lets the sensor be asked for from inside a tap, so restoring
@@ -131,7 +134,7 @@ function readInitialSettings(): Settings {
       // gesture the platform wants.
       return {
         ...restored,
-        source: restored.source === 'objects' ? restored.source : 'objects',
+        source: isChamberSource(restored.source) ? restored.source : 'objects',
         tilt: false,
       };
     }

@@ -5,7 +5,7 @@ import type { CameraStatus } from '../hooks/useCamera';
 import { buildLine } from '../lib/build';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
-import { LIMITS, type Settings, type SourceId } from '../lib/settings';
+import { isChamberSource, LIMITS, type Settings, type SourceId } from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { Icon, type IconName } from './controls/Icon';
@@ -35,7 +35,7 @@ export interface ControlPanelProps {
 }
 
 /**
- * The two kinds of kaleidoscope, as tabs.
+ * The kinds of kaleidoscope, as tabs.
  *
  * They were a dropdown of every object set and both mirror sources in one list,
  * which asked the wrong question. "A chamber of glass, or something from
@@ -48,17 +48,25 @@ export interface ControlPanelProps {
  * whether it moves — so they share a tab and a switch, and the two most similar
  * choices in the app are no longer the two furthest apart.
  *
+ * A cell of liquid is a tab of its own, though, and was always going to be:
+ * suspending the glass in oil changes what the instrument does in the hand
+ * rather than what it looks like at rest, and a checkbox on the shard tab
+ * would have filed the difference between two instruments under a setting of
+ * one. It carries the shard tab's controls because it is a chamber and they
+ * all still mean what they meant, plus the one that is only true of it.
+ *
  * Tabs carry their own settings, so a seed and a piece count are not on screen
  * while a photograph is being mirrored.
  */
 const KINDS: { id: SourceId; label: string; icon: IconName }[] = [
   { id: 'objects', label: 'Shards', icon: 'shards' },
+  { id: 'liquid', label: 'Liquid', icon: 'liquid' },
   { id: 'image', label: 'View', icon: 'photo' },
 ];
 
 /** The tab a source belongs to. Both mirror sources share one. */
 function tabFor(source: SourceId): SourceId {
-  return source === 'objects' ? 'objects' : 'image';
+  return isChamberSource(source) ? source : 'image';
 }
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
@@ -170,7 +178,7 @@ export function ControlPanel({
         id={`panel-${kind}`}
         aria-labelledby={`kind-${kind}`}
       >
-        {kind === 'objects' && (
+        {isChamberSource(kind) && (
           <>
             <PictureChecklist
               label="Glass"
@@ -206,6 +214,27 @@ export function ControlPanel({
                 onChange('shards', value);
               }}
             />
+
+            {kind === 'liquid' && (
+              <RangeField
+                label="Thickness"
+                value={settings.thickness}
+                limit={LIMITS.thickness}
+                // Named at both ends rather than numbered: the middle is a
+                // proportion of nothing anybody can picture, but the ends are
+                // two things everyone has held.
+                format={(value) =>
+                  value <= LIMITS.thickness.min
+                    ? 'thin oil'
+                    : value >= LIMITS.thickness.max
+                      ? 'gel'
+                      : `${String(Math.round(value * 100))}%`
+                }
+                onChange={(value) => {
+                  onChange('thickness', value);
+                }}
+              />
+            )}
 
             <RangeField
               label="Glitter"
