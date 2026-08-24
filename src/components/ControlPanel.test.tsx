@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -6,11 +6,13 @@ import { OBJECT_SETS } from '../lib/objectSets';
 import { DEFAULT_SETTINGS, type Settings } from '../lib/settings';
 import { ControlPanel, type ControlPanelProps } from './ControlPanel';
 
-/** Opens the glass chooser and reads what it offers, by name. */
-async function glassOf(user: ReturnType<typeof userEvent.setup>): Promise<string[]> {
-  await user.click(screen.getByRole('combobox', { name: /glass/i }));
+/** The names the glass checklist offers, in order. */
+function glassNames(): (string | null)[] {
+  const group = screen.getByRole('group', { name: /glass/i });
 
-  return screen.getAllByRole('option').map((option) => option.textContent);
+  return within(group)
+    .getAllByRole('checkbox')
+    .map((box) => group.querySelector(`label[for="${box.id}"]`)?.textContent ?? null);
 }
 
 function renderPanel(overrides: Partial<ControlPanelProps> = {}) {
@@ -39,10 +41,7 @@ describe('ControlPanel', () => {
     it('offers them as tabs, with the current one chosen', () => {
       renderPanel();
 
-      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-        'Shards',
-        'View',
-      ]);
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Shards', 'View']);
       expect(screen.getByRole('tab', { name: 'Shards' })).toHaveAttribute('aria-selected', 'true');
     });
 
@@ -95,7 +94,7 @@ describe('ControlPanel', () => {
     it('gives the shards their own settings and nobody else’s', () => {
       renderPanel();
 
-      expect(screen.getByRole('combobox', { name: /glass/i })).toBeInTheDocument();
+      expect(screen.getByRole('group', { name: /glass/i })).toBeInTheDocument();
       expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
       expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
       expect(screen.getByLabelText('Seed')).toBeInTheDocument();
@@ -135,10 +134,7 @@ describe('ControlPanel', () => {
     it('keeps the camera on the view tab, not one of its own', () => {
       withSettings({ source: 'camera' });
 
-      expect(screen.getByRole('tab', { name: 'View' })).toHaveAttribute(
-        'aria-selected',
-        'true',
-      );
+      expect(screen.getByRole('tab', { name: 'View' })).toHaveAttribute('aria-selected', 'true');
       expect(screen.queryByRole('tab', { name: 'Camera' })).not.toBeInTheDocument();
     });
 
@@ -163,29 +159,48 @@ describe('ControlPanel', () => {
   });
 
   describe('the glass', () => {
-    it('lists every set, with a picture of each', async () => {
-      const user = userEvent.setup();
+    it('lists every set as a checkbox, with a picture of each', () => {
       renderPanel();
 
-      expect(await glassOf(user)).toEqual(OBJECT_SETS.map((set) => set.name));
-      expect(
-        screen.getByRole('combobox', { name: /glass/i }).querySelector('img'),
-      ).not.toBeNull();
+      expect(glassNames()).toEqual(OBJECT_SETS.map((set) => set.name));
+      expect(screen.getByRole('group', { name: /glass/i }).querySelector('img')).not.toBeNull();
     });
 
-    it('reports a change of set', async () => {
+    // The chamber holds several sets at once, so checking another adds it to
+    // the mix rather than replacing what is there.
+    it('adds a set to the mix when its box is checked', async () => {
       const user = userEvent.setup();
       const { props } = renderPanel();
-      const other = OBJECT_SETS.find((set) => set.id !== DEFAULT_SETTINGS.objects)!;
+      const other = OBJECT_SETS.find((set) => !DEFAULT_SETTINGS.objects.includes(set.id))!;
 
-      await user.click(screen.getByRole('combobox', { name: /glass/i }));
-      await user.click(screen.getByRole('option', { name: other.name }));
+      await user.click(screen.getByRole('checkbox', { name: other.name }));
 
-      expect(props.onChange).toHaveBeenCalledWith('objects', other.id);
+      expect(props.onChange).toHaveBeenCalledWith(
+        'objects',
+        expect.arrayContaining([...DEFAULT_SETTINGS.objects, other.id]),
+      );
+    });
+
+    it('drops a set from the mix when its box is unchecked', async () => {
+      const user = userEvent.setup();
+      const [first, second] = OBJECT_SETS;
+      const { props } = withSettings({ objects: [first!.id, second!.id] });
+
+      await user.click(screen.getByRole('checkbox', { name: first!.name }));
+
+      expect(props.onChange).toHaveBeenCalledWith('objects', [second!.id]);
+    });
+
+    it('shows a box as checked exactly when its set is in the mix', () => {
+      const [first, second] = OBJECT_SETS;
+      withSettings({ objects: [second!.id] });
+
+      expect(screen.getByRole('checkbox', { name: first!.name })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: second!.name })).toBeChecked();
     });
 
     it('asks for a picture when the pieces are to be cut out of one', () => {
-      withSettings({ objects: 'custom' });
+      withSettings({ objects: ['custom'] });
 
       expect(screen.getByLabelText('Picture')).toBeInTheDocument();
     });
@@ -244,7 +259,9 @@ describe('ControlPanel', () => {
     it('leaves reshuffling to the toolbar', () => {
       renderPanel();
 
-      expect(screen.queryByRole('button', { name: /arrangement|randomi/i })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /arrangement|randomi/i }),
+      ).not.toBeInTheDocument();
     });
   });
 

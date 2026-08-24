@@ -7,6 +7,7 @@ import {
   OBJECT_SETS,
   objectSetUrl,
   PRESET_SETS,
+  sanitizeObjectIds,
 } from './objectSets';
 
 describe('object sets', () => {
@@ -74,5 +75,30 @@ describe('object sets', () => {
 
   it('has nothing to show for the one that is not a file', () => {
     expect(OBJECT_SETS.find((set) => set.id === CUSTOM)?.thumbnail).toBeNull();
+  });
+});
+
+describe('sanitizeObjectIds', () => {
+  const [first, second] = PRESET_SETS;
+
+  it('keeps a list of real sets, in the order given', () => {
+    expect(sanitizeObjectIds([second!.id, first!.id])).toEqual([second!.id, first!.id]);
+  });
+
+  it('reads a comma-separated string, as a shared link carries it', () => {
+    expect(sanitizeObjectIds(`${first!.id},${CUSTOM}`)).toEqual([first!.id, CUSTOM]);
+  });
+
+  it('drops the ids that name nothing real, and any duplicates', () => {
+    expect(sanitizeObjectIds([first!.id, 'nonsense', first!.id])).toEqual([first!.id]);
+    expect(sanitizeObjectIds(['', 42, null, first!.id])).toEqual([first!.id]);
+  });
+
+  // A chamber with no glass chosen is a chamber of nothing, and the default is
+  // a truer place to start than emptiness.
+  it('falls back to the default when nothing real is named', () => {
+    expect(sanitizeObjectIds([])).toEqual([DEFAULT_OBJECTS]);
+    expect(sanitizeObjectIds('nope,also-nope')).toEqual([DEFAULT_OBJECTS]);
+    expect(sanitizeObjectIds(undefined)).toEqual([DEFAULT_OBJECTS]);
   });
 });

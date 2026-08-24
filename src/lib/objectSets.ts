@@ -93,6 +93,36 @@ export function isObjectSetId(value: unknown): value is string {
   return typeof value === 'string' && BY_ID.has(value);
 }
 
+/**
+ * Coerces arbitrary input into a list of the sets a chamber is loaded with.
+ *
+ * The chamber holds several at once — a pile can be gems and beads and
+ * splinters together — so a choice of glass is a list rather than a single
+ * name. Accepts an array or a comma-separated string, since a shared link
+ * carries the chosen sets as one `objects=a,b,c` parameter. Keeps only the ids
+ * that name a set that is actually here, drops duplicates, and preserves the
+ * order given.
+ *
+ * An input that names nothing real falls back to the set the app opens on: a
+ * chamber with no glass chosen is a chamber of nothing, and a hand-edited link
+ * or a stale save is better answered with the default than with emptiness.
+ */
+export function sanitizeObjectIds(value: unknown): string[] {
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [];
+
+  const ids: string[] = [];
+
+  for (const item of raw) {
+    const id = typeof item === 'string' ? item.trim() : '';
+
+    if (isObjectSetId(id) && !ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+
+  return ids.length > 0 ? ids : [DEFAULT_OBJECTS];
+}
+
 /** The picture for a set, or `null` when it has none of its own. */
 export function objectSetUrl(id: string): string | null {
   return BY_ID.get(id)?.url ?? null;

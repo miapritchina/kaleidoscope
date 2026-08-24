@@ -1,5 +1,5 @@
 import { isCameraFacing, type CameraFacing } from './camera';
-import { DEFAULT_OBJECTS, isObjectSetId } from './objectSets';
+import { DEFAULT_OBJECTS, sanitizeObjectIds } from './objectSets';
 import { createSeedString } from './random';
 
 /** What the mirrors repeat. */
@@ -64,14 +64,17 @@ export interface Settings {
    */
   sourceScale: number;
   /**
-   * Which set of objects the chamber is loaded with.
+   * Which sets of objects the chamber is loaded with, mixed together.
    *
-   * A bundled set's id, `custom` for a picture the viewer supplies, or
-   * `generated` for the drawn shapes. See `lib/objectSets.ts`. A picture cannot
-   * travel in a shared link, so a restored `custom` only means "offer the
-   * picker" — until one is chosen the pieces fall back to the drawn shapes.
+   * A list of bundled set ids, plus `custom` for a picture the viewer supplies.
+   * See `lib/objectSets.ts`. The chamber holds them all at once — the pieces
+   * are shared out across the chosen sets — so a pile can be gems and beads and
+   * splinters together. Empty is not a state this carries: an input that names
+   * no real set falls back to the one the app opens on. A picture cannot travel
+   * in a shared link, so a restored `custom` only means "offer the picker" —
+   * until one is chosen it simply adds nothing to the mix.
    */
-  objects: string;
+  objects: string[];
   /**
    * How big the mirror triangle is, as a multiplier.
    *
@@ -145,7 +148,7 @@ export const DEFAULT_SETTINGS: Settings = {
   glitter: 0.35,
   bead: 0.6,
   sourceScale: 1,
-  objects: DEFAULT_OBJECTS,
+  objects: [DEFAULT_OBJECTS],
   zoom: 1.2,
   angle: 0,
   tilt: false,
@@ -190,7 +193,7 @@ export function sanitizeSettings(input: unknown): Settings {
       toNumber(raw.sourceScale, DEFAULT_SETTINGS.sourceScale),
       LIMITS.sourceScale,
     ),
-    objects: isObjectSetId(raw.objects) ? raw.objects : DEFAULT_SETTINGS.objects,
+    objects: sanitizeObjectIds(raw.objects),
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     angle: clampToLimit(toNumber(raw.angle, DEFAULT_SETTINGS.angle), LIMITS.angle),
     tilt: typeof raw.tilt === 'boolean' ? raw.tilt : DEFAULT_SETTINGS.tilt,
@@ -216,7 +219,7 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     glitter: String(settings.glitter),
     bead: String(settings.bead),
     sourceScale: String(settings.sourceScale),
-    objects: settings.objects,
+    objects: settings.objects.join(','),
     zoom: String(settings.zoom),
     angle: String(settings.angle),
     seed: settings.seed,

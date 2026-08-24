@@ -44,8 +44,11 @@ export interface KaleidoscopeProps {
   paused?: boolean;
   /** Photo or camera element to mirror, when `settings.source` selects one. */
   media?: MediaElement | null;
-  /** Picture to cut the pieces out of, when `settings.skin` asks for one. */
-  skin?: MediaElement | null;
+  /**
+   * The chosen object sets' pictures, which the pieces are cut out of and
+   * shared across. Any not loaded yet are left out of the mix.
+   */
+  skins?: readonly MediaElement[] | null;
   /**
    * How far the instrument is tilted, in radians, or `null` for not knowing.
    * It moves gravity rather than the figure: the mirrors are fixed in the tube
@@ -74,7 +77,7 @@ export function Kaleidoscope({
   settings,
   paused = false,
   media = null,
-  skin = null,
+  skins = null,
   tiltRef,
   onZoom,
   ref,
@@ -164,8 +167,8 @@ export function Kaleidoscope({
     renderer.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media, skin);
-  }, [size.width, size.height, scene, settings, media, skin]);
+    renderer.render(scene, settings, media, skins);
+  }, [size.width, size.height, scene, settings, media, skins]);
 
   useAnimationFrame(
     (deltaSeconds) => {
@@ -193,7 +196,7 @@ export function Kaleidoscope({
         // all — computed separately the pile leans by the difference.
         framework: frameworkRadians(settings.angle),
       });
-      renderer.render(scene, settings, media, skin);
+      renderer.render(scene, settings, media, skins);
     },
     !paused || gesture.mode !== null || tiltRef !== undefined,
   );

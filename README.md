@@ -218,26 +218,33 @@ longest — so this is noise being removed rather than corners being rounded off
 
 **Object sets.** A set is a PNG or WebP of a few objects on a transparent background. The
 bundled ones are discovered from the files rather than listed anywhere: dropping one into
-`src/assets/objects/` adds a preset to the **Source** control and removing it takes one
+`src/assets/objects/` adds a preset to the glass list and removing it takes one
 away, with no registry to keep in step and no way for the list and the files to disagree
 (`lib/objectSets.ts`, and see the README in that folder for what a picture has to be). Which
 one the app opens on is a single name in that module, and if the picture it names is missing
 the first set is used instead, so the name cannot put the app in a state the files do not
 support. One entry is not a file — **Upload a photo** takes one of your own.
 
-Each set is shown with a **thumbnail beside its name**, because the names are no help on
-their own: "Cut gems" and "Bright gems" are two different pictures and one description. That
-means the control is a listbox rather than a `select` — an `option` carries text and nothing
-else on every browser — so arrow keys, Home and End, Enter and Space to choose, Escape to
-close and the combobox announcements are all built in `controls/PictureField.tsx` rather than
-inherited. The thumbnails live in `assets/objects/thumbs/` and are a few kilobytes together;
-the sets themselves are fetched only when chosen, so opening the app downloads one picture. They sit in the same list as
-**Mirror a photo** and **Camera**, because a chamber of objects, a flat photograph and the
-live camera are three answers to the same question. They were two controls once, and the one
-that chose between them decided whether the other was rendered at all — so leaving it on
-Photo took the object sets out of the panel entirely, with nothing to say why. There is nothing else: a
-chamber is loaded with objects out of a picture, or it is empty. Without one, nothing is
-drawn at all, which is a truer answer than a chamber full of shapes nobody chose.
+The chamber holds **any number of sets at once**, mixed together: a pile can be gems and
+beads and splinters, because a real chamber is loaded with whatever is poured into it and
+nothing says that has to come from one jar. So the glass is a **list of checkboxes** rather
+than a single chooser (`controls/PictureChecklist.tsx`), and mixing two sets is checking two
+boxes. Each set is scored on its own and the pieces are shared out evenly across the ones
+that are checked — fixed per piece, so a splinter keeps its own scrap of its own set as it
+tumbles (`glassAt` in `lib/scene.ts`). Scoring each separately is not only tidier: a set
+keyed by colour rather than by alpha — `flowers.webp` is the one — has no transparency to
+carry into a combined picture, so it can only come apart when it is measured alone.
+
+Each box is shown with a **thumbnail beside its name**, because the names are no help on
+their own: "Cut gems" and "Bright gems" are two different pictures and one description. The
+thumbnails live in `assets/objects/thumbs/` and are a few kilobytes together; a set's own
+picture is fetched only when it is checked, so opening the app downloads nothing until a box
+is ticked and a set unchecked is not fetched again once it has been. The glass sits behind
+the same **Shards** tab as the piece count and the seed, alongside the **View** tab that
+mirrors a photo or the live camera — a chamber of objects and a picture pointed into the
+mirrors being two different instruments, not two settings of one. A chamber is loaded with
+objects out of a picture, or it is empty: uncheck every set and nothing is drawn at all,
+which is a truer answer than a chamber full of shapes nobody chose.
 
 Five of the seven that ship — **Glass shards**, **Stone beads**, **Cut gems**, **Rough
 jewels** and **Flowers** — are the owner's own work. The other two, **Bright gems** and **Cut
