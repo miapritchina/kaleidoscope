@@ -101,6 +101,29 @@ describe('drawMedia', () => {
     expect(drawn!.h).toBe(100);
   });
 
+  // Past its edges the picture continues as its own mirror image, the way the
+  // mirrors continue everything else. Without this, a picture shrunk below
+  // cover left bare ground past its edges — and the bead, whose samples range
+  // over the whole mirrored disc, brought it back as a pale hole at every
+  // rosette centre.
+  it('continues past its edges in mirror, leaving no bare ground', () => {
+    const { ctx } = draw(fakeImage(400, 400), { zoom: 0.5 });
+
+    // Shrunk to half cover, one copy cannot reach the sampled region: the
+    // neighbours have to be there, and the odd ones flipped.
+    expect(ctx.countOf('drawImage')).toBeGreaterThan(1);
+    expect(ctx.argsOf('scale')).toContainEqual([-1, 1]);
+    expect(ctx.argsOf('scale')).toContainEqual([1, -1]);
+  });
+
+  it('draws the picture itself first, its reflections after', () => {
+    const { drawn } = draw(fakeImage(400, 400), { zoom: 0.5 });
+
+    // The first stamp is the unflipped centre copy, where the tests above and
+    // any reader of the recording expect to find it.
+    expect(drawn).toEqual({ x: -50, y: -50, w: 100, h: 100 });
+  });
+
   it('pans by the wedge reach plus the slack outside the covered square', () => {
     // At zoom 2 a square image is 400 wide against a 200 span: 100 of slack,
     // plus the wedge's own 100 of reach.
