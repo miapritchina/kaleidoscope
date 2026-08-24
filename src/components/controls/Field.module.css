@@ -104,6 +104,57 @@
   cursor: pointer;
 }
 
+/* A list of sets, any number of which can be on at once. A fieldset so the
+   boxes are grouped and announced under one name; stripped of its default
+   frame, which would draw a second box around the panel's own. */
+.checklist {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.checklistLegend {
+  padding: 0;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+/* Its own scroller, the way the single-choice list has one: seven sets is more
+   than the panel can give, and a list that pushes the rest of the controls
+   down is worse. */
+.checkOptions {
+  display: grid;
+  gap: 0.1rem;
+  max-height: 15rem;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  list-style: none;
+}
+
+.checkOption {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.3rem;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.checkOption:hover {
+  background: var(--surface-input);
+}
+
+/* The whole row is the label's target, so the name is a comfortable thing to
+   aim the pointer at rather than a word beside an untouchable box. */
+.checkOption .pickerName {
+  cursor: pointer;
+}
+
 /*
  * A chooser that shows what each choice looks like.
  *

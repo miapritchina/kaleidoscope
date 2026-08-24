@@ -10,7 +10,7 @@ import { LIMITS, type Settings, type SourceId } from '../lib/settings';
 import { FileField } from './controls/FileField';
 import { Icon, type IconName } from './controls/Icon';
 import { RangeField } from './controls/RangeField';
-import { PictureField } from './controls/PictureField';
+import { PictureChecklist } from './controls/PictureChecklist';
 import { SelectField } from './controls/SelectField';
 import { TextField } from './controls/TextField';
 import { ToggleField } from './controls/ToggleField';
@@ -172,9 +172,9 @@ export function ControlPanel({
       >
         {kind === 'objects' && (
           <>
-            <PictureField
+            <PictureChecklist
               label="Glass"
-              value={settings.objects}
+              selected={settings.objects}
               options={OBJECT_SETS.map((set) => ({
                 value: set.id,
                 label: set.name,
@@ -185,7 +185,7 @@ export function ControlPanel({
               }}
             />
 
-            {settings.objects === CUSTOM && (
+            {settings.objects.includes(CUSTOM) && (
               <>
                 <FileField
                   label="Picture"

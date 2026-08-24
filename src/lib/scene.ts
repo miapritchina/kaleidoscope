@@ -166,6 +166,11 @@ const CONTENTS_CATCHUP = 4;
  */
 const MAX_LAG = 0.3;
 
+/** Fractional part, for turning a piece's fixed number into a stable choice. */
+function frac(value: number): number {
+  return value - Math.floor(value);
+}
+
 /**
  * How big a piece is, in cell units, before the size gesture scales it.
  *
@@ -232,9 +237,44 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
 }
 
 /**
+ * One set of glass the chamber is loaded with: a picture and where in it each
+ * piece is cut from.
+ *
+ * The chamber can hold several at once, so the renderer hands the drawing an
+ * array of these rather than a single picture. Which set a given piece belongs
+ * to is fixed for that piece — see {@link glassAt} — so the pieces are shared
+ * out evenly and a splinter keeps its own scrap of its own set as it tumbles.
+ */
+export interface Glass {
+  /** The picture the pieces of this set are cut out of. */
+  readonly skin: CanvasImageSource;
+  /** Where in it each piece is cut from, or `null` to cut at random. */
+  readonly patches: SkinPatches | null;
+}
+
+/**
+ * Which of the loaded sets a piece is cut from.
+ *
+ * Fixed for a piece and spread evenly across whatever sets are on offer.
+ * Derived from the same fixed pair that places the piece within a set, but
+ * mixed so a piece's set is decorrelated from where in that set it is cut —
+ * left tied to `skin.x` alone, a set would only ever show the pieces from one
+ * end of its own picture.
+ */
+function glassAt(shard: Shard, count: number): number {
+  if (count <= 1) {
+    return 0;
+  }
+
+  const mixed = frac(shard.skin.x * 0.7548776662 + shard.skin.y * 0.569840290998);
+
+  return Math.min(count - 1, Math.floor(mixed * count));
+}
+
+/**
  * Gives each piece the shape of whatever it is cut to.
  *
- * Called when the picture changes rather than every frame: the shape belongs to
+ * Called when the glass changes rather than every frame: the shape belongs to
  * the cut, and the cut is fixed for a piece. Without a picture, or for a piece
  * whose cut has gone, a piece is the circle it was cut to fit — which is what
  * the drawn shapes are.
@@ -242,13 +282,14 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
  * @returns Whether anything changed, so a caller can leave a chamber alone that
  *   is already right.
  */
-export function applyCutShape(shards: Shard[], patches: SkinPatches | null): boolean {
+export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boolean {
   // One shape per cut, not one per piece: a hundred splinters off the same
   // object are the same shape, and the solver reads it every frame.
   const shapes = new Map<SkinCut, Shape>();
   let changed = false;
 
   for (const shard of shards) {
+    const patches = glasses[glassAt(shard, glasses.length)]?.patches ?? null;
     const cut = patches?.cut(shard.skin) ?? null;
     let shape = ROUND;
 
@@ -330,8 +371,18 @@ export interface DrawChamberOptions {
   /** Multiplies chip size without changing how many there are. */
   sprites: ChipSprites;
   /**
-   * The picture the pieces are cut out of.
+   * The sets of glass the chamber is loaded with, mixed together.
    *
+   * Each piece is cut from one of them — fixed per piece, spread evenly — and
+   * from its own patch of that one, so a chamber of them samples every set all
+   * over rather than repeating one crop. Left out, the single `skin` and
+   * `patches` below stand in as a one-set list, which is what the tests lean on.
+   */
+  glasses?: readonly Glass[];
+  /**
+   * The picture the pieces are cut out of, when there is only one set.
+   *
+   * A convenience for the single-set case: equivalent to a `glasses` of one.
    * Each piece is cut from its own patch of it, so a chamber of them samples
    * the picture all over rather than repeating one crop. Nothing about the
    * lighting changes — a photographed surface is still a surface, and it gets
@@ -339,7 +390,7 @@ export interface DrawChamberOptions {
    */
   skin?: CanvasImageSource | null;
   /**
-   * Where in that photograph each piece is cut from.
+   * Where in that one picture each piece is cut from.
    *
    * Left out, the pieces are cut at uniformly random spots, which is right for
    * a picture that is interesting all over and wrong for one that is a subject
@@ -357,11 +408,24 @@ export interface DrawChamberOptions {
 export function drawChamber(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
-  { scale, magnify = 1, rotation, pan, sprites, skin = null, patches = null }: DrawChamberOptions,
+  {
+    scale,
+    magnify = 1,
+    rotation,
+    pan,
+    sprites,
+    glasses,
+    skin = null,
+    patches = null,
+  }: DrawChamberOptions,
 ): void {
   if (scale <= 0) {
     return;
   }
+
+  // The single `skin`/`patches` are a one-set list; either way the drawing sees
+  // only an array of sets to share the pieces out across.
+  const sets = glasses ?? (skin ? [{ skin, patches }] : []);
 
   ctx.save();
   // The pieces are solid, so each one covers what is behind it rather than
@@ -372,12 +436,13 @@ export function drawChamber(
 
   for (const shard of scene.shards) {
     const radius = shard.radius * scale * DEPTH_OVERLAP * magnify;
+    const glass = sets[glassAt(shard, sets.length)];
 
     // Nothing is drawn without a picture to cut it out of. There is no
     // generated piece to fall back to any more, and a chamber of nothing is a
     // truer answer than one full of shapes nobody asked for.
-    if (skin) {
-      drawSkinned(ctx, shard, sprites, skin, patches, scale, radius);
+    if (glass) {
+      drawSkinned(ctx, shard, sprites, glass.skin, glass.patches, scale, radius);
     }
   }
 

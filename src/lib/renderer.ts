@@ -3,7 +3,14 @@ import { Compositor } from './compositor';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
-import { applyCutShape, DRAG_CELLS, drawChamber, SKIN_PATCH, type Scene } from './scene';
+import {
+  applyCutShape,
+  DRAG_CELLS,
+  drawChamber,
+  SKIN_PATCH,
+  type Glass,
+  type Scene,
+} from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { LIMITS, type Settings } from './settings';
 import {
@@ -31,8 +38,8 @@ interface WedgeSource {
   sprites: ChipSprites;
   mode: WedgeMode;
   media: MediaElement | null;
-  skin: MediaElement | null;
-  patches: SkinPatches | null;
+  /** The sets of glass loaded into the chamber, each scored once. */
+  glasses: readonly Glass[];
 }
 
 /**
@@ -207,9 +214,13 @@ export class KaleidoscopeRenderer {
   #tile: HTMLCanvasElement | null = null;
   #source: WedgeSource | null = null;
 
-  #patches: SkinPatches | null = null;
-  #patchesFor: CanvasImageSource | null = null;
-  #patchesSize = '';
+  // One score per picture, kept until the picture itself changes. Keyed by the
+  // element so several sets can be scored at once and each is only worked once,
+  // however the chosen mix is toggled about.
+  readonly #patchCache = new Map<
+    CanvasImageSource,
+    { patches: SkinPatches | null; stamp: string }
+  >();
 
   /**
    * The shader, where there is one.
@@ -221,8 +232,8 @@ export class KaleidoscopeRenderer {
   #shader: Compositor | null = null;
   #shaderTried = false;
 
-  /** Which picture and which scene the pieces were last sized against. */
-  #girthFor: SkinPatches | null = null;
+  /** Which glass and which scene the pieces were last sized against. */
+  #girthGlasses: readonly Glass[] = [];
   #girthOn: Scene | null = null;
 
   constructor(
@@ -294,17 +305,17 @@ export class KaleidoscopeRenderer {
    * @param media Photo or camera element to mirror instead of the shard field.
    *   Ignored unless `settings.source` selects it, and skipped until it has
    *   pixels — a source that is chosen but not ready renders as the backdrop.
-   * @param skin The object set's picture, which the pieces are cut out of in
-   *   place of the drawn shapes — see `lib/skin.ts`. Left out, or not yet
-   *   loaded, the pieces are drawn. Separate from `media`, which the mirrors
-   *   repeat: the two are independent, so the objects can come out of one
-   *   picture while the mirrors repeat another.
+   * @param skins The chosen object sets' pictures, which the pieces are cut out
+   *   of and shared across — see `lib/skin.ts`. Any that are not loaded yet are
+   *   left out of the mix; none loaded, the chamber comes up empty. Separate
+   *   from `media`, which the mirrors repeat: the two are independent, so the
+   *   objects can come out of one picture while the mirrors repeat another.
    */
   render(
     scene: Scene,
     settings: Settings,
     media?: MediaElement | null,
-    skin?: MediaElement | null,
+    skins?: readonly MediaElement[] | null,
   ): void {
     if (this.#width === 0 || this.#height === 0) {
       return;
@@ -321,20 +332,22 @@ export class KaleidoscopeRenderer {
     const mode: WedgeMode =
       settings.source === 'objects' ? 'chamber' : isMediaReady(frame) ? 'media' : 'empty';
 
-    // Until it has pixels there is nothing to cut objects out of, and nothing
-    // to draw: the chamber comes up empty rather than full of shapes nobody
-    // chose.
-    const surface = isMediaReady(skin) ? skin : null;
-    const patches = surface ? this.#patchesOf(surface) : null;
+    // Every chosen set that has pixels yet, scored once each and kept — see
+    // #patchesOf. A set still loading is simply not in the mix until it lands,
+    // and none loaded leaves the chamber empty rather than full of shapes
+    // nobody chose.
+    const glasses: Glass[] = (skins ?? [])
+      .filter((item): item is MediaElement => isMediaReady(item))
+      .map((skin) => ({ skin, patches: this.#patchesOf(skin) }));
 
     // What each piece is cut to is what it should collide on, and that is
-    // settled by the picture rather than by the frame. Applied here because
+    // settled by the glass rather than by the frame. Applied here because
     // this is where the two meet: the scene knows nothing about pictures and
-    // the picture knows nothing about the scene.
-    if (this.#girthFor !== patches || this.#girthOn !== scene) {
-      this.#girthFor = patches;
+    // the pictures know nothing about the scene.
+    if (this.#girthOn !== scene || !sameGlasses(this.#girthGlasses, glasses)) {
+      this.#girthGlasses = glasses;
       this.#girthOn = scene;
-      applyCutShape(scene.shards, patches);
+      applyCutShape(scene.shards, glasses);
     }
 
     const source: WedgeSource = {
@@ -343,8 +356,7 @@ export class KaleidoscopeRenderer {
       sprites,
       mode,
       media: frame ?? null,
-      skin: surface,
-      patches,
+      glasses,
     };
 
     const framework = frameworkRadians(settings.angle);
@@ -370,16 +382,16 @@ export class KaleidoscopeRenderer {
   #patchesOf(skin: CanvasImageSource): SkinPatches | null {
     const size = measureSource(skin);
     const stamp = `${String(size.width)}x${String(size.height)}`;
+    const cached = this.#patchCache.get(skin);
 
-    if (this.#patchesFor === skin && this.#patchesSize === stamp) {
-      return this.#patches;
+    if (cached?.stamp === stamp) {
+      return cached.patches;
     }
 
-    this.#patchesFor = skin;
-    this.#patchesSize = stamp;
-    this.#patches = createSkinPatches(skin, { patch: SKIN_PATCH });
+    const patches = createSkinPatches(skin, { patch: SKIN_PATCH });
+    this.#patchCache.set(skin, { patches, stamp });
 
-    return this.#patches;
+    return patches;
   }
 
   /** Side of the mirror triangle in device pixels. */
@@ -490,7 +502,7 @@ export class KaleidoscopeRenderer {
 
   /** Paints the chosen source into the offscreen wedge surface. */
   #paintWedge(source: WedgeSource, triangleSide: number): void {
-    const { scene, settings, sprites, mode, media, skin, patches } = source;
+    const { scene, settings, sprites, mode, media, glasses } = source;
     const ctx = this.#wedgeCtx;
     const reach = Math.ceil(triangleSide);
 
@@ -551,8 +563,7 @@ export class KaleidoscopeRenderer {
           y: scene.drag.y * DRAG_CELLS,
         },
         sprites,
-        skin,
-        patches,
+        glasses,
       });
       ctx.restore();
     }
@@ -653,9 +664,10 @@ export class KaleidoscopeRenderer {
       vignette: {
         // The 2D gradient runs from a fraction of the shorter edge out to the
         // corner; the shader works in fractions of that same reach.
-        clear: this.#radius > 0
-          ? (Math.min(this.#width, this.#height) * VIGNETTE_CLEAR) / this.#radius
-          : 0,
+        clear:
+          this.#radius > 0
+            ? (Math.min(this.#width, this.#height) * VIGNETTE_CLEAR) / this.#radius
+            : 0,
         depth: VIGNETTE_DEPTH,
       },
       dispersion: RIM_DISPERSION,
@@ -1111,6 +1123,25 @@ function cellNoise(i: number, j: number): number {
   hash ^= hash >>> 13;
 
   return (hash >>> 0) / 4294967296;
+}
+
+/**
+ * Whether two lists of glass are the same sets in the same order.
+ *
+ * The list is rebuilt every frame, so it cannot be compared by reference; but
+ * its members are stable — the same picture elements and their cached scores —
+ * so a shallow compare tells a genuine change of mix from a fresh array of the
+ * same thing, and keeps the pieces from being re-sized every frame.
+ */
+function sameGlasses(a: readonly Glass[], b: readonly Glass[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((glass, index) => {
+      const other = b[index]!;
+
+      return glass.skin === other.skin && glass.patches === other.patches;
+    })
+  );
 }
 
 function defaultCanvas(): HTMLCanvasElement {

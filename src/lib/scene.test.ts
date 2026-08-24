@@ -515,6 +515,45 @@ describe('drawChamber', () => {
     ).toBe(true);
   });
 
+  // The chamber can be loaded with several sets at once, and then the pieces
+  // are shared out across them: a pile of gems and beads together, not one or
+  // the other. Each piece is drawn from its own set's picture.
+  it('shares the pieces across every set it is loaded with', () => {
+    const context = createFakeContext();
+    const first = { width: 400, height: 300 } as unknown as CanvasImageSource;
+    const second = { width: 400, height: 300 } as unknown as CanvasImageSource;
+    // A cut apiece, so every piece is one draw from its own set's picture — the
+    // object path, with nothing laid over it.
+    const cut = {
+      outline: [
+        { x: -0.9, y: -0.4 },
+        { x: 0.9, y: -0.4 },
+        { x: 0.9, y: 0.4 },
+        { x: -0.9, y: 0.4 },
+      ],
+      source: { x: 20, y: 30, width: 90, height: 40 },
+      extent: { x: 1, y: 0.44 },
+      area: Math.PI * 0.44,
+    };
+    const patches = { pick: (draw: { x: number; y: number }) => draw, cuts: [cut], cut: () => cut };
+
+    drawChamber(asContext(context), createScene('mix', 40), {
+      ...BASE,
+      scale: 60,
+      glasses: [
+        { skin: first, patches },
+        { skin: second, patches },
+      ],
+    });
+
+    // Every one of the forty pieces was drawn from one of the two pictures...
+    const used = context.argsOf('drawImage').map((args) => args[0]);
+    expect(used).toHaveLength(40);
+    // ...and both pictures were actually reached, so the mix is a mix.
+    expect(used).toContain(first);
+    expect(used).toContain(second);
+  });
+
   // Chip size is geometry, not a scale applied at draw time: a bigger piece
   // displaces its neighbours and piles differently. Scaling only the sprite
   // leaves every arrangement identical and just draws it smaller.

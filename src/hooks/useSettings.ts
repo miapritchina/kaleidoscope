@@ -166,5 +166,21 @@ function isCurrent(raw: unknown): raw is StoredSettings {
 function isEqual(a: Settings, b: Settings): boolean {
   const keys = Object.keys(a) as (keyof Settings)[];
 
-  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+  return keys.length === Object.keys(b).length && keys.every((key) => sameField(a[key], b[key]));
+}
+
+/**
+ * One field's worth of comparison.
+ *
+ * Most fields are primitives and `===` is the whole of it. The chosen sets are
+ * a list, though, and a fresh one built from the same ids is a different array
+ * — so comparing by reference would report every unrelated change as a change
+ * to the glass and defeat the no-op short-circuit above.
+ */
+function sameField(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((value, index) => value === (b as unknown[])[index]);
+  }
+
+  return a === b;
 }

@@ -13,7 +13,7 @@ const CHANGES = [
   ['bead', 0.25],
   ['sourceScale', 1.5],
   ['debug', true],
-  ['objects', 'custom'],
+  ['objects', ['custom']],
   ['zoom', 2],
   ['angle', 45],
   ['tilt', true],
@@ -38,7 +38,10 @@ describe('settingsReducer', () => {
   it.each(CHANGES)('applies a change to %s', (key, value) => {
     const next = settingsReducer(DEFAULT_SETTINGS, { type: 'set', key, value });
 
-    expect(next[key]).toBe(value);
+    // toStrictEqual rather than toBe: the chosen sets are a fresh list after
+    // sanitising, so the value that lands is equal to the one set but not the
+    // same array. For every other field the two are identical.
+    expect(next[key]).toStrictEqual(value);
     expect(next).not.toBe(DEFAULT_SETTINGS);
   });
 

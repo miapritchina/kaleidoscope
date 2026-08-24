@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import styles from './App.module.css';
 import { ControlPanel } from './components/ControlPanel';
 import { Kaleidoscope, type KaleidoscopeHandle } from './components/Kaleidoscope';
 import { useCamera } from './hooks/useCamera';
 import { useImageSource } from './hooks/useImageSource';
-import { useImageUrl } from './hooks/useImageUrl';
+import { useImageUrls } from './hooks/useImageUrls';
 import { useDeviceTilt } from './hooks/useDeviceTilt';
 import { useDeviceReadings } from './hooks/useDeviceReadings';
 import { useShake } from './hooks/useShake';
@@ -44,25 +44,45 @@ export function App() {
 
   const media =
     settings.source === 'image' ? image.image : settings.source === 'camera' ? video : null;
-  // The chosen set's picture, if it is one of the bundled ones.
-  const preset = useImageUrl(settings.objects === CUSTOM ? null : objectSetUrl(settings.objects));
+
+  // The bundled sets that are checked, as urls to load. Custom is not a file of
+  // its own — its picture is the one the viewer supplied — so it is not here.
+  const presetUrls = useMemo(
+    () =>
+      settings.objects
+        .filter((id) => id !== CUSTOM)
+        .map((id) => objectSetUrl(id))
+        .filter((url): url is string => url !== null),
+    [settings.objects],
+  );
+  const presetImages = useImageUrls(presetUrls);
+  const customSelected = settings.objects.includes(CUSTOM);
 
   // What the pieces are cut out of, which is a different question from what the
-  // mirrors repeat: the objects can come out of one picture while the mirrors
-  // go on repeating another.
-  const skin = settings.objects === CUSTOM ? image.image : preset;
+  // mirrors repeat: the objects can come out of one set of pictures while the
+  // mirrors go on repeating another. The chosen sets are mixed — the pieces are
+  // shared across them — so this is a list, the bundled ones and then the
+  // viewer's own photo if that is one of the choices and has loaded.
+  const skins = useMemo(() => {
+    const list: HTMLImageElement[] = [...presetImages];
 
-  // One picker, wanted by either. Whichever asks, the same photo answers.
-  const wantsPhoto = settings.source === 'image' || settings.objects === CUSTOM;
+    if (customSelected && image.image) {
+      list.push(image.image);
+    }
+
+    return list;
+  }, [presetImages, customSelected, image.image]);
 
   const emptyState =
-    wantsPhoto && !image.image
-      ? settings.source === 'image'
-        ? 'Choose or drop a photo to mirror it.'
-        : 'Choose or drop a PNG of objects on a transparent background.'
+    settings.source === 'image' && !image.image
+      ? 'Choose or drop a photo to mirror it.'
       : settings.source === 'camera' && camera.status !== 'active'
         ? (camera.message ?? 'Starting the camera…')
-        : null;
+        : settings.source === 'objects' && skins.length === 0
+          ? customSelected
+            ? 'Choose or drop a PNG of objects on a transparent background.'
+            : 'Pick a glass to fill the chamber.'
+          : null;
 
   // Escape closes the panel wherever the focus is, which is what a viewer
   // reaches for when something has covered the thing they were looking at.
@@ -248,7 +268,7 @@ export function App() {
 
           // Dropped while the pieces are being cut out of a photo, it is meant
           // for them, so the mirrors are left on whatever they were repeating.
-          if (settings.objects !== CUSTOM) {
+          if (!customSelected) {
             set('source', 'image');
           }
 
@@ -260,7 +280,7 @@ export function App() {
           settings={settings}
           paused={!isPlaying}
           media={media}
-          skin={skin}
+          skins={skins}
           {...(settings.tilt ? { tiltRef: tilt.angleRef } : {})}
           onZoom={handleZoom}
         />
@@ -379,9 +399,7 @@ export function App() {
             </button>
           </div>
 
-          <p className={styles.subtitle}>
-            Swipe the artwork to turn it. Pinch to size the pieces.
-          </p>
+          <p className={styles.subtitle}>Swipe the artwork to turn it. Pinch to size the pieces.</p>
 
           <ControlPanel
             settings={settings}

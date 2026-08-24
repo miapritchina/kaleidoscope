@@ -116,6 +116,15 @@ describe('search param round trip', () => {
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
   });
 
+  // The chosen sets travel as one comma-joined parameter, so a mix of glass is
+  // carried in a shared link and comes back as the same mix.
+  it('restores a mix of object sets', () => {
+    const settings = { ...DEFAULT_SETTINGS, objects: [...DEFAULT_SETTINGS.objects, 'custom'] };
+    const restored = settingsFromSearchParams(settingsToSearchParams(settings));
+
+    expect(restored.objects).toEqual(settings.objects);
+  });
+
   it('sanitises hand-edited links', () => {
     const params = new URLSearchParams('shards=9999&seed=&objects=nope');
 
