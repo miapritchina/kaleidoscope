@@ -3,6 +3,7 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObje
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
 import { useStageGesture } from '../hooks/useStageGesture';
+import { AIR, FRESH_LIQUID, liquidCell } from '../lib/chamber';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
@@ -122,9 +123,23 @@ export function Kaleidoscope({
     };
   }, [chamberScale, settings.sourceScale]);
 
+  // What the glass is suspended in. Six numbers, rebuilt whenever the slider
+  // moves; the running simulation takes the new one on the very next frame, so
+  // the fluid thickens under a pile that is already drifting.
+  const liquid = settings.source === 'liquid';
+  const medium = useMemo(
+    () => (liquid ? liquidCell(settings.thickness) : AIR),
+    [liquid, settings.thickness],
+  );
+
+  // The cell itself is rebuilt when the fluid changes kind and not when it
+  // merely thickens — a dry cell and a wet one open on quite different
+  // arrangements, one a pile on the floor and one a field still hanging where
+  // it was scattered, but two thicknesses of the same fluid open on the same
+  // one. See FRESH_LIQUID.
   const scene = useMemo(
-    () => createScene(settings.seed, settings.shards, chamberScale),
-    [settings.seed, settings.shards, chamberScale],
+    () => createScene(settings.seed, settings.shards, chamberScale, liquid ? FRESH_LIQUID : AIR),
+    [settings.seed, settings.shards, chamberScale, liquid],
   );
 
   useImperativeHandle(
@@ -190,6 +205,7 @@ export function Kaleidoscope({
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
+        medium,
         // The cell is drawn inside the framework, so the framework's angle has
         // to come off gravity's or the pile would lean with the instrument.
         // Derived by the same function the renderer uses, upright offset and
@@ -244,5 +260,7 @@ function describe({ source, seed }: Settings): string {
       return `${assembly}, mirroring the live camera`;
     case 'objects':
       return `${assembly}, seed ${seed}`;
+    case 'liquid':
+      return `${assembly}, glass suspended in liquid, seed ${seed}`;
   }
 }

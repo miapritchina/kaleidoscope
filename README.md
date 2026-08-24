@@ -1,9 +1,9 @@
 # Kaleidoscope
 
 An interactive kaleidoscope, rendered on a 2D canvas. A triangular tube of three mirrors
-tiles the field with repeating hexagons, the way a real one does. Feed it a generated
-chamber of tumbling objects, a photo of your own, or a live camera feed. Built with React
-19, TypeScript and Vite.
+tiles the field with repeating hexagons, the way a real one does. Feed it a dry chamber of
+tumbling objects, the same glass suspended in oil, a photo of your own, or a live camera
+feed. Built with React 19, TypeScript and Vite.
 
 Swipe across the artwork to turn the cell. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
@@ -319,8 +319,9 @@ src/
 
 | Setting          | Range                  | Effect                                         |
 | ---------------- | ---------------------- | ---------------------------------------------- |
-| Source           | a set, a photo, camera | What the mirrors are pointed at                |
-| Pieces           | 4–60                   | How many are in the chamber                    |
+| Source           | glass, liquid, view    | Which instrument this is                       |
+| Pieces           | 30–150                 | How many are in the chamber                    |
+| Thickness        | oil–gel                | How much of the glass's weight the fluid holds |
 | Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
 | Mirror angle     | 0–120°                 | Which way up the tube is being held            |
 | Real gravity     | on/off                 | Let the phone's position say which way is down |
@@ -553,6 +554,94 @@ nothing else would ever release them, and someone who had been here before would
 opening on the old picture while the new ones sat unseen behind the chooser. The cost is
 that the same release forgets a mirror angle they liked, which is why the number moves
 deliberately and most releases leave it alone.
+
+## A cell of liquid
+
+Plenty of real kaleidoscopes suspend the glass in oil, and it is a different instrument in
+the hand rather than a different picture of the same one: the pieces sink instead of
+falling, they go on sweeping round after the tube has stopped, and a heap that does form
+lies flat because wet glass slides. It is the **Liquid** tab, and it is the same solver
+told what the glass is moving through.
+
+That is `Medium` in `lib/chamber.ts`, and it is three things.
+
+**Buoyancy.** A piece is held up by the weight of what it displaces, so it falls under
+`1 - density` of its own weight, with the fluid's density quoted as a fraction of the
+glass's. Glass is about two and a half times water and a light oil about nine tenths of it,
+which leaves a third of the pull behind. Measured on one piece dropped from the top of the
+cell to the floor:
+
+| cell        | time to fall |
+| ----------- | ------------ |
+| dry         | 1.1 s        |
+| thin oil    | 3.2 s        |
+| the default | 6.9 s        |
+| gel         | 45 s         |
+
+**Drag.** Velocity spent per second, which is what turns that reduced weight into a
+terminal speed rather than an acceleration — glass in oil reaches a drift and holds it,
+which is the thing that reads as liquid rather than as low gravity.
+
+**The fluid's own turning.** A liquid does not turn with the tube. It lags while the tube
+is turning, and then carries on after it has stopped. That lag is one number — how fast the
+wall drags the body of fluid up to its own rate — and it is most of what a hand feels:
+start turning and the glass hangs back, stop and it sails on. Drag is taken against the
+fluid rather than against the cell, so a piece already travelling with a swirl feels none
+of it and one adrift in a swirl is carried round.
+
+A cylinder of liquid spun about its axis does end up turning as one body, so a single rate
+is where this is heading anyway. What it leaves out is the spin-up profile across the
+radius, which nothing in a cell this size would show.
+
+### The dry cell is untouched, provably rather than nearly
+
+Every number in the dry cell is the number it had before there was anything to fill it
+with, and the two new terms are exempt rather than approximated. Air's density is written
+as **nought** rather than the twelve ten-thousandths it really is, because buoyancy in air
+is a part in two thousand — finer than any other number in that file is meant to be — and
+nought is what makes the arithmetic identical instead of merely close. Its stir is nought
+too, which is read as _no body of fluid at all_ rather than as one that never catches up: a
+large finite number would have left a whisper of swirl behind on a fast display, which is a
+retuned chamber arriving by the back door. A test runs the two cells side by side, one
+handed air and a swirl and the other handed nothing, and expects them equal piece for
+piece.
+
+### Nothing sleeps in a liquid
+
+A dry pile stops jittering because a piece below a threshold speed is treated as at rest.
+A piece adrift in oil is _not_ at rest, and the same threshold would catch a slow sink and
+freeze the cell solid — the one thing a liquid cell must never do. So its thresholds are
+nought, and it simply never sleeps.
+
+That has a consequence at the other end: a fresh cell is settled by running it until it
+stops, which a liquid cell never does. So a liquid one is **unpacked** rather than settled
+— a second and a bit, enough for the fluid to push the glass out of itself — and it opens
+on the field as it was scattered rather than on a pile on the floor. Which is the point:
+the whole disc holds glass, and the picture is evenly full in a way the dry cell only
+manages in the moment after it is shuffled.
+
+Because unpacking asks the same second and a bit of every thickness, the arrangement a
+liquid cell opens on does not depend on where the **Thickness** slider is. That is what
+lets the slider move without rebuilding and resettling the pile under the finger; whatever
+it is set to takes over on the very next frame, so the fluid thickens under glass that is
+already drifting.
+
+### What it is not
+
+It is a medium, not a fluid: there is no liquid in the cell for the glass to displace, no
+surface to slosh, and no current except the one the wall stirs up. Real fluid in the cell
+is a different job — a density constraint in the same XPBD loop, rendered as screen-space
+metaballs — and it is still on the roadmap, along with smoke and ink, which is a grid
+solver and a different job again.
+
+### Why a tab and not a switch
+
+The panel's tabs are the instruments the app can be: a chamber of glass, a chamber of
+liquid, and the mirrors pointed at something outside the tube. Which fluid the glass hangs
+in changes what the thing does in the hand, not what it looks like at rest, and a checkbox
+on the shard tab would have filed the difference between two instruments as a setting of
+one. The liquid tab carries everything the shard tab carries, because it is a chamber and
+all of it still means what it meant, plus the one control that is only true of it.
 
 ## Photo and camera
 

@@ -12,7 +12,7 @@ import {
   type Scene,
 } from './scene';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
-import { LIMITS, type Settings } from './settings';
+import { isChamberSource, LIMITS, type Settings } from './settings';
 import {
   coverWithHexagons,
   frameworkRadians,
@@ -328,9 +328,9 @@ export class KaleidoscopeRenderer {
     this.#sprites ??= createChipSprites();
     const sprites = this.#sprites;
 
-    const frame = settings.source === 'objects' ? null : media;
-    const mode: WedgeMode =
-      settings.source === 'objects' ? 'chamber' : isMediaReady(frame) ? 'media' : 'empty';
+    const chamber = isChamberSource(settings.source);
+    const frame = chamber ? null : media;
+    const mode: WedgeMode = chamber ? 'chamber' : isMediaReady(frame) ? 'media' : 'empty';
 
     // Every chosen set that has pixels yet, scored once each and kept — see
     // #patchesOf. A set still loading is simply not in the mix until it lands,

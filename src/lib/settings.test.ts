@@ -54,6 +54,7 @@ describe('sanitizeSettings', () => {
       source: DEFAULT_SETTINGS.source,
       cameraFacing: DEFAULT_SETTINGS.cameraFacing,
       shards: 30,
+      thickness: DEFAULT_SETTINGS.thickness,
       glitter: DEFAULT_SETTINGS.glitter,
       bead: DEFAULT_SETTINGS.bead,
       sourceScale: DEFAULT_SETTINGS.sourceScale,
@@ -114,6 +115,31 @@ describe('search param round trip', () => {
     const settings = { ...DEFAULT_SETTINGS, zoom: 2, seed: 'round-trip' };
 
     expect(settingsFromSearchParams(settingsToSearchParams(settings))).toEqual(settings);
+  });
+
+  // Which cell the glass is suspended in is part of the look rather than part
+  // of the recipient's hardware, so unlike a photo or a camera it travels.
+  it('restores the liquid cell, and how thick its fluid is', () => {
+    const settings = { ...DEFAULT_SETTINGS, source: 'liquid' as const, thickness: 0.8 };
+    const restored = settingsFromSearchParams(settingsToSearchParams(settings));
+
+    expect(restored.source).toBe('liquid');
+    expect(restored.thickness).toBe(0.8);
+  });
+
+  // The other two sources name something at the recipient's end that a link
+  // cannot carry, and asking for the camera on page load would fire a
+  // permission prompt nobody at this end asked for.
+  it('never opens a link on a photo or the camera', () => {
+    for (const source of ['image', 'camera']) {
+      const params = new URLSearchParams({ source, zoom: '2' });
+
+      expect(settingsFromSearchParams(params).source).toBe(DEFAULT_SETTINGS.source);
+    }
+
+    expect(settingsToSearchParams({ ...DEFAULT_SETTINGS, source: 'camera' }).has('source')).toBe(
+      false,
+    );
   });
 
   // The chosen sets travel as one comma-joined parameter, so a mix of glass is

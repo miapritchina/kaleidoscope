@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OBJECT_SETS } from '../lib/objectSets';
-import { DEFAULT_SETTINGS, type Settings } from '../lib/settings';
+import { DEFAULT_SETTINGS, LIMITS, type Settings } from '../lib/settings';
 import { ControlPanel, type ControlPanelProps } from './ControlPanel';
 
 /** The names the glass checklist offers, in order. */
@@ -41,7 +41,11 @@ describe('ControlPanel', () => {
     it('offers them as tabs, with the current one chosen', () => {
       renderPanel();
 
-      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Shards', 'View']);
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'Shards',
+        'Liquid',
+        'View',
+      ]);
       expect(screen.getByRole('tab', { name: 'Shards' })).toHaveAttribute('aria-selected', 'true');
     });
 
@@ -63,7 +67,7 @@ describe('ControlPanel', () => {
       screen.getByRole('tab', { name: 'Shards' }).focus();
       await user.keyboard('{ArrowRight}');
 
-      expect(props.onChange).toHaveBeenCalledWith('source', 'image');
+      expect(props.onChange).toHaveBeenCalledWith('source', 'liquid');
     });
 
     it('wraps around at the ends', async () => {
@@ -80,6 +84,7 @@ describe('ControlPanel', () => {
       renderPanel();
 
       expect(screen.getByRole('tab', { name: 'Shards' })).toHaveAttribute('tabindex', '0');
+      expect(screen.getByRole('tab', { name: 'Liquid' })).toHaveAttribute('tabindex', '-1');
       expect(screen.getByRole('tab', { name: 'View' })).toHaveAttribute('tabindex', '-1');
     });
 
@@ -138,8 +143,38 @@ describe('ControlPanel', () => {
       expect(screen.queryByRole('tab', { name: 'Camera' })).not.toBeInTheDocument();
     });
 
-    it('keeps the mirrors on every tab, since they are the instrument', () => {
+    // A cell of liquid is a chamber, so it keeps everything a chamber has, and
+    // adds the one thing that is only true of it.
+    it("gives the liquid cell the chamber's controls and a fluid of its own", () => {
+      withSettings({ source: 'liquid' });
+
+      expect(screen.getByRole('group', { name: /glass/i })).toBeInTheDocument();
+      expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
+      expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
+      expect(screen.getByLabelText('Seed')).toBeInTheDocument();
+      expect(screen.getByLabelText('Thickness')).toBeInTheDocument();
+    });
+
+    it('offers the thickness nowhere else, since nothing else has a fluid', () => {
       for (const source of ['objects', 'image', 'camera'] as const) {
+        const { unmount } = withSettings({ source });
+
+        expect(screen.queryByLabelText('Thickness')).not.toBeInTheDocument();
+        unmount();
+      }
+    });
+
+    it('names the ends of the thickness rather than numbering them', () => {
+      const { unmount } = withSettings({ source: 'liquid', thickness: LIMITS.thickness.min });
+      expect(screen.getByLabelText('Thickness')).toHaveAttribute('aria-valuetext', 'thin oil');
+      unmount();
+
+      withSettings({ source: 'liquid', thickness: LIMITS.thickness.max });
+      expect(screen.getByLabelText('Thickness')).toHaveAttribute('aria-valuetext', 'gel');
+    });
+
+    it('keeps the mirrors on every tab, since they are the instrument', () => {
+      for (const source of ['objects', 'liquid', 'image', 'camera'] as const) {
         const { unmount } = withSettings({ source });
 
         expect(screen.getByLabelText('Mirror size')).toBeInTheDocument();

@@ -1,4 +1,11 @@
-import { CHAMBER_RADIUS, settleChamber, updateChamber } from './chamber';
+import {
+  advanceFlow,
+  AIR,
+  CHAMBER_RADIUS,
+  settleChamber,
+  updateChamber,
+  type Medium,
+} from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 import { ROUND, shapeOf, type Shape } from './shape';
@@ -94,6 +101,15 @@ export interface Scene {
    * with it. Kept so the debug overlay has something to point at.
    */
   tilt: number;
+  /**
+   * How fast the fluid in the cell is turning, in radians per second.
+   *
+   * The world's frame, not the cell's. Nought for a dry cell, where there is
+   * nothing to turn; in a liquid one it chases the tube's own rate and lags
+   * behind it both ways, which is what makes the glass hang back as a turn
+   * starts and sail on after it stops. See `advanceFlow` in `lib/chamber.ts`.
+   */
+  flow: number;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -123,6 +139,14 @@ export interface SceneUpdate {
    * instrument sideways would have the pile falling sideways with it.
    */
   framework?: number | undefined;
+  /**
+   * What the cell is filled with. Left out, the dry one.
+   *
+   * A whole instrument rather than a setting of one: glass in oil sinks
+   * instead of falling, and is swept round by the fluid rather than only
+   * tipped by gravity. See {@link Medium}.
+   */
+  medium?: Medium | undefined;
 }
 
 /** Largest step the simulation will take, so a backgrounded tab cannot jump. */
@@ -183,7 +207,12 @@ const PIECE_SMALLEST = 0.038;
 const PIECE_LARGEST = 0.12;
 
 /** Builds a deterministic chamber of glass for the given seed. */
-export function createScene(seed: string, shardCount: number, chipScale = 1): Scene {
+export function createScene(
+  seed: string,
+  shardCount: number,
+  chipScale = 1,
+  medium: Medium = AIR,
+): Scene {
   const rng = mulberry32(hashSeed(seed));
   const count = Math.max(1, Math.floor(shardCount));
   const shards: Shard[] = [];
@@ -227,11 +256,16 @@ export function createScene(seed: string, shardCount: number, chipScale = 1): Sc
     tilt: 0,
     contents: 0,
     drag: { x: 0, y: 0 },
+    flow: 0,
     elapsed: 0,
   };
 
-  // Open on a resting pile rather than letting the chips visibly rain down.
-  settleChamber(shards);
+  // Open on a resting pile rather than letting the chips visibly rain down. A
+  // liquid cell is given far less time, and for the opposite reason: its glass
+  // only needs pushing out of itself, and left to settle properly it would all
+  // be lying on the floor before the first frame — which is the one arrangement
+  // a suspended cell is not about.
+  settleChamber(shards, 0, medium.settleSeconds, medium);
 
   return scene;
 }
@@ -315,7 +349,7 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  */
 export function updateScene(
   scene: Scene,
-  { dt, turn, drag, tilt = 0, framework = 0 }: SceneUpdate,
+  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR }: SceneUpdate,
 ): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
@@ -334,6 +368,10 @@ export function updateScene(
 
   scene.drag.x = drag.x;
   scene.drag.y = drag.y;
+  // The fluid is dragged round by the wall rather than bolted to it, so it
+  // trails the tube and then outlives it. In a dry cell this is the tube's own
+  // rate, and the swirl below comes out at exactly nought.
+  scene.flow = advanceFlow(scene.flow, step, turn, medium);
 
   // Gravity keeps pointing at the floor whatever the instrument does, so its
   // direction within the cell is however far the cell has been turned, plus
@@ -346,6 +384,10 @@ export function updateScene(
   updateChamber(scene.shards, {
     dt: step,
     angle: scene.cell + framework + tilt,
+    medium,
+    // The fluid's turning as the cell sees it: the tube's own rate taken off,
+    // since the pieces are held in the cell's frame and not the world's.
+    swirl: scene.flow - turn,
   });
 
   return scene;
