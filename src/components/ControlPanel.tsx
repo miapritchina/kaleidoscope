@@ -87,6 +87,7 @@ const SUBSTANCE_KINDS: { id: SubstanceId; label: string; icon: IconName }[] = [
   { id: 'lava', label: 'Lava', icon: 'lava' },
   { id: 'smoke', label: 'Smoke', icon: 'smoke' },
   { id: 'glitter', label: 'Glitter', icon: 'glitter' },
+  { id: 'film', label: 'Oil film', icon: 'film' },
 ];
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {

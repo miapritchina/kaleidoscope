@@ -4,6 +4,7 @@ import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
 import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
+import { paintFilm } from './film';
 import { paintLava } from './lava';
 import {
   applyCutShape,
@@ -650,6 +651,24 @@ export class KaleidoscopeRenderer {
       return;
     }
 
+    if (scene.film) {
+      const painted = paintFilm(scene.film);
+
+      if (painted) {
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.imageSmoothingEnabled = true;
+        // Laid on over the dark ground: these colours are reflections, and a
+        // reflection is only as visible as the ground is dark. Where the film
+        // runs out its alpha does too, and the fluid shows through.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
+        ctx.restore();
+      }
+
+      return;
+    }
+
     if (scene.flakes) {
       this.#flakes ??= createFlakeSprites();
       drawGlitter(ctx, scene.flakes, {
@@ -1243,13 +1262,15 @@ function defaultCanvas(): HTMLCanvasElement {
  *
  * The dry chamber's ground has always been white, on the reasoning that the
  * objects are the subject and white is what a photographer would stand them on.
- * Two of the three substances want the same thing for the same reason. Glitter
- * does not: a flake is a mirror, a mirror cannot be brighter than a lit white
- * page, and the whole of what glitter does is be brighter than what is behind
- * it. So its cell is a dark liquid, which is also what the real ones are.
+ * Lava and smoke want the same thing for the same reason. Glitter does not: a
+ * flake is a mirror, a mirror cannot be brighter than a lit white page, and
+ * the whole of what glitter does is be brighter than what is behind it. So its
+ * cell is a dark liquid, which is also what the real ones are — and the oil
+ * film's is too, because interference colours are reflections and an oil
+ * slick is vivid on wet asphalt and invisible on a white page.
  */
 function groundFor(substance: SubstanceId | null): string {
-  return substance === 'glitter' ? GLITTER_GROUND : GROUND;
+  return substance === 'glitter' || substance === 'film' ? GLITTER_GROUND : GROUND;
 }
 
 /** The dark liquid a cell of glitter hangs in. */

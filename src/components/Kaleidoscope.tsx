@@ -350,6 +350,7 @@ const SUBSTANCE_NAMES: Record<SubstanceId, string> = {
   lava: 'a lava lamp',
   smoke: 'smoke',
   glitter: 'glitter',
+  film: 'an oil film',
 };
 
 function describe({ source, seed, substance }: Settings): string {

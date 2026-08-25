@@ -20,8 +20,12 @@ export function isSourceId(value: unknown): value is SourceId {
  * each other, smoke curling in a lit box, a cloud of glitter hanging in
  * clear fluid. The mirrors repeat whatever is in there, and what is in there is
  * the substance itself.
+ *
+ * The fourth is a film of oil: nanometres of it floating on the fluid, and the
+ * colours are not pigment — they are interference, the same physics as a soap
+ * bubble, read off the film's own thickness. See `lib/film.ts`.
  */
-export const SUBSTANCES = ['lava', 'smoke', 'glitter'] as const;
+export const SUBSTANCES = ['lava', 'smoke', 'glitter', 'film'] as const;
 
 export type SubstanceId = (typeof SUBSTANCES)[number];
 
