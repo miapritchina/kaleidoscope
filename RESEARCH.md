@@ -1,0 +1,249 @@
+# Research log
+
+Findings from research sessions, kept so the next session does not have to redo
+the reading. Where ROADMAP.md records what was _built_ and what it cost, this
+file records what was _learned_ — critiques, literature, library surveys, and
+the plans drawn from them. When a plan lands, move what it taught into
+ROADMAP.md's style of record and leave the research here.
+
+---
+
+## 2026-08-25 — The liquid substances, third-party libraries, and the plan
+
+### Owner decisions this session
+
+- **Seed determinism is not a requirement.** Shared links may reproduce a
+  _look_ without reproducing the exact arrangement. This frees library choice:
+  cross-platform bit-exact physics (the one thing that argued for Rapier over
+  alternatives, and against WASM float variance in general) no longer gates
+  anything.
+- Excited about, in the owner's words: **Rapier**, **thin-film iridescence**,
+  **stirring the chamber with a finger**, and (interested) **sound**.
+- The liquid-tab substances are considered unsatisfying as implemented; the
+  scientific critique below is the agreed diagnosis.
+
+### Critique of the three substances
+
+#### Lava (`lib/lava.ts`) — the discrete topology machinery fights the field
+
+The mode carries **two representations of topology**: the metaball field,
+which draws necking and pinching for free, and the explicit
+`coalesce`/`divide`/`SETTLE`/`PARTING` machinery, which re-decides the same
+things discretely. Every recorded artifact — the two-frame stagger, the pop on
+split, the settle timer that exists only to break the merge/split loop — is
+the discrete layer fighting the continuous one. The fix is architectural, not
+parametric:
+
+**Simulate many small particles; let the field alone decide topology.**
+Replace 2–10 large blobs with ~40–120 small particles carrying a short-range
+pairwise force — attraction at medium range, repulsion up close. The reference
+is Clavet, Beaudoin & Poulin, _Particle-based Viscoelastic Fluid Simulation_
+(SCA 2005): its "double density relaxation" is ~40 lines and designed for
+exactly this kind of 2D blobby liquid. Then:
+
+- **Merging is emergent** — two clumps drift together, their summed fields
+  neck and join. No `MERGE` threshold, no colour-averaging step (colour mixes
+  spatially because particles interleave).
+- **Splitting is emergent** — a rising clump stretched by shear thins in the
+  middle, the field drops below `SURFACE`, and it visually pinches off with
+  the neck drawn correctly. No `SPLIT`, `SETTLE`, or `PARTING`.
+- `paintLava` survives nearly unchanged: more, smaller contributions to the
+  same field.
+
+The heat cycle's `ENDS` lag insight (see the comments in `lava.ts` — heat must
+track _history_, not height, or the cycle is a spring) is correct physics and
+carries over per particle. Two upgrades from real convection modelling
+(Boussinesq / Rayleigh–Bénard):
+
+1. **Heat diffusion between neighbouring particles** — plumes then rise as
+   coherent columns, which is what a real lamp does.
+2. **Temperature-dependent viscosity** — scale drag by `(1 - heat)` so cold
+   wax slumps and hot wax runs. One line, a lot of wax-ness.
+
+Rendering: the scalar field's **gradient is a surface normal**. Shade with it
+(light up-left, darkened opposite rim, small specular) and flat gel-sticker
+blobs become glossy 3D wax. Highest visual return per effort of anything in
+this critique.
+
+#### Smoke (`lib/smoke.ts`) — sound science; three refinements
+
+The Stam + MacCormack + blurred-vorticity-confinement stack is correct and its
+traps are already documented in ROADMAP.md. Remaining upgrades:
+
+- **RK2 (midpoint) backtrace** in `advect`: sample velocity half a step back,
+  then trace with that. Reduces rotational drift in tight swirls for one extra
+  bilinear sample per cell. Standard next rung above single-Euler
+  semi-Lagrangian.
+- **Temperature buoyancy.** Today the only endogenous force is dye weight, so
+  the cell makes sinking curtains. Add a temperature scalar field, injected
+  with dye, advected identically, with force `β·T` up and `κ·dye` down — the
+  full smoke model of Fedkiw, Stam & Jensen (SIGGRAPH 2001, already cited for
+  confinement). Temperature is what makes rising plumes with mushroom caps.
+- **Curl-noise background stirring** (Bridson, Hourihan & Nordenstam,
+  _Curl-Noise for Procedural Fluid Flow_, SIGGRAPH 2007): take the curl of a
+  slowly-animating noise potential and add it as a weak force. Curl of a
+  potential is divergence-free by construction, so it cannot fight the
+  pressure solve. Keeps an unattended cell alive indefinitely.
+
+#### Glitter (`lib/glitter.ts`) — not in a fluid, and the flakes never tumble
+
+Two faults keep it from reading as a suspension:
+
+1. **The "fluid" is a rigid turntable.** `flow = swirl × r` is solid-body
+   rotation: every flake rides a perfect circle. Real suspended flakes ride
+   eddies. The elegant fix: this repo already owns a fluid solver. Run the
+   smoke _velocity_ field (dye-free, smaller grid is fine — velocity is
+   smoother than dye) under the glitter and advect flakes through it with
+   their existing high `FLAKE_GRIP`. Swirling then shears and folds the
+   glitter into sheets instead of rotating a disc.
+2. **Orientation is frozen.** `lean`/`turn` are set at creation, so the flash
+   pattern only changes when the _light_ moves. Real platelets tumble at a
+   rate set by the local velocity gradient (rigorously, Jeffery's orbits,
+   1922; a platelet in shear rotates continuously). Cheap version: rotate each
+   flake's `turn`/`lean` proportionally to the local curl of the field it sits
+   in. Waves of flashes then sweep through the cell _from the motion itself_,
+   not just from tilt. Draw flakes as ellipses foreshortened by `cos(lean)`
+   so they can be seen turning edge-on.
+
+#### The unifying observation
+
+All three substances take `{dt, thickness, swirl, angle}` and separately
+reinvent "the fluid" (three wall-grip implementations, three thickness
+scalings). The honest physics is **one cell of fluid with different things
+carried in it**. Extracting the velocity solver from `smoke.ts` into a shared
+flow field that lava particles, dye, glitter flakes — and any future
+substance — ride is both the cleanup and the enabler: finger-stirring and
+thin-film iridescence each want exactly that field.
+
+### Library survey
+
+Context: the compositor is already **raw WebGL2** (no library — see
+ROADMAP.md's size table and the reasoning; a scene graph would be weight
+carried and not used). Everything below was judged against that precedent:
+a library must replace a real machine, not wrap one we have.
+
+#### Physics (for the dry chamber)
+
+| library                      | what it is                                                                           | verdict                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `@dimforge/rapier2d`         | Rust→WASM rigid-body, actively maintained, convex polygon colliders, TGS-soft solver | **The candidate.** See below.                                                                                       |
+| `planck.js`                  | Box2D port, pure JS                                                                  | Solid, slower than Rapier, no polygon advantage over it                                                             |
+| `matter-js`                  | easiest API                                                                          | least accurate stacking; not worth the trade                                                                        |
+| LiquidFun (`liquidfun-wasm`) | Box2D + particle fluids                                                              | glass sinking through real liquid — fun, but stale ports; PBF-on-our-solver (ROADMAP) covers the same ground better |
+
+**Why Rapier fits this chamber specifically.** `lib/chamber.ts` approximates
+every piece as a chain of 2–4 circles because a hand-rolled polygon solver is
+a different machine (contact manifolds, inertia tensors). Rapier _is_ that
+machine: the traced 28-corner silhouettes in `lib/skin.ts` become convex-hull
+(or decomposed) colliders directly, so a splinter collides as a splinter. Its
+solver is rate-independent — the exact property ROADMAP.md's "Make the solver
+rate-independent" asks for, including the fill ceiling that wedges the pile at
+160 pieces — and it sleeps islands properly. Costs to carry: ~1.5 MB of WASM
+(≈500 KB gzipped; `-compat` build inlines it, simplest with Vite), async init
+before first frame, and **a re-tune of a feel that took a long time to get
+right** — the medium (oil buoyancy/drag/wall-stir) would be re-implemented as
+custom forces on Rapier bodies. That last is the real price and the reason to
+do it as a measured spike behind a flag, not a rewrite.
+
+#### GPU / rendering
+
+- **Pavel Dobryakov's WebGL-Fluid-Simulation** (MIT) — the reference GPU
+  stable-fluids implementation; readable shaders to port from rather than a
+  dependency to adopt. Only relevant if 96² CPU smoke ever feels limiting;
+  at cell size it currently does not (1.9 ms/frame, measured).
+- **WebGPU MLS-MPM** (e.g. matsuoka-601's demos) — tens of thousands of
+  splashy particles; mobile WebGPU still uneven → progressive enhancement
+  only, not a base.
+- Wrapper libraries (three, pixi, ogl, regl) — already declined for the
+  compositor; nothing new changes that.
+
+#### Small utilities
+
+- `simplex-noise` (~2 KB, seedable) — worth taking for curl-noise stirring
+  and flake shimmer, or hand-roll a 2D value-noise (≈30 lines) to stay
+  dependency-free. Either is fine; decide at implementation.
+
+#### Sound
+
+No library needed. Web Audio API: a handful of short buffers (or synthesized
+clinks — filtered noise bursts with exponential decay) triggered off collision
+events the chamber already computes, velocity → gain/pitch. Constraint to
+respect: browsers require a user gesture before audio starts, so it is a
+toggle (or first-tap unlock), never autoplay.
+
+### Thin-film iridescence, as a substance
+
+ROADMAP.md lists thin-film interference on piece edges (**GL**). The stronger
+form of the idea is a **fourth liquid substance: an oil film**. A scalar
+_thickness_ field advected on the shared flow field; colour from thin-film
+interference — for film thickness `d` and wavelength `λ`, reflected intensity
+goes as `cos²(2πnd/λ + φ)`, evaluated per RGB channel (three wavelengths ≈
+610/550/470 nm) or via a small precomputed thickness→RGB lookup table (an
+Airy-reflectance ramp; ~256 entries). Drain/replenish slowly so the film
+drifts through colour bands as it thins, which is what a real slick does.
+The physics is real, the look is unlike the other three substances, and at
+grid resolution it is 2D-canvas cheap.
+
+### References
+
+- Clavet, Beaudoin, Poulin — _Particle-based Viscoelastic Fluid Simulation_, SCA 2005.
+- Macklin, Müller — _Position Based Fluids_, SIGGRAPH 2013. (Already in ROADMAP.md.)
+- Stam — _Stable Fluids_, SIGGRAPH 1999.
+- Fedkiw, Stam, Jensen — _Visual Simulation of Smoke_, SIGGRAPH 2001.
+- Bridson, Hourihan, Nordenstam — _Curl-Noise for Procedural Fluid Flow_, SIGGRAPH 2007.
+- Jeffery — _The Motion of Ellipsoidal Particles Immersed in a Viscous Fluid_, Proc. R. Soc. A, 1922.
+- Macklin et al. — _Small Steps in Physics Simulation_, SCA 2019. (Already cited in README.)
+- Rapier: rapier.rs docs; `@dimforge/rapier2d-compat` on npm.
+- Dobryakov — WebGL-Fluid-Simulation (github.com/PavelDoGreat/WebGL-Fluid-Simulation), MIT.
+
+---
+
+## The plan (agreed 2026-08-25)
+
+Ordered so each phase ships alone and later phases stand on earlier ones.
+"Done" for every phase includes: looked at on a phone-sized canvas (the
+repo's history says numbers alone miss what matters), a test on whatever
+invariant the phase creates, and the record moved into ROADMAP.md.
+
+1. **Stir with a finger.** A pointer drag inside the stage on the Liquid tab
+   splats velocity (and a little dye, for smoke) into the cell at the touch
+   point; pushes lava particles; drags glitter. Touches `useStageGesture.ts`
+   (a third gesture: one finger _inside the cell_ stirs rather than turns —
+   decide the disambiguation: current behaviour is swipe-turns, so stirring
+   likely wants the existing drag mapped to stir _for liquid sources only_,
+   with turn staying on a swipe that starts outside the cell, or coexisting
+   via velocity injection along the drag), `scene.ts` plumbing, each
+   substance's update. Small, immediate joy; also the first consumer of a
+   stir API the flow field will formalize.
+2. **Shared flow field.** Extract the velocity solver from `smoke.ts` into
+   `lib/flow.ts` (stir, confine, project, advect; no dye). Smoke keeps its
+   dye on top. Glitter advects through it and tumbles by local curl
+   (critique above), drawn as foreshortened ellipses. One wall-grip, one
+   thickness scaling, for everything.
+3. **Thin-film iridescence substance** (`film` in `SUBSTANCES`). Thickness
+   field on the flow field, interference LUT, slow drain. New substance
+   picker entry, Amount = how much oil, Thickness = the carrier fluid as
+   ever.
+4. **Lava rewrite.** Particles + double density relaxation; per-particle
+   heat with diffusion and the existing ENDS-lag cycle;
+   temperature-dependent viscosity; delete `coalesce`/`divide`/`jostle` and
+   the settle machinery; gradient-lit rendering in `paintLava`. Keep
+   `lava.test.ts`'s frame-to-frame-motion measurement — it is the test that
+   caught the stagger.
+5. **Smoke refinements.** RK2 backtrace, temperature buoyancy, curl-noise
+   idle stirring (hand-rolled noise or `simplex-noise`, decide then).
+6. **Rapier spike for the dry chamber.** `@dimforge/rapier2d-compat` behind
+   a flag alongside `chamber.ts`: hull colliders from traced silhouettes,
+   medium forces (buoyancy, size-dependent drag, wall-stir) reapplied as
+   external forces, then measure — ms/frame at 150 pieces, fill ceiling,
+   angle of repose, avalanche feel — against the incumbent and the ROADMAP's
+   recorded numbers. Adopt only if the feel survives; either way the
+   numbers go in ROADMAP.md next to the broad-phase and substep records.
+7. **Sound.** Web Audio, gesture-unlocked, off by default: synthesized glass
+   clinks from chamber contact impulses (velocity → gain/pitch,
+   rate-limited), a low fluid wash for the liquid cell keyed to swirl
+   speed. `lib/` module with no React, like everything else.
+
+Phases 1–3 are the excitement-per-effort front-runners; 4–5 are the
+substance-quality debt; 6 is the big swing and can proceed in parallel as a
+spike; 7 is garnish and can land any time after 1.
