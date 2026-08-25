@@ -9,6 +9,7 @@ import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene, type SceneCut } from '../lib/scene';
 import type { Settings, SubstanceId } from '../lib/settings';
+import { stirPoint, trackStir } from '../lib/stir';
 import { frameworkRadians } from '../lib/tiling';
 
 import styles from './Kaleidoscope.module.css';
@@ -95,6 +96,14 @@ export function Kaleidoscope({
   }, [settings.sourceScale]);
   const gesture = useStageGesture({ zoom: () => zoomRef.current, onZoom });
   const [containerRef, size] = useElementSize<HTMLDivElement>();
+
+  // The finger on the stage, for stirring a cell of substance. The gesture
+  // hook owns turning and panning; this only watches where the finger is, and
+  // the frame loop folds that point into the cell — so a drag turns the tube
+  // *and* stirs the fluid it is turning, which is what a finger in a real
+  // cell would do.
+  const stagePointerRef = useRef<{ x: number; y: number } | null>(null);
+  const stirTrackerRef = useRef<{ last: { x: number; y: number } | null }>({ last: null });
 
   // A new seed, count or piece size means a genuinely different scene; anything
   // else is applied to the running simulation without resetting it. Size counts
@@ -238,12 +247,34 @@ export function Kaleidoscope({
       // A finger held still fires no move events, so the rate has to be expired
       // here rather than waiting for one — and a flick coasts down here too.
       gesture.settle(deltaSeconds);
+
+      // A finger on a cell of substance stirs it. The point is folded fresh
+      // every frame — the cell turns under a held finger, so where it is in
+      // the cell's frame changes even when the finger does not move.
+      let stir = null;
+
+      if (liquid && stagePointerRef.current && gesture.mode === 'turn') {
+        const at = stirPoint(stagePointerRef.current, {
+          width: size.width,
+          height: size.height,
+          zoom: settings.zoom,
+          angleDegrees: settings.angle,
+          cell: scene.cell,
+          drag: scene.drag,
+        });
+
+        stir = trackStir(stirTrackerRef.current, at, deltaSeconds);
+      } else {
+        stirTrackerRef.current.last = null;
+      }
+
       updateScene(scene, {
         dt: paused ? 0 : deltaSeconds,
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
         medium,
+        stir,
         // The one thing a cell of substance takes live: how much its fluid
         // resists whatever is moving through it. Which substance and how much
         // of it are geometry, and wait with the rest of the cut.
@@ -264,6 +295,30 @@ export function Kaleidoscope({
       ref={containerRef}
       className={cx(styles.stage, gesture.mode === 'pan' && styles.panning)}
       {...gesture.handlers}
+      onPointerDownCapture={(event) => {
+        const bounds = event.currentTarget.getBoundingClientRect();
+
+        stagePointerRef.current = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+        stirTrackerRef.current.last = null;
+      }}
+      onPointerMoveCapture={(event) => {
+        if (stagePointerRef.current) {
+          const bounds = event.currentTarget.getBoundingClientRect();
+
+          stagePointerRef.current = {
+            x: event.clientX - bounds.left,
+            y: event.clientY - bounds.top,
+          };
+        }
+      }}
+      onPointerUpCapture={() => {
+        stagePointerRef.current = null;
+        stirTrackerRef.current.last = null;
+      }}
+      onPointerCancelCapture={() => {
+        stagePointerRef.current = null;
+        stirTrackerRef.current.last = null;
+      }}
       onWheel={(event) => {
         if (!onZoom) {
           return;

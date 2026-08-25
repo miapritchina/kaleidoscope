@@ -1,4 +1,15 @@
 import { CHAMBER_RADIUS } from './chamber';
+import {
+  advectField,
+  carryFlow,
+  confineFlow,
+  createFlow,
+  driveFlow,
+  neighbour,
+  positionOf as flowPositionOf,
+  projectFlow,
+  type Flow,
+} from './flow';
 import { mulberry32 } from './random';
 
 /**
@@ -6,45 +17,24 @@ import { mulberry32 } from './random';
  *
  * The whole content, not a tint over something else: what is in the chamber is
  * moving fluid and the colour carried in it, and the mirrors repeat that. One
- * of the three things this instrument's object cell can hold instead of loose
- * pieces — see `lib/lava.ts` and `lib/glitter.ts` for the others.
+ * of the substances this instrument's object cell can hold instead of loose
+ * pieces — see `lib/lava.ts`, `lib/glitter.ts` and `lib/film.ts` for the
+ * others.
  *
- * Where lava and glitter are things *in* a fluid, this is the fluid: a grid
- * holding a velocity field and the dye carried on it. It is Stam's _Stable
- * Fluids_ (SIGGRAPH 1999) — advect the velocity by tracing it backwards, make
- * it divergence-free, then carry the dye along on the result. Semi-Lagrangian
- * advection is unconditionally stable, which is what makes it safe to run
- * against whatever frame time a phone hands over.
- *
- * The roadmap put this on the GPU, and per pixel it belongs there. At the size
- * an object cell actually needs it does not have to be: {@link GRID} squared is
- * four thousand cells, and stepped at {@link RATE} it costs well under a
- * millisecond of the frame. What that buys is that the smoke lives with the
- * rest of the chamber rather than in the compositor, so it is painted into the
- * source triangle and folded by the mirrors along with everything else — six
- * reflections of the same ribbon, exactly as a real one would give.
- *
- * Nothing outside stirs it. The tube's own turning drags the body of fluid
- * round, and the dye is a little heavier than the air it hangs in, so it falls
- * through itself and the falling is what curls it: a heavy patch sinks, the
- * fluid it displaces comes up around it, and that is a plume. Left alone the
- * cell keeps folding over on itself for as long as anyone watches.
+ * The fluid itself — velocity, the wall's drag, viscosity, projection,
+ * stirring — lives in `lib/flow.ts` now, extracted from here because every
+ * substance rides the same fluid. What stays in this module is what makes the
+ * fluid *smoke*: the dye carried on it, the dye's weight (the one force that
+ * keeps an unattended cell alive), the vorticity confinement pointed at
+ * smoke's scales, and the MacCormack correction that keeps ribbons from
+ * blurring into fog. The history of what was tried here and failed — the
+ * comb-teeth, the unsharp-mask checkerboard, the wall-cell fast path that
+ * measured slower — is in the comments below and in ROADMAP.md, and it all
+ * still applies to the extracted code.
  *
  * Three dyes rather than one, and subtractive: each takes its own primary out
  * of the light, the way real dye in a lit cell does, so where two of them fold
  * together the colour is the mixture and not the brighter of the pair.
- *
- * One thing was tried here and did not pay. The wall is a circle on a square
- * grid, so nine cells in ten have all four neighbours inside it and could read
- * them straight out of the array rather than asking about each one; marking
- * those cells and giving the pressure solve and the advection a path of their
- * own for them measured **0.862 ms against 0.899** — four per cent, for a field
- * to build and keep and three more branches in the hottest loops in the
- * chamber. The engine was already inlining the check. It was taken out again.
- *
- * The grid spans the cell's bounding square, in the cell's own frame — so it
- * turns with the tube, and gravity sweeps around it exactly as it does for
- * everything else in the chamber.
  */
 
 /**
@@ -64,16 +54,6 @@ export const GRID = 96;
 export const DYES = 3;
 
 /**
- * Passes of the pressure solve.
- *
- * Gauss-Seidel, and this is where the fluid's money goes. Sixteen is enough
- * that a swirl holds together and does not visibly leak through itself; the
- * error that remains reads as a slightly compressible fluid, which for ink is
- * nothing anybody can see.
- */
-const PASSES = 16;
-
-/**
  * Steps of the fluid per second.
  *
  * Half the frame rate on a phone, and it costs nothing to look at: ink has no
@@ -85,9 +65,6 @@ const PASSES = 16;
  * frames arrive.
  */
 const RATE = 30;
-
-/** Speed lost per second in a thin fluid, before Thickness is taken into account. */
-const VISCOSITY = 0.22;
 
 /**
  * How hard the small swirls are pushed back in, per second.
@@ -102,21 +79,13 @@ const VISCOSITY = 0.22;
  * than inventing any: without it a cell of smoke is a cell of coloured blur,
  * which is exactly what a first go at this looked like.
  *
- * It has to be pointed at something smooth, though, and that is the whole of
- * the difficulty. Taken straight, "where the curl is strongest" is decided by
- * single cells, so every cell is pushed towards its own noisiest neighbour and
- * a fortnight of that draws a row of grid-aligned comb teeth along the edge of
- * every ribbon — which is what it did, plainly enough to see in a screenshot.
- * Smoothing the curl's size first, once, points it at the swirl instead of at
- * the grid.
+ * It has to be pointed at something smooth, though — see `confineFlow` in
+ * `lib/flow.ts`, which blurs the curl's size first so the push follows the
+ * swirl rather than the grid. Taken straight it drew a row of grid-aligned
+ * comb teeth along the edge of every ribbon, plainly enough to see in a
+ * screenshot.
  */
 const CONFINE = 6;
-
-/** How much more the far end of the Thickness slider takes out. */
-const THICKEST = 6;
-
-/** How fast the wall drags the whole body of fluid round with it, per second. */
-const WALL_GRIP = 2.4;
 
 /**
  * How much heavier the dye is than what it hangs in.
@@ -130,6 +99,9 @@ const INK_WEIGHT = 1.2;
 
 /** Downward acceleration, matched to the chamber's own. */
 const GRAVITY = 6;
+
+/** How much thicker fluid holds the falling dye up, on top of the flow's own drag. */
+const THICKEST = 6;
 
 /**
  * How strongly the dye takes its colour out of the light.
@@ -162,55 +134,25 @@ const STRENGTH = 1.9;
  */
 const CORRECT = 0.9;
 
-export interface Smoke {
-  /** Velocity, one component per array, in cell units per second. */
-  u: Float32Array;
-  v: Float32Array;
-  /** Somewhere to trace into while the old field is still being read. */
-  u0: Float32Array;
-  v0: Float32Array;
+export interface Smoke extends Flow {
   /** How much of each dye is in each cell, 0 to 1. */
   dye: Float32Array[];
   dye0: Float32Array[];
-  /** Scratch for the pressure solve. */
-  pressure: Float32Array;
-  divergence: Float32Array;
-  /** Seconds banked since the last step. See {@link RATE}. */
-  due: number;
-  /** Whether each cell is within the round wall. */
-  inside: Uint8Array;
 }
 
 /** Where a cell's middle is, in cell units. */
 function positionOf(index: number): number {
-  return -CHAMBER_RADIUS + ((index + 0.5) * 2 * CHAMBER_RADIUS) / GRID;
+  return flowPositionOf(GRID, index);
 }
 
 /** Builds a cell of smoke, deterministically, in a few clouds of each dye. */
 export function createSmoke(seed: number, amount = 1): Smoke {
-  const cells = GRID * GRID;
   const rng = mulberry32(seed);
   const smoke: Smoke = {
-    u: new Float32Array(cells),
-    v: new Float32Array(cells),
-    u0: new Float32Array(cells),
-    v0: new Float32Array(cells),
-    dye: Array.from({ length: DYES }, () => new Float32Array(cells)),
-    dye0: Array.from({ length: DYES }, () => new Float32Array(cells)),
-    pressure: new Float32Array(cells),
-    divergence: new Float32Array(cells),
-    due: 0,
-    inside: new Uint8Array(cells),
+    ...createFlow(GRID),
+    dye: Array.from({ length: DYES }, () => new Float32Array(GRID * GRID)),
+    dye0: Array.from({ length: DYES }, () => new Float32Array(GRID * GRID)),
   };
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const x = positionOf(i);
-      const y = positionOf(j);
-
-      smoke.inside[i + j * GRID] = Math.hypot(x, y) <= CHAMBER_RADIUS ? 1 : 0;
-    }
-  }
 
   // Two clouds of each dye, placed anywhere in the cell. Round and soft, so
   // the first stir draws them out into ribbons rather than tearing an edge.
@@ -314,11 +256,16 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
 
   smoke.due = 0;
 
-  stir(smoke, { thickness, swirl, angle, step });
-  confine(smoke, step);
-  project(smoke);
-  carry(smoke, step);
-  project(smoke);
+  // The dye's own weight, which is the only thing keeping the cell alive when
+  // nobody is turning it. Thicker fluid holds it up more. Applied before the
+  // shared drive, so the wall's grip and the viscosity act on the pushed
+  // field the way they always did.
+  fall(smoke, step, thickness, angle);
+  driveFlow(smoke, { step, thickness, swirl });
+  confineFlow(smoke, step, CONFINE);
+  projectFlow(smoke);
+  carryFlow(smoke, step);
+  projectFlow(smoke);
 
   for (let d = 0; d < DYES; d += 1) {
     const from = smoke.dye[d]!;
@@ -330,315 +277,32 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
   }
 }
 
-/** Everything that pushes on the fluid this step. */
-function stir(
-  smoke: Smoke,
-  {
-    thickness,
-    swirl,
-    angle,
-    step,
-  }: {
-    thickness: number;
-    swirl: number;
-    angle: number;
-    step: number;
-  },
-): void {
+/** The dye falling through the fluid that carries it. See {@link INK_WEIGHT}. */
+function fall(smoke: Smoke, step: number, thickness: number, angle: number): void {
   const { u, v, inside } = smoke;
   const thick = 1 + THICKEST * Math.min(1, Math.max(0, thickness));
-  // The wall drags the whole body of fluid round with it — which is what makes
-  // the smoke lag a turn and then outlive it — and a thicker fluid takes the
-  // wall's turning up sooner and gives it back over longer.
-  const wall = Math.min(1, WALL_GRIP * thick * step);
-  const slow = Math.max(0, 1 - VISCOSITY * thick * step);
-  // The dye's own weight, which is the only thing keeping the cell alive when
-  // nobody is turning it. Thicker fluid holds it up more.
-  const fall = (GRAVITY * INK_WEIGHT * step) / thick;
-  const downX = Math.sin(angle) * fall;
-  const downY = Math.cos(angle) * fall;
+  const drop = (GRAVITY * INK_WEIGHT * step) / thick;
+  const downX = Math.sin(angle) * drop;
+  const downY = Math.cos(angle) * drop;
 
   for (let j = 0; j < GRID; j += 1) {
     for (let i = 0; i < GRID; i += 1) {
       const k = i + j * GRID;
 
       if (!inside[k]) {
-        u[k] = 0;
-        v[k] = 0;
         continue;
       }
 
-      const x = positionOf(i);
-      const y = positionOf(j);
       let dyed = 0;
 
       for (let d = 0; d < DYES; d += 1) {
         dyed += smoke.dye[d]![k]!;
       }
 
-      u[k] = (u[k]! + (-swirl * y - u[k]!) * wall + downX * dyed) * slow;
-      v[k] = (v[k]! + (swirl * x - v[k]!) * wall + downY * dyed) * slow;
+      u[k] = u[k]! + downX * dyed;
+      v[k] = v[k]! + downY * dyed;
     }
   }
-}
-
-/**
- * Puts the small swirls back. See {@link CONFINE}.
- *
- * The curl of a two-dimensional field is one number per cell — how fast that
- * patch is turning — and its gradient points at where the turning is
- * strongest. Pushing each cell along the perpendicular of that gradient, in the
- * direction its own curl is going, tightens the swirl instead of letting the
- * next advection average it away.
- */
-function confine(smoke: Smoke, step: number): void {
-  const { u, v, inside, pressure, divergence } = smoke;
-  const width = (2 * CHAMBER_RADIUS) / GRID;
-  // Borrowed: the pressure solve has not run yet this step, so its two scratch
-  // fields are free. `divergence` holds the curl and `pressure` its size.
-  const curl = divergence;
-  const strength = pressure;
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        curl[k] = 0;
-        strength[k] = 0;
-        continue;
-      }
-
-      curl[k] =
-        (flow(v, inside, v[k]!, i + 1, j) -
-          flow(v, inside, v[k]!, i - 1, j) -
-          flow(u, inside, u[k]!, i, j + 1) +
-          flow(u, inside, u[k]!, i, j - 1)) /
-        (2 * width);
-      strength[k] = Math.abs(curl[k]);
-    }
-  }
-
-  // One pass of blur over how strong the turning is, so the push below follows
-  // the swirl rather than the grid. See CONFINE.
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        continue;
-      }
-
-      const here = strength[k]!;
-
-      smoothed[k] =
-        (here +
-          flow(strength, inside, here, i + 1, j) +
-          flow(strength, inside, here, i - 1, j) +
-          flow(strength, inside, here, i, j + 1) +
-          flow(strength, inside, here, i, j - 1)) /
-        5;
-    }
-  }
-
-  const push = CONFINE * step * width;
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        continue;
-      }
-
-      // Uphill towards the tightest turning nearby.
-      const alongX =
-        (flow(smoothed, inside, smoothed[k]!, i + 1, j) -
-          flow(smoothed, inside, smoothed[k]!, i - 1, j)) /
-        2;
-      const alongY =
-        (flow(smoothed, inside, smoothed[k]!, i, j + 1) -
-          flow(smoothed, inside, smoothed[k]!, i, j - 1)) /
-        2;
-      const length = Math.hypot(alongX, alongY);
-
-      if (length < 1e-6) {
-        continue;
-      }
-
-      u[k] = u[k]! + (alongY / length) * curl[k]! * push;
-      v[k] = v[k]! - (alongX / length) * curl[k]! * push;
-    }
-  }
-}
-
-/** Carries the velocity field along itself. */
-function carry(smoke: Smoke, step: number): void {
-  advect(smoke, smoke.u, smoke.u0, step);
-  advect(smoke, smoke.v, smoke.v0, step);
-
-  const u = smoke.u0;
-  const v = smoke.v0;
-
-  smoke.u0 = smoke.u;
-  smoke.v0 = smoke.v;
-  smoke.u = u;
-  smoke.v = v;
-}
-
-/**
- * Traces every cell backwards down the flow and reads what was there.
- *
- * Semi-Lagrangian: rather than asking where this cell's contents are going —
- * which can overshoot and blow up — it asks where this cell's contents came
- * from, which cannot, because whatever it lands on is a value the field
- * already held.
- */
-function advect(smoke: Smoke, from: Float32Array, into: Float32Array, step: number): void {
-  const { u, v, inside } = smoke;
-  // Cell widths travelled, rather than cell units.
-  const rate = (step * GRID) / (2 * CHAMBER_RADIUS);
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        into[k] = 0;
-        continue;
-      }
-
-      const backX = Math.min(GRID - 1.001, Math.max(0, i - u[k]! * rate));
-      const backY = Math.min(GRID - 1.001, Math.max(0, j - v[k]! * rate));
-      const i0 = Math.floor(backX);
-      const j0 = Math.floor(backY);
-      const fx = backX - i0;
-      const fy = backY - j0;
-      const i1 = Math.min(GRID - 1, i0 + 1);
-      const j1 = Math.min(GRID - 1, j0 + 1);
-      into[k] =
-        (1 - fx) *
-          ((1 - fy) * sample(from, inside, from[k]!, i0, j0) +
-            fy * sample(from, inside, from[k]!, i0, j1)) +
-        fx *
-          ((1 - fy) * sample(from, inside, from[k]!, i1, j0) +
-            fy * sample(from, inside, from[k]!, i1, j1));
-    }
-  }
-}
-
-/**
- * One corner of the bilinear read.
- *
- * A cell outside the wall holds nothing, and reading its nought would suck the
- * dye out of everything that drifts near the rim. So the wall hands back what
- * the asking cell already had, which is what a wall the fluid cannot cross
- * through looks like from the inside.
- */
-function sample(
-  field: Float32Array,
-  inside: Uint8Array,
-  here: number,
-  i: number,
-  j: number,
-): number {
-  const k = i + j * GRID;
-
-  return inside[k] ? field[k]! : here;
-}
-
-/**
- * Takes the divergence out of the velocity field.
- *
- * A fluid that is neither piling up nor thinning out anywhere is what makes
- * the difference between ink swirling and ink simply fading: without this the
- * field has sources and sinks all over it, and the dye drains into them.
- *
- * Solved as a Poisson equation for the pressure whose gradient cancels the
- * divergence, by Gauss-Seidel — see {@link PASSES}. The wall is a zero-gradient
- * boundary: a cell outside it takes its neighbour's pressure, which is another
- * way of saying nothing flows through it.
- */
-function project(smoke: Smoke): void {
-  const { u, v, inside, pressure, divergence } = smoke;
-  const width = (2 * CHAMBER_RADIUS) / GRID;
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      pressure[k] = 0;
-
-      if (!inside[k]) {
-        divergence[k] = 0;
-        continue;
-      }
-
-      // Minus the divergence, since that is the form the pass below wants.
-      divergence[k] =
-        -(
-          flow(u, inside, u[k]!, i + 1, j) -
-          flow(u, inside, u[k]!, i - 1, j) +
-          flow(v, inside, v[k]!, i, j + 1) -
-          flow(v, inside, v[k]!, i, j - 1)
-        ) /
-        (2 * width);
-    }
-  }
-
-  const area = width * width;
-
-  for (let pass = 0; pass < PASSES; pass += 1) {
-    for (let j = 0; j < GRID; j += 1) {
-      for (let i = 0; i < GRID; i += 1) {
-        const k = i + j * GRID;
-
-        if (!inside[k]) {
-          continue;
-        }
-
-        pressure[k] =
-          (divergence[k]! * area +
-            flow(pressure, inside, pressure[k]!, i + 1, j) +
-            flow(pressure, inside, pressure[k]!, i - 1, j) +
-            flow(pressure, inside, pressure[k]!, i, j + 1) +
-            flow(pressure, inside, pressure[k]!, i, j - 1)) /
-          4;
-      }
-    }
-  }
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        continue;
-      }
-
-      u[k]! -=
-        (0.5 *
-          (flow(pressure, inside, pressure[k]!, i + 1, j) -
-            flow(pressure, inside, pressure[k]!, i - 1, j))) /
-        width;
-      v[k]! -=
-        (0.5 *
-          (flow(pressure, inside, pressure[k]!, i, j + 1) -
-            flow(pressure, inside, pressure[k]!, i, j - 1))) /
-        width;
-    }
-  }
-}
-
-/** A neighbour, with the wall standing in for anything beyond it. */
-function flow(field: Float32Array, inside: Uint8Array, here: number, i: number, j: number): number {
-  if (i < 0 || i >= GRID || j < 0 || j >= GRID) {
-    return here;
-  }
-
-  const k = i + j * GRID;
-
-  return inside[k] ? field[k]! : here;
 }
 
 /**
@@ -658,8 +322,8 @@ function flow(field: Float32Array, inside: Uint8Array, here: number, i: number, 
 function carryDye(smoke: Smoke, from: Float32Array, into: Float32Array, step: number): void {
   const { inside } = smoke;
 
-  advect(smoke, from, back, step);
-  advect(smoke, back, forward, -step);
+  advectField(smoke, from, back, step);
+  advectField(smoke, back, forward, -step);
 
   for (let j = 0; j < GRID; j += 1) {
     for (let i = 0; i < GRID; i += 1) {
@@ -676,10 +340,10 @@ function carryDye(smoke: Smoke, from: Float32Array, into: Float32Array, step: nu
       let most = traced;
 
       for (const near of [
-        flow(back, inside, traced, i + 1, j),
-        flow(back, inside, traced, i - 1, j),
-        flow(back, inside, traced, i, j + 1),
-        flow(back, inside, traced, i, j - 1),
+        neighbour(back, inside, GRID, traced, i + 1, j),
+        neighbour(back, inside, GRID, traced, i - 1, j),
+        neighbour(back, inside, GRID, traced, i, j + 1),
+        neighbour(back, inside, GRID, traced, i, j - 1),
       ]) {
         least = Math.min(least, near);
         most = Math.max(most, near);
@@ -689,9 +353,6 @@ function carryDye(smoke: Smoke, from: Float32Array, into: Float32Array, step: nu
     }
   }
 }
-
-/** How strong the turning is nearby, blurred once. See {@link CONFINE}. */
-const smoothed = new Float32Array(GRID * GRID);
 
 /** Where the two halves of the correction are worked out. */
 const back = new Float32Array(GRID * GRID);
@@ -706,7 +367,7 @@ const forward = new Float32Array(GRID * GRID);
  * it takes colour out of what is coming through — and it is why two dyes
  * folded together read as the mixture rather than as a highlight.
  *
- * @param amount How strong the ink is, from the Ink setting.
+ * @param strength How strong the ink is. See {@link STRENGTH}.
  * @returns The canvas, or null where there is no canvas to be had.
  */
 export function paintSmoke(smoke: Smoke, strength = STRENGTH): HTMLCanvasElement | null {

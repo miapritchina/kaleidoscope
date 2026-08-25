@@ -8,6 +8,7 @@ import {
   type Medium,
 } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
+import { createFlow, stepFlow, stirFlow, type Flow } from './flow';
 import { createGlitter, updateGlitter, type Flake } from './glitter';
 import { createLava, updateLava, type Lava } from './lava';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
@@ -130,6 +131,14 @@ export interface Scene {
   smoke: Smoke | null;
   /** Flakes of foil hanging in clear fluid. See `lib/glitter.ts`. */
   flakes: Flake[] | null;
+  /**
+   * The body of fluid the substance hangs in, for substances that ride one.
+   *
+   * Smoke carries its own — the fluid *is* the smoke — so this is for the
+   * substances that are things in a fluid rather than the fluid itself: the
+   * glitter's flakes hang in it and tumble with it. See `lib/flow.ts`.
+   */
+  fluid: Flow | null;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -174,7 +183,27 @@ export interface SceneUpdate {
    * tipped by gravity. See {@link Medium}.
    */
   medium?: Medium | undefined;
+  /**
+   * A finger stirring the cell, or nothing.
+   *
+   * Where it is in the cell's own frame, and how fast it is moving, both in
+   * cell units. Only a cell of substance takes it: the fluid at the touch is
+   * set to the finger's own velocity, the way a spoon moves what it is in.
+   */
+  stir?: { x: number; y: number; vx: number; vy: number } | null | undefined;
 }
+
+/** How far around the finger a stir reaches, in cell units. */
+const STIR_REACH = CHAMBER_RADIUS * 0.28;
+
+/**
+ * Cells across a substance's carrier fluid.
+ *
+ * Coarser than the smoke's own 96: nothing reads this field but the things
+ * hanging in it, and a velocity field is smooth in a way a dye field is not,
+ * so the eye never sees the grid — only the motion.
+ */
+const FLUID_GRID = 64;
 
 /** Largest step the simulation will take, so a backgrounded tab cannot jump. */
 const MAX_STEP_SECONDS = 1 / 20;
@@ -382,6 +411,9 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
       holds === 'substance' && substance === 'glitter'
         ? createGlitter(hashSeed(`${seed}:glitter`), amount, chipScale)
         : null,
+    // The glitter's fluid is coarser than the smoke's own: nothing samples it
+    // but the flakes, and velocity is smooth in a way dye is not.
+    fluid: holds === 'substance' && substance === 'glitter' ? createFlow(FLUID_GRID) : null,
     elapsed: 0,
   };
 
@@ -474,7 +506,16 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  */
 export function updateScene(
   scene: Scene,
-  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR, thickness = 0.35 }: SceneUpdate,
+  {
+    dt,
+    turn,
+    drag,
+    tilt = 0,
+    framework = 0,
+    medium = AIR,
+    thickness = 0.35,
+    stir = null,
+  }: SceneUpdate,
 ): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
@@ -518,7 +559,21 @@ export function updateScene(
   // same shards, so the rest of the scene cannot tell them apart.
   (chamberOverride() ?? updateChamber)(scene.shards, { dt: step, angle, medium, swirl });
 
-  // Whichever substance the cell holds, if it holds one. All three take the
+  // A finger in the cell: the fluid at the touch is set to the finger's own
+  // velocity, and whatever hangs in the fluid is carried along. Queued into
+  // the field rather than applied here, because the fluids step on their own
+  // banked clocks.
+  if (stir && scene.substance) {
+    if (scene.smoke) {
+      stirFlow(scene.smoke, { ...stir, reach: STIR_REACH });
+    }
+
+    if (scene.fluid) {
+      stirFlow(scene.fluid, { ...stir, reach: STIR_REACH });
+    }
+  }
+
+  // Whichever substance the cell holds, if it holds one. All of them take the
   // same three things — how thick the fluid is, how fast it is turning, and
   // which way is down — because those are the whole of what a cell does to
   // what is in it.
@@ -531,7 +586,19 @@ export function updateScene(
   }
 
   if (scene.flakes) {
-    updateGlitter(scene.flakes, { dt: step, thickness, swirl, angle });
+    // The fluid first, so the flakes ride this frame's field and not the
+    // last one's.
+    if (scene.fluid) {
+      stepFlow(scene.fluid, { dt: step, thickness, swirl });
+    }
+
+    updateGlitter(scene.flakes, {
+      dt: step,
+      thickness,
+      swirl,
+      angle,
+      ...(scene.fluid ? { fluid: scene.fluid } : {}),
+    });
   }
 
   return scene;

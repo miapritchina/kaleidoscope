@@ -179,6 +179,18 @@ export const TILE = { width: 1351, height: 780 };
 const TRIANGLE_FRACTION = 0.24;
 
 /**
+ * Side of the mirror triangle for a view of this size, at this zoom.
+ *
+ * Exported for whoever has to reason about the view without a renderer in
+ * hand — the stir mapping in `lib/stir.ts` folds a pointer back into the cell
+ * and needs the same triangle the figure was drawn with. One formula, so the
+ * two cannot disagree.
+ */
+export function triangleSideFor(width: number, height: number, zoom: number): number {
+  return Math.max(24, Math.min(width, height) * TRIANGLE_FRACTION * zoom);
+}
+
+/**
  * Composites the kaleidoscope.
  *
  * The source — shard field, photo or camera — is painted once per frame into an
@@ -408,7 +420,7 @@ export class KaleidoscopeRenderer {
   }
 
   #sideAtZoom(zoom: number): number {
-    return Math.max(24, Math.min(this.#width, this.#height) * TRIANGLE_FRACTION * zoom);
+    return triangleSideFor(this.#width, this.#height, zoom);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
