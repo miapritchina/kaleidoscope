@@ -205,7 +205,16 @@ Ordered so each phase ships alone and later phases stand on earlier ones.
 repo's history says numbers alone miss what matters), a test on whatever
 invariant the phase creates, and the record moved into ROADMAP.md.
 
-1. **Stir with a finger.** A pointer drag inside the stage on the Liquid tab
+All seven phases are built as of 2026-08-25 — each phase's commit message
+carries its record, and the notes below are the plan as agreed. What remains
+is looking at everything on a real phone: the numbers and the headless
+screenshots are good, and the feel is the owner's call.
+
+1. **Stir with a finger.** _Built._ It went one better than planned: the
+   pointer is folded back into the cell with the fold's own arithmetic
+   (`lib/stir.ts`), so a drag anywhere on the figure stirs the one cell and
+   the stir appears in every reflection at once. Turning and stirring are one
+   gesture. A pointer drag inside the stage on the Liquid tab
    splats velocity (and a little dye, for smoke) into the cell at the touch
    point; pushes lava particles; drags glitter. Touches `useStageGesture.ts`
    (a third gesture: one finger _inside the cell_ stirs rather than turns —
@@ -215,22 +224,29 @@ invariant the phase creates, and the record moved into ROADMAP.md.
    via velocity injection along the drag), `scene.ts` plumbing, each
    substance's update. Small, immediate joy; also the first consumer of a
    stir API the flow field will formalize.
-2. **Shared flow field.** Extract the velocity solver from `smoke.ts` into
+2. **Shared flow field.** _Built_ — `lib/flow.ts`; smoke extends it,
+   glitter rides a coarse one and tumbles by local curl, foreshortened and
+   flashing on both faces. Extract the velocity solver from `smoke.ts` into
    `lib/flow.ts` (stir, confine, project, advect; no dye). Smoke keeps its
    dye on top. Glitter advects through it and tumbles by local curl
    (critique above), drawn as foreshortened ellipses. One wall-grip, one
    thickness scaling, for everything.
-3. **Thin-film iridescence substance** (`film` in `SUBSTANCES`). Thickness
+3. **Thin-film iridescence substance** (`film` in `SUBSTANCES`). _Built_ —
+   `lib/film.ts`, and in the headless screenshots it is the best-looking
+   thing in the app. Thickness
    field on the flow field, interference LUT, slow drain. New substance
    picker entry, Amount = how much oil, Thickness = the carrier fluid as
    ever.
-4. **Lava rewrite.** Particles + double density relaxation; per-particle
+4. **Lava rewrite.** _Built_ — particles + Clavet 2005; the merge/split
+   machinery is gone and the frame-to-frame picture cap stands guard. Particles + double density relaxation; per-particle
    heat with diffusion and the existing ENDS-lag cycle;
    temperature-dependent viscosity; delete `coalesce`/`divide`/`jostle` and
    the settle machinery; gradient-lit rendering in `paintLava`. Keep
    `lava.test.ts`'s frame-to-frame-motion measurement — it is the test that
    caught the stagger.
-5. **Smoke refinements.** RK2 backtrace, temperature buoyancy, curl-noise
+5. **Smoke refinements.** _Built_ — RK2 midpoint trace in the shared
+   advection, warmth with plumes, curl-noise breeze off `lib/noise.ts`
+   (hand-rolled; the `simplex-noise` dependency proved unnecessary). RK2 backtrace, temperature buoyancy, curl-noise
    idle stirring (hand-rolled noise or `simplex-noise`, decide then).
 6. **Rapier spike for the dry chamber.** `@dimforge/rapier2d-compat` behind
    a flag alongside `chamber.ts`: hull colliders from traced silhouettes,
@@ -241,7 +257,9 @@ invariant the phase creates, and the record moved into ROADMAP.md.
    numbers go in ROADMAP.md next to the broad-phase and substep records.
    **Built 2026-08-25 — see "The Rapier spike, measured" below. Adoption
    still open, pending feel on a real phone.**
-7. **Sound.** Web Audio, gesture-unlocked, off by default: synthesized glass
+7. **Sound.** _Built_ — `lib/chime.ts`, synthesised clinks read off the
+   solver's own velocity changes (works under either chamber solver), wash
+   from the fluid's real swirl, behind an off-by-default Sound toggle. Web Audio, gesture-unlocked, off by default: synthesized glass
    clinks from chamber contact impulses (velocity → gain/pitch,
    rate-limited), a low fluid wash for the liquid cell keyed to swirl
    speed. `lib/` module with no React, like everything else.
