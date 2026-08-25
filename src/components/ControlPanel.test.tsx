@@ -160,13 +160,14 @@ describe('ControlPanel', () => {
       expect(screen.queryByLabelText('Variety')).not.toBeInTheDocument();
     });
 
-    it('offers all three substances, with the current one chosen', () => {
+    it('offers every substance, with the current one chosen', () => {
       withSettings({ source: 'liquid', substance: 'smoke' });
 
       expect(screen.getAllByRole('radio').map((one) => one.textContent)).toEqual([
         'Lava',
         'Smoke',
         'Glitter',
+        'Oil film',
       ]);
       expect(screen.getByRole('radio', { name: 'Smoke' })).toHaveAttribute('aria-checked', 'true');
       expect(screen.getByRole('radio', { name: 'Lava' })).toHaveAttribute('aria-checked', 'false');

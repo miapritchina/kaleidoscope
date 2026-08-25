@@ -5,68 +5,69 @@ import { mulberry32, randomBetween } from './random';
  * A lava lamp in the object cell.
  *
  * Not glass in a liquid — liquid instead of glass. What is in the cell is a
- * second fluid that will not mix with the first: blobs of it climb, flatten
- * against the top, cool, sink, gather at the bottom and go round again, running
- * into each other on the way and coming apart when they get too big. Every one
- * of those is in here, and none of it is a picture of a blob — the shapes are
- * whatever the arithmetic gives.
+ * second fluid that will not mix with the first: blobs of it climb, flatten,
+ * cool, sink, run into each other on the way and come apart when they are
+ * stretched. None of it is a picture of a blob — the shapes are whatever the
+ * arithmetic gives.
  *
- * Two things do the work.
+ * The first build of this simulated *blobs*: a handful of large metaballs
+ * with explicit rules for when two became one and when one became two. Every
+ * artifact it fought — the two-frame stagger, the pop on split, the settle
+ * timer that existed only to break the merge/split loop — came from the same
+ * place: the discrete rules were re-deciding topology the metaball field was
+ * already deciding continuously, and the two disagreed at frame rate. The
+ * record of that fight is in ROADMAP.md, "A lava lamp".
  *
- * **The heat cycle**, which is what a lava lamp actually is. A blob near the
- * bottom warms, and warm means lighter than what it is floating in, so it
- * rises; near the top it cools and turns heavy again and comes back down. That
- * one loop is the whole motion, and it is why the cell never settles: the
- * bottom is always making new risers.
+ * So this build simulates *wax*, and lets the field alone decide what a blob
+ * is. The wax is a few dozen small particles with the short-range behaviour
+ * of a liquid — pressed apart when crowded, drawn together when near — after
+ * Clavet, Beaudoin and Poulin, _Particle-based Viscoelastic Fluid Simulation_
+ * (SCA 2005): their double density relaxation, which is a pressure from how
+ * crowded a particle is plus a sharper one from its very nearest neighbours,
+ * applied as position displacements. Merging and splitting are not events any
+ * more. Two clumps that drift together interleave and their summed fields
+ * neck and join; a clump stretched by the convection thins in the middle, the
+ * field drops below the surface, and it pinches in two — with the neck drawn
+ * correctly on the way, because drawing necks is what metaball fields do.
+ * There is nothing left to stagger.
  *
- * **Metaballs**, which is what makes it read as liquid rather than as a bag of
- * circles. Each blob lays down a soft field around itself, the fields add up,
- * and the surface is drawn where the total crosses {@link SURFACE}. Two blobs
- * approaching therefore *reach* for each other and pinch into one shape before
- * their circles ever touch, and one coming apart necks in the middle first.
- * That is the shape a real one makes, and it is the sum rather than the parts
- * that makes it.
+ * **The heat cycle** is carried over from the first build, because it was
+ * right — including the part that was hard-won: heat must track *history*,
+ * not height. A particle warms only near the bottom and cools only near the
+ * top, and in between it keeps what it has; aimed instead at a temperature
+ * read off its own height, lift points at the middle from both directions and
+ * the cycle is a spring — the first build measured the whole cell converging
+ * to its centre and stopping inside twenty seconds. Two things are new, both
+ * from how convection actually works (Boussinesq, Rayleigh–Bénard): **heat
+ * diffuses between neighbouring particles**, so a warm patch rises as one
+ * plume rather than as loose particles, and **cold wax is stiffer than hot**,
+ * so what has cooled at the top slumps and hangs while the risers run.
  *
- * Coordinates are in cell units, centred on the chamber, and gravity arrives in
- * the cell's own frame — so turning the tube sweeps the whole circulation round
- * with it and the blobs set off in a new direction.
+ * Coordinates are in cell units, centred on the chamber, and gravity arrives
+ * in the cell's own frame — so turning the tube sweeps the whole circulation
+ * round with it.
  */
-export interface Blob {
+export interface Drop {
   /** Where it is, in cell units. */
   x: number;
   y: number;
   /** How fast, in cell units per second. */
   vx: number;
   vy: number;
-  /**
-   * How far its field reaches, in cell units.
-   *
-   * Not the size it looks: the surface is drawn where the fields sum to
-   * {@link SURFACE}, which for a blob on its own is a little over half of this.
-   */
-  reach: number;
   /** How warm it is: 0 cold and sinking, 1 warm and climbing. */
   heat: number;
-  /**
-   * Seconds before it may run into anything again.
-   *
-   * Set when a blob pinches apart, and it is what keeps the cell from flipping
-   * between two pictures at frame rate — see {@link SETTLE}.
-   */
-  settled: number;
-  /**
-   * What colour it is, as red, green and blue.
-   *
-   * Carried rather than looked up, because two blobs that run together make one
-   * blob of the mixture — a real lamp with two colours of wax in it ends up
-   * with the blend, and watching that happen is half of what there is to watch.
-   */
-  colour: [number, number, number];
+  /** Which of the {@link TINTS} its wax is cut from. */
+  tint: number;
 }
 
 export interface Lava {
-  blobs: Blob[];
-  /** What the blobs are cut from, so a split keeps its parent's colour. */
+  drops: Drop[];
+  /**
+   * How far each drop's field reaches, in cell units. One size for the whole
+   * cell: the wax is one substance, and uniform particles are what lets the
+   * density relaxation find one rest spacing.
+   */
+  readonly reach: number;
   readonly seed: number;
 }
 
@@ -74,53 +75,33 @@ export interface Lava {
  * Cells across the chamber the surface is worked out on.
  *
  * The field is smooth, so this is not resolving detail — it is deciding how
- * accurately the *edge* lands, because the surface is a contour through it and
- * a coarse grid puts that contour a cell's width out. A hundred and twenty
- * eight is enough that a blob's rim is straight where it should be straight at
- * the sizes a phone shows it at.
+ * accurately the *edge* lands, because the surface is a contour through it
+ * and a coarse grid puts that contour a cell's width out.
  */
 export const GRID = 128;
 
 /**
- * Where the surface is, as a sum of the blobs' fields.
+ * Where the surface is, as a sum of the drops' fields.
  *
- * A blob's own field peaks at 1 in its middle, so on its own it comes out
- * {@link SEEN} of its reach across. Where two overlap the sum crosses this well
- * outside either of them, which is the pinch.
+ * A drop's own field peaks at 1 in its middle. A lone drop barely crests
+ * this, so a stray particle reads as a droplet; a clump crosses it well
+ * outside any one member, which is what makes a dozen particles read as one
+ * body of wax with a surface.
  */
-const SURFACE = 0.5;
+const SURFACE = 0.72;
 
 /**
- * How much of the cell the blobs cover between them.
+ * How much of the cell the wax covers.
  *
- * Measured as if each were alone, which is why it is lower than it sounds: the
- * fields *add*, so a cell of blobs at arm's length already crosses the surface
- * in the gaps between them and covers far more than the sum of their own areas.
- * Half was tried on the isolated arithmetic and filled the entire cell with one
- * shape.
+ * Sized on the drawn discs as if separate, which understates it — clumped
+ * fields cross the surface in the gaps — so this is lower than the coverage
+ * that lands on screen.
  */
-const COVER = 0.22;
+const COVER = 0.2;
 
-/**
- * How wide a blob looks against how far its field reaches.
- *
- * A blob on its own is drawn where its own field crosses {@link SURFACE}, and
- * `(1 - d²/r²)² = 0.5` puts that at 0.54 of its reach. Everything about how big
- * a blob *looks* has to go through this — leave it out of the sizing and the
- * cell comes out a third full of dots when it was asked for half full of lava,
- * which is exactly what happened the first time.
- */
-const SEEN = 0.54;
-
-/**
- * Blobs at nothing and at everything.
- *
- * Few, because lava is *blobs*: a couple of dozen of anything reads as a
- * scatter of dots however it is drawn, and what makes this substance itself is
- * two or three big ones climbing past each other and merging.
- */
-const FEWEST = 2;
-const MOST = 10;
+/** Particles at the two ends of the Amount slider. */
+const FEWEST = 36;
+const MOST = 104;
 
 /** Downward acceleration, matched to the chamber's own. */
 const GRAVITY = 6;
@@ -129,7 +110,7 @@ const GRAVITY = 6;
 const BUOYANCY = 0.55;
 
 /**
- * How fast a blob takes the temperature of the end of the cell it is at.
+ * How fast a drop takes the temperature of the end of the cell it is at.
  *
  * Per second, and only while it is at an end — see {@link ENDS}.
  */
@@ -138,70 +119,51 @@ const EXCHANGE = 0.8;
 /**
  * How much of each end of the cell is warm or cold, as a share of the radius.
  *
- * The bulb is at the bottom and the cool glass at the top, and **in between a
- * blob keeps whatever heat it has**. That is the whole of why the cell
- * circulates rather than settling, and getting it wrong is subtle enough to be
- * worth writing down: a first version aimed every blob at a temperature read
- * off its own height, everywhere, all the way up. Do that and heat tracks
- * position, lift always points at the middle, and what looks like a heat cycle
- * is a spring — every blob converges on the centre and stops there. Measured,
- * the whole cell came to rest inside twenty seconds and the only thing still
- * moving was blobs merging and splitting.
- *
- * A lamp works because of the *lag*: the wax is heated at the bottom, and it
- * does not cool until it has been at the top for a while, so it overshoots at
- * both ends. Nothing in the middle should touch its temperature at all.
+ * The bulb at the bottom, the cool glass at the top, and **in between a drop
+ * keeps whatever heat it has**. The lag is the cycle — see the module note.
  */
 const ENDS = 0.35;
 
-/** Speed lost per second, before the fluid is thickened. */
-const DRAG = 2.6;
+/** How fast heat spreads between touching drops, per second. */
+const DIFFUSE = 1.6;
+
+/** How much stiffer stone-cold wax is than running-hot wax. */
+const COLD_STIFF = 1.4;
+
+/** Speed lost per second by hot wax in thin fluid, before either scales it. */
+const DRAG = 2.4;
 
 /** How much thicker the far end of the Thickness slider is. */
 const THICKEST = 4;
 
-/** Nearer than this share of their reaches, two blobs are one blob. */
-const MERGE = 0.42;
-
-/** Past this much of the cell across, a blob comes apart. */
-const SPLIT = 0.5;
-
 /**
- * How long wax that has just pinched apart keeps to itself, in seconds.
+ * The double density relaxation, in the paper's shape.
  *
- * The one number that stops this being a two-frame flicker instead of a lamp.
- * Merging makes a blob bigger and splitting makes it smaller, so the two
- * together are a loop — and with nothing to break it the loop runs at whatever
- * rate the frames arrive. It did: two blobs met, the pair came out at exactly
- * the size that splits, the halves landed close enough to meet again, and the
- * whole cell alternated between two arrangements sixty times a second. It read
- * as a stagger, which is what a two-frame cycle looks like.
- *
- * So a half that has just come off something will not run into anything for a
- * while, which is also what real wax does: a neck pinches, the two ends pull
- * away, and they do not immediately think better of it.
+ * `REST` is the crowding a particle is content with; below it the pressure
+ * goes negative and near neighbours are *drawn in*, which is the surface
+ * tension that rounds a blob off. `STIFF` scales the pressure into
+ * displacement and `STIFF_NEAR` scales the sharper near-pressure that stops
+ * the attraction collapsing a clump to a point. The near term has no negative
+ * side, by construction: crowding can pull, but closeness only pushes.
  */
-const SETTLE = 1.5;
+const REST = 2.6;
+const STIFF = 0.008;
+const STIFF_NEAR = 0.02;
 
-/** How hard the two halves push away from each other, in cell units per second. */
-const PARTING = 0.3;
+/** Neighbour radius, in multiples of a drop's drawn reach. */
+const NEIGHBOURHOOD = 1.8;
 
-/** How hard two blobs that are merely touching hold each other off. */
-const JOSTLE = 2.2;
+/** Fastest the wax moves, in cell units per second. Wax oozes; it does not dart. */
+const FASTEST = 1.6;
 
 /**
  * What the wax is coloured with.
  *
- * A real lamp holds one colour. This one holds a few, because two of them
- * running together make one of the mixture and watching that happen is half of
- * what there is to watch.
- *
- * All four are warm, and that is the whole of why they are these four. Blobs
- * merge, merging averages, and averaging colours from opposite sides of the
- * wheel gives mud — a first go at this had rose, amber, violet and teal in it,
- * and a minute later the cell was uniformly the colour of a puddle. Neighbours
- * on the wheel average to neighbours on the wheel, so every mixture these can
- * make is another warm one.
+ * All four warm, and that is the whole of why they are these four: wax mixes
+ * where clumps interleave, mixing averages, and averaging colours from
+ * opposite sides of the wheel gives mud — the first build proved it with
+ * rose, amber, violet and teal, and a minute later the cell was the colour of
+ * a puddle. Neighbours on the wheel average to neighbours on the wheel.
  */
 const TINTS: readonly [number, number, number][] = [
   [244, 63, 94],
@@ -210,34 +172,52 @@ const TINTS: readonly [number, number, number][] = [
   [219, 39, 119],
 ];
 
-/** Builds a cell of lava, deterministically. */
+/** Builds a cell of lava, deterministically, in a few clumps of wax. */
 export function createLava(seed: number, amount: number, scale = 1): Lava {
   const rng = mulberry32(seed);
-  const count = Math.max(1, Math.round(FEWEST + (MOST - FEWEST) * clamp(amount)));
-  // Shared out so the blobs cover the same share of the cell however many there
-  // are: more of them is a busier cell, not a fuller one.
-  const reach = CHAMBER_RADIUS * Math.sqrt(COVER / (SEEN * SEEN * count)) * Math.max(0.2, scale);
-  const blobs: Blob[] = [];
+  const count = Math.max(8, Math.round(FEWEST + (MOST - FEWEST) * clamp(amount)));
+  const reach = CHAMBER_RADIUS * Math.sqrt(COVER / count) * 1.9 * Math.max(0.35, Math.sqrt(scale));
+  const drops: Drop[] = [];
 
-  for (let i = 0; i < count; i += 1) {
+  // Poured as a few clumps rather than a scatter: the cell opens holding
+  // blobs, mid-circulation, instead of taking half a minute to gather itself.
+  const clumps = Math.max(2, Math.round(2 + 3 * clamp(amount)));
+  const centres = Array.from({ length: clumps }, () => {
     const angle = rng() * Math.PI * 2;
-    const distance = Math.sqrt(rng()) * CHAMBER_RADIUS * 0.75;
+    const distance = Math.sqrt(rng()) * CHAMBER_RADIUS * 0.65;
 
-    blobs.push({
+    return {
       x: Math.cos(angle) * distance,
       y: Math.sin(angle) * distance,
+      heat: rng(),
+      tint: Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length)),
+    };
+  });
+
+  for (let i = 0; i < count; i += 1) {
+    const home = centres[i % clumps]!;
+    const angle = rng() * Math.PI * 2;
+    const distance = Math.sqrt(rng()) * reach * 2.2;
+
+    drops.push({
+      x: clampWall(home.x + Math.cos(angle) * distance, reach),
+      y: clampWall(home.y + Math.sin(angle) * distance, reach),
       vx: 0,
       vy: 0,
-      reach: reach * randomBetween(rng, 0.75, 1.3),
-      // Spread across the cycle, so the cell opens mid-circulation rather than
-      // with everything at the bottom waiting to be warmed.
-      heat: rng(),
-      settled: 0,
-      colour: [...TINTS[Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length))]!],
+      // The clump's own warmth, spread a little, so the cell opens with
+      // risers and sinkers rather than everything waiting at the bottom.
+      heat: clamp(home.heat + randomBetween(rng, -0.15, 0.15)),
+      tint: home.tint,
     });
   }
 
-  return { blobs, seed };
+  return { drops, reach, seed };
+}
+
+function clampWall(value: number, reach: number): number {
+  const limit = CHAMBER_RADIUS - reach * 0.6;
+
+  return Math.min(limit, Math.max(-limit, value));
 }
 
 export interface LavaUpdate {
@@ -249,224 +229,223 @@ export interface LavaUpdate {
   swirl: number;
   /** Which way is down in the cell's own frame, radians. */
   angle: number;
+  /** A finger in the cell, pushing the wax it touches. */
+  stir?: { x: number; y: number; vx: number; vy: number } | null | undefined;
 }
 
-/** Advances the lava in place: the cycle, then the contacts, then the wall. */
-export function updateLava(lava: Lava, { dt, thickness, swirl, angle }: LavaUpdate): void {
-  if (dt <= 0 || lava.blobs.length === 0) {
+/** Scratch, sized to the most drops a cell can hold. */
+const density = new Float32Array(MOST);
+const nearDensity = new Float32Array(MOST);
+const previousX = new Float32Array(MOST);
+const previousY = new Float32Array(MOST);
+const warmed = new Float32Array(MOST);
+
+/**
+ * Advances the wax in place: forces, then the relaxation, then the wall —
+ * and velocity read back off how far each drop actually travelled, which is
+ * the same position-based ledger the glass chamber keeps.
+ */
+export function updateLava(lava: Lava, { dt, thickness, swirl, angle, stir }: LavaUpdate): void {
+  const { drops, reach } = lava;
+
+  if (dt <= 0 || drops.length === 0) {
     return;
   }
 
   const step = Math.min(dt, 1 / 20);
   const downX = Math.sin(angle);
   const downY = Math.cos(angle);
-  const damping = Math.max(0, 1 - DRAG * (1 + THICKEST * clamp(thickness)) * step);
+  const thick = 1 + THICKEST * clamp(thickness);
+  const h = reach * NEIGHBOURHOOD;
 
-  for (const blob of lava.blobs) {
-    blob.settled = Math.max(0, blob.settled - step);
+  for (let i = 0; i < drops.length; i += 1) {
+    const drop = drops[i]!;
     // How far down the cell it is, from -1 at the top to 1 at the bottom, in
     // whichever direction down currently happens to be.
-    const along = (blob.x * downX + blob.y * downY) / CHAMBER_RADIUS;
-    // The bulb at the bottom and the cool glass at the top, and nothing at all
-    // in between. See ENDS.
+    const along = (drop.x * downX + drop.y * downY) / CHAMBER_RADIUS;
     const warming = Math.max(0, (along - ENDS) / (1 - ENDS));
     const cooling = Math.max(0, (-along - ENDS) / (1 - ENDS));
 
-    blob.heat = clamp(blob.heat + (warming - cooling) * EXCHANGE * step);
+    drop.heat = clamp(drop.heat + (warming - cooling) * EXCHANGE * step);
 
     // Warm is lighter than what it floats in and climbs; cold is heavier and
-    // sinks. Nothing else lifts a blob, which is why the cell circulates
-    // instead of settling.
-    const lift = (0.5 - blob.heat) * 2 * BUOYANCY;
-    const flowX = -swirl * blob.y;
-    const flowY = swirl * blob.x;
+    // sinks. Nothing else lifts the wax, which is why the cell circulates.
+    const lift = (0.5 - drop.heat) * 2 * BUOYANCY;
+    const flowX = -swirl * drop.y;
+    const flowY = swirl * drop.x;
+    // Cold wax is stiffer: what has cooled at the top slumps and hangs while
+    // the hot risers run. One factor, a lot of wax-ness.
+    const damping = Math.max(0, 1 - DRAG * thick * (1 + COLD_STIFF * (1 - drop.heat)) * step);
 
-    blob.vx = flowX + (blob.vx + downX * GRAVITY * lift * step - flowX) * damping;
-    blob.vy = flowY + (blob.vy + downY * GRAVITY * lift * step - flowY) * damping;
-    blob.x += blob.vx * step;
-    blob.y += blob.vy * step;
+    drop.vx = flowX + (drop.vx + downX * GRAVITY * lift * step - flowX) * damping;
+    drop.vy = flowY + (drop.vy + downY * GRAVITY * lift * step - flowY) * damping;
+
+    if (stir) {
+      const away = Math.hypot(drop.x - stir.x, drop.y - stir.y) / (CHAMBER_RADIUS * 0.3);
+
+      if (away < 1) {
+        const much = (1 - away) * (1 - away);
+
+        drop.vx += (stir.vx - drop.vx) * much;
+        drop.vy += (stir.vy - drop.vy) * much;
+      }
+    }
+
+    previousX[i] = drop.x;
+    previousY[i] = drop.y;
+    drop.x += drop.vx * step;
+    drop.y += drop.vy * step;
   }
 
-  jostle(lava, step);
-  coalesce(lava);
-  divide(lava);
+  relax(lava, h, step);
+  diffuseHeat(lava, h, step);
 
-  for (const blob of lava.blobs) {
-    confine(blob);
+  for (let i = 0; i < drops.length; i += 1) {
+    const drop = drops[i]!;
+
+    confine(drop, reach);
+    // Velocity is where it ended up, not where it was sent: the relaxation
+    // and the wall have both had their say, and the ledger has to agree.
+    drop.vx = (drop.x - previousX[i]!) / step;
+    drop.vy = (drop.y - previousY[i]!) / step;
+
+    // Wax does not dart. The relaxation can land a crowded drop a long way
+    // in one frame, and read back as velocity that would be a kick it never
+    // received; the cap keeps the ledger honest without touching where
+    // anything ended up.
+    const speed = Math.hypot(drop.vx, drop.vy);
+
+    if (speed > FASTEST) {
+      drop.vx *= FASTEST / speed;
+      drop.vy *= FASTEST / speed;
+    }
   }
 }
 
 /**
- * Holds blobs that are merely touching apart from each other.
+ * The double density relaxation. See the constants above for the shape.
  *
- * Without it every pair that met would sink into one another and the cell would
- * be a single lump inside a minute. What a second fluid actually does is hold
- * its own surface: two blobs press together, flatten where they touch, and only
- * give way and join when they are pushed properly into each other — which is
- * what {@link coalesce} then does.
+ * Two passes over the pairs: one to measure how crowded each drop is, one to
+ * move them. The displacement is shared half and half — the drops are all the
+ * same size, so there is no mass to weight it by.
  */
-function jostle(lava: Lava, step: number): void {
-  const { blobs } = lava;
+function relax(lava: Lava, h: number, step: number): void {
+  const { drops } = lava;
+  const scale = step * step * 3600;
 
-  for (let i = 0; i < blobs.length; i += 1) {
-    const a = blobs[i]!;
+  for (let i = 0; i < drops.length; i += 1) {
+    density[i] = 0;
+    nearDensity[i] = 0;
+  }
 
-    for (let j = i + 1; j < blobs.length; j += 1) {
-      const b = blobs[j]!;
+  for (let i = 0; i < drops.length; i += 1) {
+    const a = drops[i]!;
+
+    for (let j = i + 1; j < drops.length; j += 1) {
+      const b = drops[j]!;
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const apart = Math.hypot(dx, dy);
-      const touching = (a.reach + b.reach) * 0.75;
 
-      if (apart >= touching || apart === 0) {
+      if (apart >= h) {
         continue;
       }
 
-      // Shared out by size: a small blob bounces off a big one rather than
-      // shoving it aside.
-      const push = ((touching - apart) / touching) * JOSTLE * step;
-      const mass = a.reach * a.reach + b.reach * b.reach;
-      const share = mass > 0 ? (b.reach * b.reach) / mass : 0.5;
+      const q = 1 - apart / h;
 
-      a.vx -= (dx / apart) * push * share;
-      a.vy -= (dy / apart) * push * share;
-      b.vx += (dx / apart) * push * (1 - share);
-      b.vy += (dy / apart) * push * (1 - share);
+      density[i] = density[i]! + q * q;
+      density[j] = density[j]! + q * q;
+      nearDensity[i] = nearDensity[i]! + q * q * q;
+      nearDensity[j] = nearDensity[j]! + q * q * q;
+    }
+  }
+
+  for (let i = 0; i < drops.length; i += 1) {
+    const a = drops[i]!;
+    const pressure = STIFF * (density[i]! - REST);
+    const nearPressure = STIFF_NEAR * nearDensity[i]!;
+
+    for (let j = i + 1; j < drops.length; j += 1) {
+      const b = drops[j]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const apart = Math.hypot(dx, dy);
+
+      if (apart >= h || apart === 0) {
+        continue;
+      }
+
+      const q = 1 - apart / h;
+      const pressureB = STIFF * (density[j]! - REST);
+      const nearB = STIFF_NEAR * nearDensity[j]!;
+      // The paper's displacement, symmetrised: crowding presses (or, below
+      // rest, draws), closeness only ever presses.
+      const push =
+        scale * ((pressure + pressureB) * 0.5 * q + (nearPressure + nearB) * 0.5 * q * q);
+      const alongX = (dx / apart) * push * 0.5;
+      const alongY = (dy / apart) * push * 0.5;
+
+      a.x -= alongX;
+      a.y -= alongY;
+      b.x += alongX;
+      b.y += alongY;
     }
   }
 }
 
 /**
- * Runs two blobs together into one.
+ * Heat spreading between touching drops.
  *
- * Area adds rather than radius, so a merge conserves how much wax there is —
- * two of a size make one about 1.4 across, not 2. Everything else is carried
- * over in proportion: where the pair was, how fast it was going, how warm, and
- * the colour of whichever of them was bigger.
+ * What turns loose warm particles into a *plume*: a drop about to rise warms
+ * its neighbours, so the clump goes up together and the field draws it as one
+ * climbing blob rather than as a spray.
  */
-function coalesce(lava: Lava): void {
-  const { blobs } = lava;
+function diffuseHeat(lava: Lava, h: number, step: number): void {
+  const { drops } = lava;
+  const rate = Math.min(0.5, DIFFUSE * step);
 
-  for (let i = 0; i < blobs.length; i += 1) {
-    const a = blobs[i]!;
+  for (let i = 0; i < drops.length; i += 1) {
+    warmed[i] = 0;
+  }
 
-    if (a.settled > 0) {
-      continue;
-    }
+  for (let i = 0; i < drops.length; i += 1) {
+    const a = drops[i]!;
 
-    for (let j = i + 1; j < blobs.length; j += 1) {
-      const b = blobs[j]!;
+    for (let j = i + 1; j < drops.length; j += 1) {
+      const b = drops[j]!;
+      const apart = Math.hypot(b.x - a.x, b.y - a.y);
 
-      if (b.settled > 0) {
+      if (apart >= h) {
         continue;
       }
 
-      if (Math.hypot(b.x - a.x, b.y - a.y) > (a.reach + b.reach) * MERGE) {
-        continue;
-      }
+      const q = 1 - apart / h;
+      const trade = (b.heat - a.heat) * q * rate;
 
-      const areaA = a.reach * a.reach;
-      const areaB = b.reach * b.reach;
-      const total = areaA + areaB;
-
-      a.x = (a.x * areaA + b.x * areaB) / total;
-      a.y = (a.y * areaA + b.y * areaB) / total;
-      a.vx = (a.vx * areaA + b.vx * areaB) / total;
-      a.vy = (a.vy * areaA + b.vy * areaB) / total;
-      a.heat = (a.heat * areaA + b.heat * areaB) / total;
-      a.settled = 0;
-      a.colour = [
-        (a.colour[0] * areaA + b.colour[0] * areaB) / total,
-        (a.colour[1] * areaA + b.colour[1] * areaB) / total,
-        (a.colour[2] * areaA + b.colour[2] * areaB) / total,
-      ];
-      a.reach = Math.sqrt(total);
-      blobs.splice(j, 1);
-      j -= 1;
+      warmed[i] = warmed[i]! + trade;
+      warmed[j] = warmed[j]! - trade;
     }
+  }
+
+  for (let i = 0; i < drops.length; i += 1) {
+    drops[i]!.heat = clamp(drops[i]!.heat + warmed[i]!);
   }
 }
 
-/**
- * Pulls a blob that has grown too big into two.
- *
- * Something has to, or every cell ends as one lump: merging only ever runs one
- * way. A real lamp does this by stretching — a climbing blob leaves a tail
- * behind and the tail necks off — so the two halves are set going along the way
- * it was already travelling, and the metaballs draw the neck between them for
- * as long as they are close.
- */
-function divide(lava: Lava): void {
-  const { blobs } = lava;
-  const largest = CHAMBER_RADIUS * SPLIT;
-  // Gathered and added afterwards rather than as they are made: a half is
-  // already half the size, so it cannot split again this pass, and there is no
-  // reason to walk over the ones just born.
-  const halves: Blob[] = [];
-
-  for (const blob of blobs) {
-    if (blob.reach <= largest) {
-      continue;
-    }
-
-    const speed = Math.hypot(blob.vx, blob.vy);
-    const alongX = speed > 0 ? blob.vx / speed : 1;
-    const alongY = speed > 0 ? blob.vy / speed : 0;
-    const half = blob.reach / Math.SQRT2;
-    // Close, and pulling apart: the two halves are left overlapping enough
-    // that the sum of their fields is nearly what the parent's was, so the
-    // shape necks rather than the blob vanishing and two appearing either side
-    // of where it was. Set far enough apart to be visibly two, a split moved
-    // as much of the picture in one frame as two hundred ordinary frames do,
-    // which is what a pop is. They cannot run back together while `settled`.
-    const gap = half * 0.4;
-
-    blob.reach = half;
-    blob.x -= alongX * gap;
-    blob.y -= alongY * gap;
-    blob.vx -= alongX * PARTING;
-    blob.vy -= alongY * PARTING;
-    blob.settled = SETTLE;
-
-    halves.push({
-      x: blob.x + alongX * gap * 2,
-      y: blob.y + alongY * gap * 2,
-      // The leading half keeps the momentum; the trailing half is what is left.
-      vx: blob.vx * 1.15 + alongX * PARTING * 2,
-      vy: blob.vy * 1.15 + alongY * PARTING * 2,
-      reach: half,
-      heat: blob.heat,
-      settled: SETTLE,
-      colour: [...blob.colour],
-    });
-  }
-
-  blobs.push(...halves);
-}
-
-/** Keeps a blob inside the wall, and takes the speed that carried it there. */
-function confine(blob: Blob): void {
-  const distance = Math.hypot(blob.x, blob.y);
-  // Its own surface, not its reach: a blob rests against the wall where it
-  // looks like it does.
-  const limit = Math.max(0, CHAMBER_RADIUS - blob.reach * SEEN);
+/** Keeps a drop inside the wall, and takes the speed that carried it there. */
+function confine(drop: Drop, reach: number): void {
+  const distance = Math.hypot(drop.x, drop.y);
+  const limit = Math.max(0, CHAMBER_RADIUS - reach * 0.6);
 
   if (distance <= limit || distance === 0) {
     return;
   }
 
-  const outX = blob.x / distance;
-  const outY = blob.y / distance;
+  const outX = drop.x / distance;
+  const outY = drop.y / distance;
 
-  blob.x = outX * limit;
-  blob.y = outY * limit;
-
-  const into = blob.vx * outX + blob.vy * outY;
-
-  if (into > 0) {
-    blob.vx -= into * outX;
-    blob.vy -= into * outY;
-  }
+  drop.x = outX * limit;
+  drop.y = outY * limit;
 }
 
 function clamp(value: number): number {
@@ -476,10 +455,13 @@ function clamp(value: number): number {
 /**
  * Paints the lava onto a small canvas, one pixel per grid cell.
  *
- * The fields are summed per cell and the colour with them, so where two blobs
- * overlap the colour is the mixture in proportion — which is what stops a merge
- * looking like one shape sliding over another. Drawn scaled up with smoothing,
- * which is a bilinear filter over a field that is smooth to begin with.
+ * The fields are summed per cell and the colour with them, so where two
+ * colours of wax interleave the drawn colour is the mixture in proportion.
+ * Then the wax is *lit*: the summed field is a height, its gradient is a
+ * surface normal, and each pixel takes a little diffuse shading and a small
+ * specular from a light up and to the left. Flat-filled metaballs read as gel
+ * stickers; the same metaballs with a falling-away rim and one bright spot
+ * read as bodies of wax with a glass wall in front of them.
  *
  * @returns The canvas, or null where there is no canvas to be had.
  */
@@ -493,28 +475,25 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
   const { canvas, ctx, image } = surface;
   const pixels = image.data;
   const width = (2 * CHAMBER_RADIUS) / GRID;
+  // The drawn field reaches a little past the interaction radius, so a clump
+  // reads as one body rather than as its members.
+  const drawn = lava.reach * 1.55;
+  const span = drawn * drawn;
 
-  // Summed in floats and not in the picture's own bytes. The whole of the
-  // metaball trick is that the fields *add* past the surface — two blobs
-  // overlapping reach two and more — and a canvas's bytes stop at one, which
-  // would flatten every overlap to the same value and take the pinch with it.
   field.fill(0);
 
-  for (const blob of lava.blobs) {
-    const [red, green, blue] = blob.colour;
-    // Only the square the blob's field actually reaches into. The cell is
-    // mostly empty of any one blob, and the whole cost of this is here.
-    const from = Math.max(0, Math.floor((blob.x - blob.reach + CHAMBER_RADIUS) / width));
-    const to = Math.min(GRID - 1, Math.ceil((blob.x + blob.reach + CHAMBER_RADIUS) / width));
-    const start = Math.max(0, Math.floor((blob.y - blob.reach + CHAMBER_RADIUS) / width));
-    const end = Math.min(GRID - 1, Math.ceil((blob.y + blob.reach + CHAMBER_RADIUS) / width));
-    const span = blob.reach * blob.reach;
+  for (const drop of lava.drops) {
+    const [red, green, blue] = TINTS[drop.tint]!;
+    const from = Math.max(0, Math.floor((drop.x - drawn + CHAMBER_RADIUS) / width));
+    const to = Math.min(GRID - 1, Math.ceil((drop.x + drawn + CHAMBER_RADIUS) / width));
+    const start = Math.max(0, Math.floor((drop.y - drawn + CHAMBER_RADIUS) / width));
+    const end = Math.min(GRID - 1, Math.ceil((drop.y + drawn + CHAMBER_RADIUS) / width));
 
     for (let j = start; j <= end; j += 1) {
-      const y = -CHAMBER_RADIUS + (j + 0.5) * width - blob.y;
+      const y = -CHAMBER_RADIUS + (j + 0.5) * width - drop.y;
 
       for (let i = from; i <= to; i += 1) {
-        const x = -CHAMBER_RADIUS + (i + 0.5) * width - blob.x;
+        const x = -CHAMBER_RADIUS + (i + 0.5) * width - drop.x;
         const away = (x * x + y * y) / span;
 
         if (away >= 1) {
@@ -534,30 +513,51 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
 
   // The surface: where the sum crosses SURFACE, softened over a little either
   // side so the edge is a liquid's and not a cut-out's.
-  // Narrow. The field is smooth and the grid is read bilinearly, so a tight
-  // band still comes out as a clean curve — and a wide one is what made the
-  // first attempt look like out-of-focus dots rather than a liquid with a
-  // surface.
-  const edge = 0.07;
+  const edge = 0.1;
   const low = SURFACE - edge;
   const high = SURFACE + edge;
 
-  for (let k = 0; k < GRID * GRID; k += 1) {
-    const at = k * 4;
-    const much = field[at + 3]!;
+  for (let j = 0; j < GRID; j += 1) {
+    for (let i = 0; i < GRID; i += 1) {
+      const k = i + j * GRID;
+      const at = k * 4;
+      const much = field[at + 3]!;
 
-    if (much <= low) {
-      pixels.fill(0, at, at + 4);
-      continue;
+      if (much <= low) {
+        pixels.fill(0, at, at + 4);
+        continue;
+      }
+
+      // The average of what is here rather than the sum, or a deep overlap
+      // would come out white — and the average is what makes two colours
+      // running together mix along the seam between them.
+      let red = field[at]! / much;
+      let green = field[at + 1]! / much;
+      let blue = field[at + 2]! / much;
+
+      // Lit off the field's own slope. The gradient is read from the summed
+      // field, which is smooth, so the normal is too.
+      const left = i > 0 ? field[at - 4 + 3]! : much;
+      const right = i < GRID - 1 ? field[at + 4 + 3]! : much;
+      const up = j > 0 ? field[at - GRID * 4 + 3]! : much;
+      const down = j < GRID - 1 ? field[at + GRID * 4 + 3]! : much;
+      const slopeX = (right - left) * 0.5;
+      const slopeY = (down - up) * 0.5;
+      const length = Math.hypot(slopeX, slopeY, 0.9);
+      // Light up and to the left, a little towards the eye.
+      const facing = (-slopeX * -0.42 + -slopeY * -0.62 + 0.9 * 0.66) / length;
+      const diffuse = 0.62 + 0.5 * Math.max(0, facing);
+      const gleam = Math.max(0, facing) ** 24 * 190;
+
+      red = red * diffuse + gleam;
+      green = green * diffuse + gleam;
+      blue = blue * diffuse + gleam;
+
+      pixels[at] = Math.min(255, red);
+      pixels[at + 1] = Math.min(255, green);
+      pixels[at + 2] = Math.min(255, blue);
+      pixels[at + 3] = much >= high ? 255 : Math.round(smooth((much - low) / (high - low)) * 255);
     }
-
-    // The colour is the average of what is here rather than the sum, or a deep
-    // overlap would come out white — and the average is what makes two colours
-    // running together mix along the seam between them.
-    pixels[at] = Math.min(255, field[at]! / much);
-    pixels[at + 1] = Math.min(255, field[at + 1]! / much);
-    pixels[at + 2] = Math.min(255, field[at + 2]! / much);
-    pixels[at + 3] = much >= high ? 255 : Math.round(smooth((much - low) / (high - low)) * 255);
   }
 
   ctx.putImageData(image, 0, 0);

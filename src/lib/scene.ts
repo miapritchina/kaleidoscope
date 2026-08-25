@@ -589,7 +589,7 @@ export function updateScene(
   // which way is down — because those are the whole of what a cell does to
   // what is in it.
   if (scene.lava) {
-    updateLava(scene.lava, { dt: step, thickness, swirl, angle });
+    updateLava(scene.lava, { dt: step, thickness, swirl, angle, stir });
   }
 
   if (scene.smoke) {

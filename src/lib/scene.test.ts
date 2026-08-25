@@ -221,16 +221,16 @@ describe('a cell of substance', () => {
 
   it('advances whatever is in it', () => {
     const scene = createScene('moving', 40, { holds: 'substance', substance: 'lava' });
-    const before = scene.lava!.blobs.map((blob) => ({ x: blob.x, y: blob.y }));
+    const before = scene.lava!.drops.map((drop) => ({ x: drop.x, y: drop.y }));
 
     for (let frame = 0; frame < 60; frame += 1) {
       updateScene(scene, { dt: 1 / 60, turn: 0, drag: { x: 0, y: 0 } });
     }
 
     expect(
-      scene.lava!.blobs.some(
-        (blob, index) =>
-          before[index] && Math.hypot(blob.x - before[index].x, blob.y - before[index].y) > 0.01,
+      scene.lava!.drops.some(
+        (drop, index) =>
+          before[index] && Math.hypot(drop.x - before[index].x, drop.y - before[index].y) > 0.01,
       ),
     ).toBe(true);
   });
