@@ -588,7 +588,16 @@ instruments across the top of a phone is a tab bar and not a choice.
 **The heat cycle**, which is what a lava lamp actually is. A blob near the bottom warms;
 warm means lighter than what it is floating in, so it rises; near the top it cools and turns
 heavy again and comes back down. That one loop is the whole motion, and it is why the cell
-never settles — the bottom is always making new risers. Nothing else lifts a blob.
+never settles — the bottom is always making new risers. Nothing else lifts a blob. Measured,
+a blob takes about ten seconds to go up and come back.
+
+**The lag is the cycle**, and getting that wrong is subtle. The first version aimed every
+blob at a temperature read off its own height, everywhere, all the way up — which sounds
+like the same thing and is not. Do that and heat tracks position, so lift always points at
+the middle from both directions: it is a **spring**, not a cycle. Every blob converged on the
+centre of the cell and stopped there, and the only thing still moving was blobs merging and
+splitting. A lamp works because the wax does not cool until it has been at the top for a
+while, so it overshoots at both ends. Nothing in the middle touches its temperature at all.
 
 **Metaballs**, which is what makes it read as liquid rather than as a bag of circles. Each
 blob lays down a soft field around itself, the fields **add**, and the surface is drawn where
@@ -602,8 +611,26 @@ two colours of wax running together do. Merging only ever runs one way, so a blo
 grown past a fraction of the cell is pulled into two along the way it was travelling. Between
 them the cell holds a steady population instead of ending as one lump.
 
-Three things had to be got right and all three were got wrong first, which is worth writing
-down because each of them looked reasonable:
+Then there is the **stagger**, which is what merging and splitting do to each other if
+nothing stops them. Merging makes a blob bigger and splitting makes it smaller, so the two
+are a loop. With the split threshold sitting exactly where a merge of two blobs lands, and
+the halves placed close enough to meet again, the loop ran at whatever rate the frames
+arrived: the whole cell alternated between two arrangements sixty times a second. Measured on
+the field, a typical frame moved it by **1.23** — more than a whole blob's worth — where it
+should move by 0.015.
+
+Two things fix it, and they are the same thing said twice: wax that has just pinched apart
+keeps to itself for a second and a half, and the halves are left overlapping what they came
+off rather than set clear of it, so the shape necks instead of one blob vanishing and two
+appearing either side of where it was. Placed clear, a split moved as much of the picture in
+one frame as two hundred ordinary frames do.
+
+Every other measurement was happy throughout: the blobs were inside the wall, the wax was
+conserved, the colours mixed and the count held steady. `lava.test.ts` measures the picture
+from one frame to the next now, which is the only thing that would have said so.
+
+Three more things had to be got right and all three were got wrong first, which is worth
+writing down because each of them looked reasonable:
 
 - **The sizing has to go through the threshold.** A blob on its own is drawn at 0.54 of the
   distance its field reaches, so sizing the blobs by their reach and not by what is drawn
