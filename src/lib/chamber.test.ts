@@ -485,6 +485,33 @@ describe('the liquid cell', () => {
     expect(wet).toBeGreaterThan(dry * 3);
   });
 
+  // Gravity is an acceleration, so it moves a boulder and a grain at the same
+  // rate — which is why a dry cell falls as one. In a fluid the resistance goes
+  // with the surface and the weight with the bulk, so the big ones win.
+  it('sinks a big piece faster than a small one', () => {
+    const drop = (radius: number, medium: Medium) => {
+      const glass = chips(1, radius);
+      const [piece] = glass as [Shard];
+
+      piece.x = 0;
+      piece.y = -0.6;
+
+      for (let frame = 0; frame < 60; frame += 1) {
+        updateChamber(glass, { dt: 1 / 60, angle: 0, medium });
+      }
+
+      return piece.y + 0.6;
+    };
+
+    const small = drop(0.04, OIL);
+    const large = drop(0.12, OIL);
+
+    expect(large).toBeGreaterThan(small * 1.5);
+
+    // And in air they fall together, to within what a second of solving costs.
+    expect(drop(0.12, AIR)).toBeCloseTo(drop(0.04, AIR), 2);
+  });
+
   it('all but suspends it in a gel', () => {
     const glass = chips(1);
     const [piece] = glass as [Shard];
@@ -589,7 +616,7 @@ describe('the liquid cell', () => {
 
   it('leaves the glass where it was scattered rather than piling it up', () => {
     const dry = createScene('drift', 40);
-    const wet = createScene('drift', 40, 1, FRESH_LIQUID);
+    const wet = createScene('drift', 40, { medium: FRESH_LIQUID });
     const depth = (shards: Shard[]) => centre(shards);
 
     // Down is +y, so a heap that has formed sits below a field that has not.

@@ -45,6 +45,26 @@ import type { Bead } from './shape';
 export const CHAMBER_RADIUS = 1.15;
 
 /**
+ * The size of piece a medium's drag is quoted for, in cell units.
+ *
+ * "Normal size", and the middle the glass is cut around — see `PIECE_MIDDLE`
+ * in `lib/scene.ts`, which is this. A piece of exactly this size feels exactly
+ * {@link Medium.drag}; everything else is scaled off it by
+ * {@link Medium.dragBySize}.
+ */
+export const REFERENCE_PIECE = 0.08;
+
+/**
+ * How far the size scaling is allowed to run, either way.
+ *
+ * A grain a tenth of normal would otherwise be given ten times the drag and
+ * stop dead in the fluid, which reads as glass glued to the picture rather
+ * than as glass too light to fall. The cap is where the model stops being
+ * worth trusting, not where the arithmetic breaks.
+ */
+const DRAG_SIZE_LIMIT = 3;
+
+/**
  * Downward acceleration, in cell units per second squared.
  *
  * The room's pull, not the cell's. What a piece actually falls under is less
@@ -85,8 +105,32 @@ export interface Medium {
    * cell provably untouched by any of this rather than merely close to it.
    */
   readonly density: number;
-  /** Velocity lost per second to the fluid. Glass in a chamber is damped. */
+  /**
+   * Velocity lost per second to the fluid, by a piece of {@link REFERENCE_PIECE}
+   * size.
+   *
+   * Quoted at a size because in a fluid the size is half the answer — see
+   * {@link Medium.dragBySize}.
+   */
   readonly drag: number;
+  /**
+   * How much a piece's own size tells on the drag it feels, 0 to 1.
+   *
+   * **Big pieces sink faster, and it is the drag that says so rather than the
+   * weight.** Gravity is an acceleration, so on its own it moves a boulder and
+   * a grain at exactly the same rate — Galileo's point, and the reason a cell
+   * of glass in air really does fall as one. In a fluid it is different: the
+   * resistance goes with how much surface is pushing through the liquid while
+   * the weight goes with how much piece there is, so the big ones win. Take a
+   * disc of radius r: drag force goes as `r · v` and mass as `r²`, so the drag
+   * *rate* goes as `1 / r` and the speed a piece settles at goes as `r`. Twice
+   * across, twice as fast down.
+   *
+   * Nought for air, where the damping stands for the chamber rattling energy
+   * out of the glass rather than for air resistance, which glass this size does
+   * not feel. One for a liquid, where it is the whole story.
+   */
+  readonly dragBySize: number;
   /** Spin lost per second. A chip wedged in a full chamber does not twirl on. */
   readonly angularDrag: number;
   /**
@@ -138,6 +182,10 @@ export const AIR: Medium = {
   // the dry cell is exactly the chamber that was tuned.
   density: 0,
   drag: 2.2,
+  // Glass in air falls as one, whatever size it is cut to. See
+  // Medium.dragBySize — the damping here is the pile rattling energy out of
+  // itself, not the air getting in the way.
+  dragBySize: 0,
   angularDrag: 2.6,
   // Nothing in there to stir. What lags in a dry cell is the glass itself, and
   // that is already the solver's business.
@@ -181,6 +229,8 @@ export function liquidCell(thickness: number): Medium {
     // Light oil against glass, up to a gel that all but floats it.
     density: mix(0.36, 0.88, at),
     drag: mix(6, 16, at),
+    // The whole story in a fluid: a splinter hangs where a chunk sinks past it.
+    dragBySize: 1,
     angularDrag: mix(7, 18, at),
     // Thicker fluid grips the wall harder, so it takes up a turn sooner and
     // gives it back over longer.
@@ -295,7 +345,6 @@ export function updateChamber(
   const weight = GRAVITY * (1 - medium.density);
   const gravityX = Math.sin(angle) * weight;
   const gravityY = Math.cos(angle) * weight;
-  const damping = Math.max(0, 1 - medium.drag * step);
   const angularDamping = Math.max(0, 1 - medium.angularDrag * step);
   // A cell with nothing in it to turn has no swirl to speak of, whatever it is
   // handed. See Medium.stir.
@@ -313,6 +362,7 @@ export function updateChamber(
       // plain damping it has always been.
       const flowX = -flow * shard.y;
       const flowY = flow * shard.x;
+      const damping = dampingFor(shard, medium, step);
 
       shard.vx = flowX + (shard.vx + gravityX * step - flowX) * damping;
       shard.vy = flowY + (shard.vy + gravityY * step - flowY) * damping;
@@ -389,6 +439,28 @@ export function advanceFlow(flow: number, dt: number, turn: number, medium: Medi
   }
 
   return flow + (turn - flow) * Math.min(1, medium.stir * dt);
+}
+
+/**
+ * What fraction of its speed a piece keeps across one substep.
+ *
+ * Uniform in air, and a matter of size in a fluid: see {@link Medium.dragBySize}
+ * for why the rate goes as one over the radius, and so why a big piece settles
+ * at a speed a small one never reaches.
+ */
+function dampingFor(shard: Shard, medium: Medium, step: number): number {
+  let rate = medium.drag;
+
+  if (medium.dragBySize > 0 && shard.radius > 0) {
+    const bySize = Math.min(
+      DRAG_SIZE_LIMIT,
+      Math.max(1 / DRAG_SIZE_LIMIT, REFERENCE_PIECE / shard.radius),
+    );
+
+    rate *= 1 + (bySize - 1) * medium.dragBySize;
+  }
+
+  return Math.max(0, 1 - rate * step);
 }
 
 /** Mass: the area of the glass, not of the circle it was cut from. */

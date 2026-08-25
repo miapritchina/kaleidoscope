@@ -71,7 +71,7 @@ through as dark spokes.
 
 ### The mirrors, folded instead of drawn
 
-Steps 4 and 5 above describe the figure being *drawn*. On any browser with WebGL2 it is
+Steps 4 and 5 above describe the figure being _drawn_. On any browser with WebGL2 it is
 not: `lib/compositor.ts` runs those two steps as a fragment shader, which asks the
 opposite question. Rather than working out where to put each triangle, it takes each pixel
 and folds it back into the one triangle the source is painted in. `lib/fold.ts` is that
@@ -317,16 +317,19 @@ src/
 
 ## Settings
 
-| Setting          | Range                  | Effect                                         |
-| ---------------- | ---------------------- | ---------------------------------------------- |
-| Source           | glass, liquid, view    | Which instrument this is                       |
-| Pieces           | 30–150                 | How many are in the chamber                    |
-| Thickness        | oil–gel                | How much of the glass's weight the fluid holds |
-| Mirror size      | 0.5x–3x                | How wide the mirror triangle is                |
-| Mirror angle     | 0–120°                 | Which way up the tube is being held            |
-| Real gravity     | on/off                 | Let the phone's position say which way is down |
-| Show the mirrors | on/off                 | Draws the triangle, and points at gravity      |
-| Seed             | any text               | Seeds the chamber; same seed, same arrangement |
+| Setting          | Range               | Effect                                          |
+| ---------------- | ------------------- | ----------------------------------------------- |
+| Source           | glass, liquid, view | Which instrument this is                        |
+| Pieces           | 30–150              | How many are in the chamber                     |
+| Variety          | one size–widest     | How much the piece sizes differ from each other |
+| Glitter          | none–plenty         | How many flakes of foil are in with the glass   |
+| Thickness        | oil–gel             | How much of the glass's weight the fluid holds  |
+| Ink              | clear–plenty        | How much dye is loose in the liquid             |
+| Mirror size      | 0.5x–3x             | How wide the mirror triangle is                 |
+| Mirror angle     | 0–120°              | Which way up the tube is being held             |
+| Real gravity     | on/off              | Let the phone's position say which way is down  |
+| Show the mirrors | on/off              | Draws the triangle, and points at gravity       |
+| Seed             | any text            | Seeds the chamber; same seed, same arrangement  |
 
 **The gestures are for the contents and the panel is for the instrument.** Swiping turns the
 tube, pinching sizes what is in it and two fingers move it about; the one thing the hand
@@ -582,6 +585,16 @@ cell to the floor:
 terminal speed rather than an acceleration — glass in oil reaches a drift and holds it,
 which is the thing that reads as liquid rather than as low gravity.
 
+And **the big pieces sink faster**, which is the drag's doing rather than the weight's.
+Gravity is an acceleration, so on its own it moves a boulder and a grain at exactly the
+same rate — Galileo's point, and the reason a dry cell really does fall as one lump. In a
+fluid it is different: the resistance goes with how much surface is pushing through the
+liquid while the weight goes with how much piece there is. For a disc of radius `r` the
+drag force goes as `r · v` and the mass as `r²`, so the drag _rate_ goes as `1 / r` and
+the speed a piece settles at goes as `r`. Twice across, twice as fast down — measured, a
+0.12 piece falls 1.8× as far in a second as a 0.04 one, and in air the two land together
+to two decimal places.
+
 **The fluid's own turning.** A liquid does not turn with the tube. It lags while the tube
 is turning, and then carries on after it has stopped. That lag is one number — how fast the
 wall drags the body of fluid up to its own rate — and it is most of what a hand feels:
@@ -633,6 +646,79 @@ surface to slosh, and no current except the one the wall stirs up. Real fluid in
 is a different job — a density constraint in the same XPBD loop, rendered as screen-space
 metaballs — and it is still on the roadmap, along with smoke and ink, which is a grid
 solver and a different job again.
+
+### Glitter, which is now in the cell rather than on the picture
+
+Real glitter is thousands of tiny flat mirrors lying at every angle, and it does not glow
+— it **flashes**, one flake at a time, as the angle between the eye, the flake and the
+light passes through alignment. Each flake keeps a normal of its own and is lit properly,
+so tipping the phone sets them off in waves. That part was always right.
+
+What was wrong is that the flakes were **nowhere**. They were a lattice in the source
+triangle's frame, evaluated per pixel in the shader, so they sat perfectly still while the
+glass avalanched underneath them and the fluid swept past. Now they are matter, and a
+flake goes wherever what surrounds it goes:
+
+- In a **dry** chamber it is caught on a piece of glass — glitter poured in with the
+  shards sits among them, it does not hang in the air — so it rides that piece exactly,
+  tumbling as it tumbles and resting when it rests. Nothing is integrated for it at all.
+- In a **liquid** one it is loose in the fluid, and it goes where the fluid goes: held up
+  almost perfectly, because a flake is a few microns of foil and weighs next to nothing
+  for its area, and swept round by the swirl long after the glass has given up.
+
+A flake is drawn twice: once as itself, which covers what is behind it, and again as the
+flash. Drawing only the flash is the trap the whole effect falls into, and the shader fell
+into it — **light added to a white ground is still white**, and this chamber's ground is
+white, so half the cell's flakes were perfectly invisible and the rest only tinged the
+glass they lay on. Which is also true of the real thing: a mirror cannot be brighter than
+a lit white page. What it can do is _sit on_ it.
+
+The Glitter slider spends a fixed population rather than scaling one field, so a fifth of
+the way up only a fifth of the flakes are simulated or drawn and the rest cost nothing.
+Because the flakes are chamber contents, glitter no longer applies to a photograph or the
+camera — there is nothing there for it to be suspended in.
+
+### Ink, which is a fluid of a different kind
+
+The glass and the glitter are particles. The **Ink** slider is the other kind of fluid
+entirely: a grid, holding a velocity field and the dye carried in it. It is Stam's _Stable
+Fluids_ (SIGGRAPH 1999) — advect the velocity by tracing it backwards, make it
+divergence-free, then carry the dye along on the result. Semi-Lagrangian advection is
+unconditionally stable, which is what makes it safe against whatever frame time a phone
+hands over.
+
+The roadmap put this on the GPU, and per pixel it belongs there. At the size an object
+cell actually needs it does not have to be: 64×64 is four thousand cells, and stepped at
+30 Hz with the time banked it measures **0.9 ms per rendered frame** against the rest of
+the chamber's 0.6. What that buys is that the ink lives with the rest of the chamber
+rather than in the compositor — so it is painted into the source triangle and folded by
+the mirrors with everything else, six reflections of the same ribbon.
+
+Three things drive it, and the third is what makes it belong to this instrument:
+
+- The **wall** drags the whole body of fluid round, at the same rate the glass feels, so
+  the ink lags a turn and outlives it.
+- The **dye's own weight**, which is a little more than the fluid's, so a ribbon sags.
+- The **glass**. A piece sinking through the fluid pulls a wake behind it and an avalanche
+  leaves the whole cell churning. Only glass that is actually moving, and in proportion to
+  how fast: pulling the fluid towards every piece's velocity regardless is the same rule
+  read backwards, and a cell packed with settled shards would then hold the fluid still
+  everywhere at once and the ink would stop dead the moment the pile did.
+
+Three dyes rather than one, and **subtractive**: each takes its own primary out of the
+light, the way real dye in a lit cell does, so the drawing is composited with `multiply`
+and two dyes folded together read as the mixture rather than as the brighter of the pair.
+
+One honest caveat, written where the code is: tracing backwards and sampling bilinearly
+loses a little of the field every step, and over a minute that would turn ribbons into a
+flat wash. Real ink in oil does not do that, because it is suspended rather than
+dissolved; modelling _that_ means tracking the surface between two fluids, which is a
+much larger job. So the blur is fought rather than modelled — a little of the local
+average is taken back out of every cell each step. It is a countermeasure to a fault of
+the method, not a physical effect.
+
+A cell packed with 150 pieces of glass hides most of the ink, because the glass is in
+front of it and the glass is opaque. Fewer pieces is what shows it off.
 
 ### Why a tab and not a switch
 

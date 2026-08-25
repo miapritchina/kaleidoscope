@@ -3,14 +3,17 @@ import { Compositor } from './compositor';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
+import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
 import {
   applyCutShape,
   DRAG_CELLS,
   drawChamber,
+  liveFlakes,
   SKIN_PATCH,
   type Glass,
   type Scene,
 } from './scene';
+import { paintSmoke } from './smoke';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
 import { isChamberSource, LIMITS, type Settings } from './settings';
 import {
@@ -114,17 +117,6 @@ const VIGNETTE_CLEAR = 0.16;
 const RIM_DISPERSION = 1.4;
 
 /**
- * How far apart the flakes of glitter are, as a fraction of the triangle.
- *
- * One flake to a square of this side. Fine enough that a hexagon holds a few
- * hundred, coarse enough that two never land on the same pixel — and tied to
- * the triangle rather than to the screen, so zooming in magnifies the glitter
- * along with everything else instead of leaving it a constant screen-sized
- * speckle, which is the tell of an effect laid over a picture.
- */
-const GLITTER_GRAIN = 0.035;
-
-/**
  * How far the room's light tips away from straight ahead.
  *
  * A phone lying flat under a ceiling light is looking straight up it; held over
@@ -209,6 +201,7 @@ export class KaleidoscopeRenderer {
   #falloffSide = 0;
   #vignetteCache: CanvasGradient | null = null;
   #sprites: ChipSprites | null = null;
+  #flakes: FlakeSprites | null = null;
 
   readonly #createCanvas: () => HTMLCanvasElement;
   #tile: HTMLCanvasElement | null = null;
@@ -326,6 +319,7 @@ export class KaleidoscopeRenderer {
     // Shapes and lighting only, and neither depends on a setting, so they are
     // built once and kept.
     this.#sprites ??= createChipSprites();
+    this.#flakes ??= createFlakeSprites();
     const sprites = this.#sprites;
 
     const chamber = isChamberSource(settings.source);
@@ -363,7 +357,7 @@ export class KaleidoscopeRenderer {
 
     this.#source = source;
     this.#paintWedge(source, triangle);
-    this.#compositeTiling(triangle, framework, settings, scene.tilt);
+    this.#compositeTiling(triangle, framework, settings);
 
     if (settings.debug) {
       this.#drawDebug(triangle, scene.tilt, framework);
@@ -547,10 +541,14 @@ export class KaleidoscopeRenderer {
       // most of the simulation outside the view, and turning sweeps the pile
       // clean out of it.
       ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
+
+      // The triangle's circumradius: the cell reaches all three corners and no
+      // further, so every chip that is simulated has a chance of being seen.
+      const cellScale = reach / Math.sqrt(3) / CHAMBER_RADIUS;
+      const pan = { x: scene.drag.x * DRAG_CELLS, y: scene.drag.y * DRAG_CELLS };
+
       drawChamber(ctx, scene, {
-        // The triangle's circumradius: the cell reaches all three corners and no
-        // further, so every chip that is simulated has a chance of being seen.
-        scale: reach / Math.sqrt(3) / CHAMBER_RADIUS,
+        scale: cellScale,
         // A pinch in progress, seen live: the glass is only recut once the
         // size rests, so until then the sprites run ahead of the cut by the
         // gap between the live setting and the scale the scene was cut at.
@@ -558,13 +556,51 @@ export class KaleidoscopeRenderer {
         // The cell turns inside the fixed mirrors. What the glass does within it
         // is the physics' business, not this rotation's.
         rotation: scene.cell,
-        pan: {
-          x: scene.drag.x * DRAG_CELLS,
-          y: scene.drag.y * DRAG_CELLS,
-        },
+        pan,
         sprites,
         glasses,
       });
+
+      // The ink, over the glass rather than behind it, and taken out of the
+      // light rather than added to it: dye between the eye and the chamber
+      // tints everything coming through — the ground, and the glass lying in
+      // it. Drawn at the grid's own size and let up to the cell's, which is a
+      // bilinear filter over a field the solver itself reads bilinearly.
+      const ink = scene.smoke ? paintSmoke(scene.smoke, settings.ink) : null;
+
+      if (ink) {
+        const across = CHAMBER_RADIUS * cellScale;
+
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(ink, -across, -across, across * 2, across * 2);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      // And the glitter last, because a flake is a highlight: it goes over
+      // whatever it is lying on, ink and glass alike.
+      drawGlitter(ctx, scene.flakes, {
+        scale: cellScale,
+        rotation: scene.cell,
+        pan,
+        // Where the room's light is, seen from a phone being held at the
+        // scene's tilt. The light stays where it is and the instrument turns
+        // under it, so this is the tilt read back into the screen's own axes —
+        // which is why the flakes fire in waves as the phone moves and sit
+        // still when it does not.
+        light: {
+          x: Math.sin(scene.tilt) * LIGHT_THROW,
+          y: Math.cos(scene.tilt) * LIGHT_THROW,
+          z: 1,
+        },
+        live: liveFlakes(settings.glitter),
+        sprites: this.#flakes ?? createFlakeSprites(),
+      });
+
       ctx.restore();
     }
   }
@@ -577,10 +613,10 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(side: number, angle: number, settings: Settings, tilt: number): void {
+  #compositeTiling(side: number, angle: number, settings: Settings): void {
     const ctx = this.#ctx;
 
-    if (this.#compositeWithShader(side, angle, settings, tilt)) {
+    if (this.#compositeWithShader(side, angle, settings)) {
       return;
     }
 
@@ -639,7 +675,7 @@ export class KaleidoscopeRenderer {
     return this.#shader;
   }
 
-  #compositeWithShader(side: number, angle: number, settings: Settings, tilt: number): boolean {
+  #compositeWithShader(side: number, angle: number, settings: Settings): boolean {
     const shader = this.#theShader();
 
     if (!shader) {
@@ -671,17 +707,6 @@ export class KaleidoscopeRenderer {
         depth: VIGNETTE_DEPTH,
       },
       dispersion: RIM_DISPERSION,
-      glitter: settings.glitter,
-      grain: Math.max(1, side * GLITTER_GRAIN),
-      // Where the room's light is, seen from a phone being held at `tilt`. The
-      // light stays where it is and the instrument turns under it, so this is
-      // the tilt read back into the screen's own axes — which is why the flakes
-      // fire in waves as the phone moves and sit still when it does not.
-      light: {
-        x: Math.sin(tilt) * LIGHT_THROW,
-        y: Math.cos(tilt) * LIGHT_THROW,
-        z: 1,
-      },
       // Never over the chamber. The bead is a marble over the objective, and a
       // real instrument with an object cell has no objective to put one over —
       // the cell caps the tube. It was tried applying to everything, and over

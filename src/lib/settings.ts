@@ -45,6 +45,19 @@ export interface Settings {
   /** How many shards live in the source cell. */
   shards: number;
   /**
+   * How much the piece sizes differ from each other, from none to the widest.
+   *
+   * Nought is a cell of one size — every piece "normal", whatever the pinch has
+   * set that to. Opening it spreads the sizes about that middle in proportion,
+   * so the smallest get smaller as the biggest get bigger, and at the far end a
+   * cell holds everything from grit to beads.
+   *
+   * It changes the variety and nothing else: the total area of glass is held
+   * constant across the range, so a wider mix does not also fill the chamber
+   * fuller. How full it is stays the piece count's business.
+   */
+  variety: number;
+  /**
    * How thick the liquid cell's fluid is, from a thin oil to a gel.
    *
    * Only the liquid cell has one. It moves two things together, because in a
@@ -56,6 +69,16 @@ export interface Settings {
    */
   thickness: number;
   /**
+   * How much ink is loose in the liquid cell, from none to plenty.
+   *
+   * Only the liquid cell has one, because it is the only one with a fluid to
+   * carry it. The ink is a fluid of its own rather than a tint: it is advected
+   * by a velocity field that the turning tube stirs and the falling glass drags
+   * behind it, so it draws out into ribbons and folds back over itself the way
+   * ink in oil does. See `lib/smoke.ts`.
+   */
+  ink: number;
+  /**
    * How much glitter is suspended in the chamber, from none to plenty.
    *
    * Real glitter is thousands of tiny flat mirrors at random orientations, and
@@ -63,6 +86,11 @@ export interface Settings {
    * you, the flake and the light passes through alignment. So this is only
    * half a look: the other half is the phone moving, and it comes alive when
    * **Real gravity** is on and the room's light starts sweeping across it.
+   *
+   * The flakes are matter in the cell rather than a speckle laid over it: in a
+   * dry chamber each one is caught on a piece of glass and tumbles with it, and
+   * in a liquid one they are loose in the fluid and go where it goes. See
+   * `lib/glitter.ts`.
    */
   glitter: number;
   /**
@@ -154,7 +182,9 @@ export const LIMITS = {
   // slider only empties it; the low end is deliberately sparse, a few beads
   // tumbling being a look someone can choose.
   shards: { min: 30, max: 150, step: 1 },
+  variety: { min: 0, max: 1, step: 0.05 },
   thickness: { min: 0, max: 1, step: 0.05 },
+  ink: { min: 0, max: 1, step: 0.05 },
   glitter: { min: 0, max: 1, step: 0.05 },
   bead: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
@@ -170,6 +200,10 @@ export const DEFAULT_SETTINGS: Settings = {
   // Full: the most glass the mechanism affords, which is also what keeps the
   // mirror triangle covered. See LIMITS.
   shards: 150,
+  // The middle of the range, which is about the spread the chamber has always
+  // been cut at: a little over three to one between the smallest piece and the
+  // biggest.
+  variety: 0.5,
   // Oil rather than gel: the glass still sinks, visibly and slowly, which is
   // what says the cell is full of something. A gel is a look to choose and not
   // one to open on — nothing appears to be happening in it until the tube is
@@ -177,6 +211,9 @@ export const DEFAULT_SETTINGS: Settings = {
   thickness: 0.35,
   // Enough to catch the light without becoming the subject.
   glitter: 0.35,
+  // None. Ink is a strong look and a deliberate one — a cell arrives clear,
+  // and it is poured in.
+  ink: 0,
   bead: 0.6,
   sourceScale: 1,
   objects: [DEFAULT_OBJECTS],
@@ -218,7 +255,9 @@ export function sanitizeSettings(input: unknown): Settings {
       ? raw.cameraFacing
       : DEFAULT_SETTINGS.cameraFacing,
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
+    variety: clampToLimit(toNumber(raw.variety, DEFAULT_SETTINGS.variety), LIMITS.variety),
     thickness: clampToLimit(toNumber(raw.thickness, DEFAULT_SETTINGS.thickness), LIMITS.thickness),
+    ink: clampToLimit(toNumber(raw.ink, DEFAULT_SETTINGS.ink), LIMITS.ink),
     glitter: clampToLimit(toNumber(raw.glitter, DEFAULT_SETTINGS.glitter), LIMITS.glitter),
     bead: clampToLimit(toNumber(raw.bead, DEFAULT_SETTINGS.bead), LIMITS.bead),
     sourceScale: clampToLimit(
@@ -258,7 +297,9 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     objects: settings.objects.join(','),
     zoom: String(settings.zoom),
     angle: String(settings.angle),
+    variety: String(settings.variety),
     thickness: String(settings.thickness),
+    ink: String(settings.ink),
     seed: settings.seed,
   });
 
@@ -313,7 +354,9 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     // page load that nobody at this end asked for.
     source: isSourceId(source) && isChamberSource(source) ? source : DEFAULT_SETTINGS.source,
     shards: params.get('shards'),
+    variety: params.get('variety'),
     thickness: params.get('thickness'),
+    ink: params.get('ink'),
     glitter: params.get('glitter'),
     bead: params.get('bead'),
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),

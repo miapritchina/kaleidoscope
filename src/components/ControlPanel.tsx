@@ -215,6 +215,20 @@ export function ControlPanel({
               }}
             />
 
+            {/* How much the sizes differ, not how big they are — that is the
+                pinch on the artwork. Nought is a cell cut to one size. */}
+            <RangeField
+              label="Variety"
+              value={settings.variety}
+              limit={LIMITS.variety}
+              format={(value) =>
+                value <= LIMITS.variety.min ? 'one size' : `${String(Math.round(value * 100))}%`
+              }
+              onChange={(value) => {
+                onChange('variety', value);
+              }}
+            />
+
             {kind === 'liquid' && (
               <RangeField
                 label="Thickness"
@@ -232,6 +246,18 @@ export function ControlPanel({
                 }
                 onChange={(value) => {
                   onChange('thickness', value);
+                }}
+              />
+            )}
+
+            {kind === 'liquid' && (
+              <RangeField
+                label="Ink"
+                value={settings.ink}
+                limit={LIMITS.ink}
+                format={(value) => (value === 0 ? 'clear' : `${String(Math.round(value * 100))}%`)}
+                onChange={(value) => {
+                  onChange('ink', value);
                 }}
               />
             )}

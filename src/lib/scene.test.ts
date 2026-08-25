@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import { createChipSprites } from './chips';
 import { CHAMBER_RADIUS, settleChamber } from './chamber';
-import { createScene, DEPTH_OVERLAP, drawChamber, SHARD_KINDS, updateScene } from './scene';
+import {
+  createScene,
+  DEPTH_OVERLAP,
+  drawChamber,
+  pieceRadius,
+  SHARD_KINDS,
+  updateScene,
+} from './scene';
 import { DEFAULT_SETTINGS } from './settings';
 
 // jsdom has no canvas backend, so chip sprites are rendered onto recorders
@@ -130,6 +137,54 @@ describe('createScene', () => {
       }
     }
   }, 60000);
+});
+
+describe('the variety of the glass', () => {
+  /** The whole spread, sampled evenly, rather than one chamber's worth of it. */
+  const spread = (variety: number, samples = 2000) =>
+    Array.from({ length: samples }, (_, index) => pieceRadius(index / (samples - 1), variety));
+
+  it('cuts every piece the same size at nought', () => {
+    const cut = spread(0);
+
+    expect(Math.min(...cut)).toBeCloseTo(Math.max(...cut), 9);
+  });
+
+  it('spreads them further the further it is opened', () => {
+    const ratio = (variety: number) => {
+      const cut = spread(variety);
+
+      return Math.max(...cut) / Math.min(...cut);
+    };
+
+    expect(ratio(0.25)).toBeGreaterThan(1.2);
+    expect(ratio(0.6)).toBeGreaterThan(ratio(0.25));
+    expect(ratio(1)).toBeGreaterThan(ratio(0.6));
+    // Everything from a speck to a bead at the widest.
+    expect(ratio(1)).toBeGreaterThan(6);
+  });
+
+  // The point of the slider: it changes the variety and nothing else. A piece
+  // three times across is nine times the glass, so left alone a wider mix would
+  // fill the chamber as well as mix it and there would be no way to ask for one
+  // without the other.
+  it('holds the average area of glass constant across the whole range', () => {
+    const area = (variety: number) =>
+      spread(variety).reduce((sum, radius) => sum + radius * radius, 0);
+    const middle = area(0);
+
+    for (const variety of [0.25, 0.5, 0.75, 1]) {
+      expect(area(variety) / middle).toBeCloseTo(1, 2);
+    }
+  });
+
+  it('is what the chamber is actually cut to', () => {
+    const one = createScene('variety', 30, { variety: 0 }).shards.map((shard) => shard.radius);
+    const many = createScene('variety', 30, { variety: 1 }).shards.map((shard) => shard.radius);
+
+    expect(Math.max(...one) / Math.min(...one)).toBeCloseTo(1, 6);
+    expect(Math.max(...many) / Math.min(...many)).toBeGreaterThan(3);
+  });
 });
 
 describe('updateScene', () => {
@@ -432,8 +487,8 @@ describe('drawChamber', () => {
   });
 
   it('remembers the scale it was cut at, floored like the cut itself', () => {
-    expect(createScene('scale', 4, 2).chipScale).toBe(2);
-    expect(createScene('scale', 4, 0).chipScale).toBe(0.05);
+    expect(createScene('scale', 4, { scale: 2 }).chipScale).toBe(2);
+    expect(createScene('scale', 4, { scale: 0 }).chipScale).toBe(0.05);
     expect(createScene('scale', 4).chipScale).toBe(1);
   });
 
@@ -558,8 +613,8 @@ describe('drawChamber', () => {
   // displaces its neighbours and piles differently. Scaling only the sprite
   // leaves every arrangement identical and just draws it smaller.
   it('gives bigger pieces a bigger footprint, not just a bigger picture', () => {
-    const small = createScene('scale', 12, 1);
-    const large = createScene('scale', 12, 2);
+    const small = createScene('scale', 12, { scale: 1 });
+    const large = createScene('scale', 12, { scale: 2 });
 
     for (const [index, shard] of large.shards.entries()) {
       expect(shard.radius).toBeCloseTo(small.shards[index]!.radius * 2, 6);

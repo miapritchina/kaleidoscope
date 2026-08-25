@@ -145,9 +145,10 @@ Brief specular hits on individual pieces as they tumble, alpha driven by each
 piece's `rotation` against a virtual light. One small radial gradient per lit
 piece. Makes a settling pile feel alive rather than merely animated. **2D.**
 
-### ~~Glitter~~ — done
+### ~~Glitter~~ — done, then done properly
 
-`glitterAt` in `lib/compositor.ts`, behind a **Glitter** slider.
+`lib/glitter.ts`, behind a **Glitter** slider. It began as `glitterAt` in the
+compositor and has been taken out of there.
 
 Real glitter is thousands of tiny flat mirrors at random orientations, and it
 does not glow — it *flashes*, one flake at a time, as the angle between you, the
@@ -162,6 +163,28 @@ they fire in waves across the field.
 Suspended in the oil cell below, this is probably the single prettiest thing on
 this list. **GL** — thousands of instanced points with per-flake normals is a
 shader's home ground and a 2D canvas's worst case.
+
+That last paragraph was wrong twice, and both were worth finding.
+
+**The flakes were nowhere.** A lattice in the source triangle's frame, evaluated
+per pixel, is fixed to the triangle — so it sat perfectly still while the glass
+avalanched underneath it and the fluid swept past. The flash was right and the
+matter was missing. They are particles now, seven hundred of them, and a flake
+goes wherever what surrounds it goes: caught on a piece of glass in a dry cell,
+riding it as it tumbles; loose in the fluid in a liquid one, swept round by the
+swirl long after the glass has given up. The count is what the slider spends, so
+a fifth of the way up costs a fifth.
+
+**A flash alone is invisible.** Light added to a white ground is still white, and
+this chamber's ground is white — so half the cell's flakes could not be seen at
+all and the rest only tinged the glass they lay on. Which is true of the real
+thing as well: a mirror cannot be brighter than a lit white page. What it can do
+is _sit on_ it. A flake is drawn twice now, once as itself and once as the flash.
+
+And the 2D canvas was not the worst case after all, because the count that
+matters is the count in the cell rather than the count on the screen. Seven
+hundred specks and their flashes are about a thousand sprite draws a frame, next
+to the four hundred and fifty the glass already costs.
 
 ### Thin-film interference on piece edges
 
@@ -342,6 +365,16 @@ that reduced weight into a terminal drift rather than a slow acceleration. One
 piece dropped the height of the cell takes 1.1 s dry, 3.2 s in a thin oil, 6.9 s
 at the default and 45 s in the gel.
 
+Drag is also where **size** comes in, which the first version of this missed and
+which is the first thing anybody notices: every piece sank at the same rate.
+Gravity is an acceleration, so it moves a boulder and a grain alike — which is
+right for the dry cell, where the damping stands for the pile rattling energy
+out of itself rather than for air resistance. In a fluid the resistance goes
+with the surface and the weight with the bulk, so for a disc the drag rate goes
+as `1/r` and the settling speed as `r`. Twice across, twice as fast down; a 0.12
+piece now falls 1.8× as far in a second as a 0.04 one, and in air the two still
+land together.
+
 The third is that **a liquid does not turn with the tube**. It lags while the
 tube is turning and then carries on after it has stopped, and that one number —
 how fast the wall drags the body of fluid up to its own rate — is most of what
@@ -369,6 +402,31 @@ Still a medium and not a fluid: nothing displaces it, there is no surface to
 slosh, and the only current is the one the wall stirs up. The two below are what
 would change that.
 
+### ~~One size of glass, and every size~~ — done
+
+`pieceRadius` in `lib/scene.ts`, behind a **Variety** slider on both chamber
+tabs. Nought is a cell cut to one size — "normal", whatever the pinch has set
+that to — and opening it spreads the sizes about that middle, so the smallest
+get smaller as the biggest get bigger. At the widest the biggest piece is ten
+times the smallest, which is everything from grit to beads.
+
+In proportion rather than in width, because size is felt as a ratio: a piece
+twice its neighbour reads the same way whether the two are specks or boulders.
+So the sizes are spread evenly in the logarithm, and the slider is the width of
+that spread.
+
+The part worth writing down is what it took to make the slider mean **only** what
+it says. A piece three times across is nine times the glass, so a wider spread
+would have filled the chamber as well as mixed it, and there would have been no
+way to ask for one without the other. With `r = m·e^(u·h)` for `u` even over
+`[-1, 1]`, the mean of `r²` is `m²·sinh(2h)/2h` — so dividing the middle by the
+root of that holds the total area of glass constant across the whole range. How
+full the cell is stays the piece count's business, which is where the fill
+ceiling in "Make the chamber round" measured it.
+
+The middle is the same size a medium's drag is quoted at, deliberately: "normal"
+ought to mean one thing in the chamber.
+
 ### Actual fluid, on the solver we already built
 
 The unusual-physics one, and the reason it is realistic to want it: **Position
@@ -384,20 +442,60 @@ cheap half of this and is not on the way to it: it is a medium the glass moves
 through, with no liquid of its own to push about. What it does supply is the
 tab, the thickness control and somewhere for this to land when it is built.
 
+The ink below is nearer than it looks, and still not this. It holds a real
+velocity field that the glass stirs — so the coupling exists in one direction
+already — but it is a grid on the Eulerian side of the fence and the glass
+never feels it back. Giving the shards the fluid's push would be the first half
+of this, and cheap; the density constraint that makes the fluid itself a pile of
+particles is the other half, and is the job.
+
 Rendered as screen-space metaballs, which is another piece of luck: pieces are
 *already* chains of 2–4 circles for collision, so the metaball field is sitting
 there waiting to be drawn. **GL** to render; the solver work is **2D**-agnostic.
 
-### Smoke and ink
+### ~~Smoke and ink~~ — done, and on the CPU
 
-Stable-fluids advection on the GPU — the standard Stam solver, cheap at modest
-resolution on a phone. Ink drifting through a kaleidoscope chamber is genuinely
-unusual and would look like nothing else. Separate from the liquid above: this
-is a grid, that is particles. **GL.**
+`lib/smoke.ts`, behind an **Ink** slider on the Liquid tab. The standard Stam
+solver, and it did look like nothing else.
 
-The Liquid tab is where this would go, and the swirl the oil cell already
-tracks — one number for how fast the body of fluid is turning — is the velocity
-field's boundary condition waiting to be used.
+**GL** turned out not to be needed, and the reason is worth writing down: ink is
+smooth. It has no edges of its own to resolve, only ribbons, so the picture at
+64×64 is nearly the picture at twice that — and four thousand cells stepped at
+30 Hz, with the time banked so the drift rate does not depend on the frame rate,
+measures **0.9 ms per rendered frame** against the rest of the chamber's 0.6.
+Being on the CPU is what lets the ink live with the rest of the chamber instead
+of in the compositor: it is painted into the source triangle and folded by the
+mirrors along with everything else, six reflections of the same ribbon.
+
+Three things drive the field. The wall drags the body of fluid round at the rate
+`advanceFlow` already tracks — the swirl was indeed waiting to be used. The dye
+is a little heavier than what it floats in, so a ribbon sags. And **the glass
+stirs it**: a piece sinking through pulls a wake, an avalanche leaves the whole
+cell churning. That last one has a trap in it. Pulling the fluid towards every
+piece's velocity is the same rule read backwards — a cell packed with settled
+glass then holds the fluid still everywhere the glass is, which is nearly
+everywhere, and the ink stops dead the moment the pile does. Only moving glass
+stirs, and in proportion to how fast.
+
+Three dyes, subtractive, each taking its own primary out of the light, so the
+drawing composites with `multiply` and two dyes folded together read as the
+mixture rather than as the brighter of the pair.
+
+What it is not: the dye is advected, not suspended. Tracing backwards and
+sampling bilinearly loses a little of the field every step, and over a minute
+that would turn ribbons into a flat wash — which real ink in oil does not do,
+because it is suspended rather than dissolved. Modelling that means tracking the
+surface between two fluids. So the blur is fought instead: a little of the local
+average is taken back out of every cell each step. It is a countermeasure to a
+fault of the method, and it is written down as one.
+
+**One thing was tried and did not pay.** The wall is a circle on a square grid,
+so nine cells in ten have all four neighbours inside it and could read them
+straight out of the array rather than asking about each one. Marking those cells
+and giving the pressure solve and the advection a path of their own for them
+measured **0.862 ms against 0.899** — four per cent, for a field to build and
+keep and three more branches in the hottest loops in the chamber. The engine was
+already inlining the check. It was taken out again.
 
 ### Polarised mode
 
