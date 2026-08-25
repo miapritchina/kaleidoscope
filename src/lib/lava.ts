@@ -48,6 +48,13 @@ export interface Blob {
   /** How warm it is: 0 cold and sinking, 1 warm and climbing. */
   heat: number;
   /**
+   * Seconds before it may run into anything again.
+   *
+   * Set when a blob pinches apart, and it is what keeps the cell from flipping
+   * between two pictures at frame rate — see {@link SETTLE}.
+   */
+  settled: number;
+  /**
    * What colour it is, as red, green and blue.
    *
    * Carried rather than looked up, because two blobs that run together make one
@@ -121,8 +128,31 @@ const GRAVITY = 6;
 /** How hard the heat cycle drives, as a share of gravity. */
 const BUOYANCY = 0.55;
 
-/** How fast a blob takes the temperature of the end of the cell it is at. */
-const EXCHANGE = 0.22;
+/**
+ * How fast a blob takes the temperature of the end of the cell it is at.
+ *
+ * Per second, and only while it is at an end — see {@link ENDS}.
+ */
+const EXCHANGE = 0.8;
+
+/**
+ * How much of each end of the cell is warm or cold, as a share of the radius.
+ *
+ * The bulb is at the bottom and the cool glass at the top, and **in between a
+ * blob keeps whatever heat it has**. That is the whole of why the cell
+ * circulates rather than settling, and getting it wrong is subtle enough to be
+ * worth writing down: a first version aimed every blob at a temperature read
+ * off its own height, everywhere, all the way up. Do that and heat tracks
+ * position, lift always points at the middle, and what looks like a heat cycle
+ * is a spring — every blob converges on the centre and stops there. Measured,
+ * the whole cell came to rest inside twenty seconds and the only thing still
+ * moving was blobs merging and splitting.
+ *
+ * A lamp works because of the *lag*: the wax is heated at the bottom, and it
+ * does not cool until it has been at the top for a while, so it overshoots at
+ * both ends. Nothing in the middle should touch its temperature at all.
+ */
+const ENDS = 0.35;
 
 /** Speed lost per second, before the fluid is thickened. */
 const DRAG = 2.6;
@@ -131,10 +161,30 @@ const DRAG = 2.6;
 const THICKEST = 4;
 
 /** Nearer than this share of their reaches, two blobs are one blob. */
-const MERGE = 0.55;
+const MERGE = 0.42;
 
 /** Past this much of the cell across, a blob comes apart. */
-const SPLIT = 0.42;
+const SPLIT = 0.5;
+
+/**
+ * How long wax that has just pinched apart keeps to itself, in seconds.
+ *
+ * The one number that stops this being a two-frame flicker instead of a lamp.
+ * Merging makes a blob bigger and splitting makes it smaller, so the two
+ * together are a loop — and with nothing to break it the loop runs at whatever
+ * rate the frames arrive. It did: two blobs met, the pair came out at exactly
+ * the size that splits, the halves landed close enough to meet again, and the
+ * whole cell alternated between two arrangements sixty times a second. It read
+ * as a stagger, which is what a two-frame cycle looks like.
+ *
+ * So a half that has just come off something will not run into anything for a
+ * while, which is also what real wax does: a neck pinches, the two ends pull
+ * away, and they do not immediately think better of it.
+ */
+const SETTLE = 1.5;
+
+/** How hard the two halves push away from each other, in cell units per second. */
+const PARTING = 0.3;
 
 /** How hard two blobs that are merely touching hold each other off. */
 const JOSTLE = 2.2;
@@ -182,6 +232,7 @@ export function createLava(seed: number, amount: number, scale = 1): Lava {
       // Spread across the cycle, so the cell opens mid-circulation rather than
       // with everything at the bottom waiting to be warmed.
       heat: rng(),
+      settled: 0,
       colour: [...TINTS[Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length))]!],
     });
   }
@@ -212,13 +263,16 @@ export function updateLava(lava: Lava, { dt, thickness, swirl, angle }: LavaUpda
   const damping = Math.max(0, 1 - DRAG * (1 + THICKEST * clamp(thickness)) * step);
 
   for (const blob of lava.blobs) {
+    blob.settled = Math.max(0, blob.settled - step);
     // How far down the cell it is, from -1 at the top to 1 at the bottom, in
     // whichever direction down currently happens to be.
     const along = (blob.x * downX + blob.y * downY) / CHAMBER_RADIUS;
-    // The bottom warms it and the top cools it. Everything else follows.
-    const wanted = clamp(0.5 + along * 0.75);
+    // The bulb at the bottom and the cool glass at the top, and nothing at all
+    // in between. See ENDS.
+    const warming = Math.max(0, (along - ENDS) / (1 - ENDS));
+    const cooling = Math.max(0, (-along - ENDS) / (1 - ENDS));
 
-    blob.heat += (wanted - blob.heat) * Math.min(1, EXCHANGE * step * 3);
+    blob.heat = clamp(blob.heat + (warming - cooling) * EXCHANGE * step);
 
     // Warm is lighter than what it floats in and climbs; cold is heavier and
     // sinks. Nothing else lifts a blob, which is why the cell circulates
@@ -296,8 +350,16 @@ function coalesce(lava: Lava): void {
   for (let i = 0; i < blobs.length; i += 1) {
     const a = blobs[i]!;
 
+    if (a.settled > 0) {
+      continue;
+    }
+
     for (let j = i + 1; j < blobs.length; j += 1) {
       const b = blobs[j]!;
+
+      if (b.settled > 0) {
+        continue;
+      }
 
       if (Math.hypot(b.x - a.x, b.y - a.y) > (a.reach + b.reach) * MERGE) {
         continue;
@@ -312,6 +374,7 @@ function coalesce(lava: Lava): void {
       a.vx = (a.vx * areaA + b.vx * areaB) / total;
       a.vy = (a.vy * areaA + b.vy * areaB) / total;
       a.heat = (a.heat * areaA + b.heat * areaB) / total;
+      a.settled = 0;
       a.colour = [
         (a.colour[0] * areaA + b.colour[0] * areaB) / total,
         (a.colour[1] * areaA + b.colour[1] * areaB) / total,
@@ -350,20 +413,30 @@ function divide(lava: Lava): void {
     const alongX = speed > 0 ? blob.vx / speed : 1;
     const alongY = speed > 0 ? blob.vy / speed : 0;
     const half = blob.reach / Math.SQRT2;
-    const gap = half * 0.7;
+    // Close, and pulling apart: the two halves are left overlapping enough
+    // that the sum of their fields is nearly what the parent's was, so the
+    // shape necks rather than the blob vanishing and two appearing either side
+    // of where it was. Set far enough apart to be visibly two, a split moved
+    // as much of the picture in one frame as two hundred ordinary frames do,
+    // which is what a pop is. They cannot run back together while `settled`.
+    const gap = half * 0.4;
 
     blob.reach = half;
     blob.x -= alongX * gap;
     blob.y -= alongY * gap;
+    blob.vx -= alongX * PARTING;
+    blob.vy -= alongY * PARTING;
+    blob.settled = SETTLE;
 
     halves.push({
       x: blob.x + alongX * gap * 2,
       y: blob.y + alongY * gap * 2,
       // The leading half keeps the momentum; the trailing half is what is left.
-      vx: blob.vx * 1.15,
-      vy: blob.vy * 1.15,
+      vx: blob.vx * 1.15 + alongX * PARTING * 2,
+      vy: blob.vy * 1.15 + alongY * PARTING * 2,
       reach: half,
       heat: blob.heat,
+      settled: SETTLE,
       colour: [...blob.colour],
     });
   }

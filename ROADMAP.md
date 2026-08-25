@@ -445,12 +445,34 @@ necks first. Merging adds areas and mixes colours; anything that grows past a
 fraction of the cell is pulled into two, because merging only runs one way and
 without that every cell ends as one lump.
 
-Three things were got wrong first and each looked reasonable at the time: sizing
-the blobs by how far their fields reach rather than by where the surface lands
-(0.54 of it) gave dots; sizing them on the areas of blobs that never overlap —
-when the whole point is that the fields add — filled the cell with one shape;
-and a palette drawn from opposite sides of the colour wheel averaged, through
-merge after merge, to the colour of a puddle.
+Five things were got wrong first and every one of them looked reasonable.
+
+**The heat cycle was a spring.** Aiming each blob at a temperature read off its
+own height, everywhere, makes lift point at the middle from both directions —
+so the cell converged on its own centre and stopped, and the only motion left
+was blobs merging and splitting. A lamp works because of the _lag_: the wax
+does not cool until it has been at the top a while, so it overshoots at both
+ends. Nothing in the middle should touch its temperature at all. Fixed, a blob
+takes about ten seconds to go up and come back, and the cell moves faster than
+it did on the churn that was standing in for it.
+
+**And the churn staggered.** Merging makes a blob bigger and splitting makes it
+smaller, so the two are a loop; with the split threshold sitting exactly where a
+merge lands and the halves placed close enough to meet again, the loop ran at
+frame rate and the whole cell alternated between two arrangements sixty times a
+second. On the field a typical frame moved it by 1.23 where it should move 0.015.
+Wax that has just pinched apart now keeps to itself for a second and a half, and
+the halves are left overlapping what they came off so the shape necks rather than
+popping. **Every other measurement was happy the whole time** — blobs inside the
+wall, wax conserved, colours mixing, count steady — which is the lesson worth
+keeping: the only thing that would have caught it is measuring the picture from
+one frame to the next, and `lava.test.ts` does that now.
+
+The other three: sizing the blobs by how far their fields reach rather than by
+where the surface lands (0.54 of it) gave dots; sizing them on the areas of blobs
+that never overlap — when the whole point is that the fields add — filled the
+cell with one shape; and a palette drawn from opposite sides of the colour wheel
+averaged, through merge after merge, to the colour of a puddle.
 
 ### Actual fluid, on the solver we already built
 
