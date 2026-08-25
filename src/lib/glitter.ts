@@ -1,46 +1,40 @@
-import { CHAMBER_RADIUS, type Medium } from './chamber';
+import { CHAMBER_RADIUS } from './chamber';
 import { mulberry32, randomBetween } from './random';
-import type { Shard } from './scene';
 
 /**
- * The glitter in the chamber.
+ * A cell of glitter.
  *
- * Real glitter is thousands of tiny flat mirrors lying at every angle, and it
- * does not glow — it *flashes*, one flake at a time, as the angle between the
- * eye, the flake and the light passes through alignment. That part was right
- * from the start and is unchanged here: each flake keeps a normal of its own
- * and is lit properly, so tipping the phone sets them off in waves.
+ * The whole content, not a sprinkle over something else: what is in the chamber
+ * is thousands of flakes of foil hanging in clear fluid, and the mirrors repeat
+ * those. One of the three things this instrument's object cell can hold instead
+ * of loose pieces — see `lib/lava.ts` and `lib/smoke.ts` for the others.
  *
- * What was wrong is that the flakes were nowhere. They were a lattice in the
- * source triangle's own frame, worked out per pixel in the shader — so they sat
- * perfectly still while the glass avalanched underneath them and the fluid
- * swept past, which is the tell of an effect laid over a picture rather than
- * something in the cell. Now they are matter, and **a flake goes wherever what
- * surrounds it goes**:
+ * Real glitter is tiny flat mirrors lying at every angle, and it does not glow
+ * — it *flashes*, one flake at a time, as the angle between the eye, the flake
+ * and the light passes through alignment. So each flake keeps a normal of its
+ * own and is lit properly: tip the phone and they go off in waves across the
+ * cell.
  *
- * - In a dry chamber it is caught on a piece of glass — glitter poured in with
- *   the shards sits among them, it does not hang in the air — so it rides that
- *   piece exactly, tumbling as it tumbles and resting when it rests.
- * - In a liquid one it is loose in the fluid, and it goes where the fluid goes:
- *   held up almost perfectly, because a flake is a few microns of foil and
- *   weighs next to nothing for its area, and swept round by the swirl of the
- *   turning tube long after the glass has given up.
+ * A flake is drawn twice, and the second time is the part that is easy to leave
+ * out. Light added to a lit ground is still that ground, so a flake that only
+ * flashed is invisible over anything pale — which is true of the real thing as
+ * well, since a mirror cannot be brighter than a lit white page. What it can do
+ * is *sit on* it. The flake is drawn as itself first, covering what is behind
+ * it, and the flash goes over the top.
  *
- * Coordinates are in cell units, with the chamber centred on the origin —
- * the same frame the glass is in.
+ * A flake is a few microns of foil and weighs next to nothing for its area, so
+ * the fluid carries it almost perfectly: it rides the swirl of a turning tube
+ * rather than swimming through it, and sags only slowly when nothing is moving.
+ *
+ * Coordinates are in cell units, with the chamber centred on the origin.
  */
 export interface Flake {
   /** Where it is, in cell units. */
   x: number;
   y: number;
-  /** How fast it is travelling. Only a loose flake in a fluid has any. */
+  /** How fast it is travelling, in cell units per second. */
   vx: number;
   vy: number;
-  /** Which piece of glass carries it in a dry cell. */
-  host: number;
-  /** Where on that piece it is caught, in the piece's frame, as a fraction. */
-  onX: number;
-  onY: number;
   /** How far the flake leans away from face-up. */
   lean: number;
   /** Which way it faces. */
@@ -52,35 +46,37 @@ export interface Flake {
 }
 
 /**
- * How many flakes a chamber is made with.
+ * How many flakes a cell holds at the two ends of the Amount slider.
  *
- * The Glitter slider spends this rather than scaling one fixed field: more
- * glitter is more flakes, so at a fifth of the way up only a fifth of them are
- * simulated or drawn and the rest cost nothing at all.
+ * A cell of glitter and nothing else wants a great many more than a sprinkle
+ * over glass did, and they are cheap: a flake is four numbers to advance and a
+ * sprite to stamp.
  */
-export const MAX_FLAKES = 700;
+const FEWEST = 300;
+export const MOST_FLAKES = 1800;
 
 /**
  * How big a flake is, in cell units. Small: a speck, not a sequin.
  *
- * A tenth of a normal piece of glass at most, which is about what craft glitter
- * is against the gems in a real cell. Bigger was tried to make them easier to
- * see and reads as confetti stuck to the picture; what makes them read is being
- * solid rather than being large — see {@link BODY}.
+ * Bigger was tried, to make them easier to see, and reads as confetti stuck to
+ * the picture. What makes them read is being solid rather than being large —
+ * see {@link BODY}.
  */
-const FLAKE_SMALLEST = 0.006;
-const FLAKE_LARGEST = 0.013;
+const FLAKE_SMALLEST = 0.007;
+const FLAKE_LARGEST = 0.016;
 
 /**
- * How much of the fluid's push a flake takes per second.
+ * How much of the fluid's push a flake takes per second, in a thin fluid.
  *
- * Far higher than the glass gets, and that is the physics rather than a taste:
- * drag goes with how much surface is pushing through the liquid and weight with
- * how much there is of the thing, so a flake — which is almost all surface —
- * is dragged along almost perfectly. It rides the fluid rather than swimming
- * through it.
+ * High, and that is the physics rather than a taste: drag goes with how much
+ * surface is pushing through the liquid and weight with how much there is of
+ * the thing, so a flake — almost all surface — is dragged along almost
+ * perfectly.
  */
 const FLAKE_GRIP = 9;
+
+/** How much more of everything the far end of the Thickness slider is. */
+const THICKEST = 3;
 
 /**
  * How much of its own weight a flake still feels in the fluid.
@@ -94,17 +90,29 @@ const FLAKE_SINK = 0.12;
 const GRAVITY = 6;
 
 /**
- * Builds a chamber's worth of glitter, deterministically.
+ * What glitter is cut from.
  *
- * @param hosts How many pieces of glass there are to be caught on.
+ * Foil, and foil has a colour even in shadow: silver, gold, and the pink that
+ * craft glitter is full of. It matters because a flake is not only a flash —
+ * see {@link BODY}.
  */
-export function createGlitter(seed: number, hosts: number): Flake[] {
+const TINTS = ['rgb(232,238,246)', 'rgb(246,222,170)', 'rgb(246,206,222)'];
+
+/** How solid a flake is when nothing is lighting it. */
+const BODY = 0.62;
+
+/** How much more solid it looks once it is catching the light. */
+const BODY_LIT = 0.38;
+
+/** Builds a cell of glitter, deterministically. */
+export function createGlitter(seed: number, amount: number, scale = 1): Flake[] {
   const rng = mulberry32(seed);
+  const count = Math.round(FEWEST + (MOST_FLAKES - FEWEST) * clamp(amount));
   const flakes: Flake[] = [];
 
-  for (let i = 0; i < MAX_FLAKES; i += 1) {
-    // Scattered over the disc by area rather than by radius, so the middle
-    // does not come out crowded — the same way the glass is placed.
+  for (let i = 0; i < count; i += 1) {
+    // Scattered over the disc by area rather than by radius, so the middle does
+    // not come out crowded.
     const angle = rng() * Math.PI * 2;
     const distance = Math.sqrt(rng()) * CHAMBER_RADIUS;
 
@@ -113,18 +121,13 @@ export function createGlitter(seed: number, hosts: number): Flake[] {
       y: Math.sin(angle) * distance,
       vx: 0,
       vy: 0,
-      host: hosts > 0 ? Math.min(hosts - 1, Math.floor(rng() * hosts)) : 0,
-      // Anywhere on the piece it is caught on, and a little beyond its edge:
-      // glitter settles in the gaps between shards as much as on top of them.
-      onX: randomBetween(rng, -1.1, 1.1),
-      onY: randomBetween(rng, -1.1, 1.1),
       // Squared, so most lie nearly face up and only a few stand well over,
       // which is what settles how many are alight at once. Spread evenly over
-      // a wide cone instead, and with a specular this sharp essentially none
-      // of them ever line up and the whole thing is invisible.
+      // a wide cone instead, and with a specular this sharp essentially none of
+      // them ever line up and the whole thing is invisible.
       lean: rng() * rng() * 1.1,
       turn: rng() * Math.PI * 2,
-      size: randomBetween(rng, FLAKE_SMALLEST, FLAKE_LARGEST),
+      size: randomBetween(rng, FLAKE_SMALLEST, FLAKE_LARGEST) * Math.max(0.2, scale),
       tint: Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length)),
     });
   }
@@ -135,83 +138,47 @@ export function createGlitter(seed: number, hosts: number): Flake[] {
 export interface GlitterUpdate {
   /** Seconds to advance. */
   dt: number;
-  /** What the cell is filled with. */
-  medium: Medium;
+  /** How thick the fluid is, 0 thin to 1 gel. */
+  thickness: number;
   /** How fast the fluid is turning within the cell, radians per second. */
   swirl: number;
   /** Which way is down in the cell's own frame, radians. */
   angle: number;
-  /** How many flakes are live, from the Glitter setting. */
-  live: number;
 }
 
-/**
- * Advances the glitter in place.
- *
- * Only the live prefix is touched — see {@link MAX_FLAKES} — so a chamber with
- * the slider low pays for the flakes it shows and no others.
- */
+/** Advances the glitter in place. */
 export function updateGlitter(
   flakes: Flake[],
-  shards: readonly Shard[],
-  { dt, medium, swirl, angle, live }: GlitterUpdate,
+  { dt, thickness, swirl, angle }: GlitterUpdate,
 ): void {
-  const count = Math.min(flakes.length, Math.max(0, Math.floor(live)));
-
-  if (count === 0) {
+  if (dt <= 0 || flakes.length === 0) {
     return;
   }
 
-  // A dry cell: every flake rides the piece it is caught on, exactly. Nothing
-  // is integrated, so a settled pile's glitter is as still as the pile — which
-  // is right, and is what a lattice could never be, because the lattice was
-  // also still while the pile avalanched.
-  if (medium.stir <= 0) {
-    if (shards.length === 0) {
-      return;
-    }
+  const step = Math.min(dt, 1 / 20);
+  const thick = 1 + THICKEST * clamp(thickness);
+  const grip = Math.min(1, FLAKE_GRIP * thick * step);
+  // A thicker fluid holds a flake up as well as holding it back.
+  const sink = (GRAVITY * FLAKE_SINK * step) / thick;
+  const sinkX = Math.sin(angle) * sink;
+  const sinkY = Math.cos(angle) * sink;
 
-    for (let i = 0; i < count; i += 1) {
-      const flake = flakes[i]!;
-      const host = shards[flake.host % shards.length]!;
-      const cos = Math.cos(host.rotation);
-      const sin = Math.sin(host.rotation);
-      const alongX = flake.onX * host.radius;
-      const alongY = flake.onY * host.radius;
-
-      flake.x = host.x + alongX * cos - alongY * sin;
-      flake.y = host.y + alongX * sin + alongY * cos;
-    }
-
-    return;
-  }
-
-  if (dt <= 0) {
-    return;
-  }
-
-  // A liquid cell: loose in the fluid, and almost perfectly carried by it.
-  const grip = Math.min(1, FLAKE_GRIP * dt);
-  const sinkX = Math.sin(angle) * GRAVITY * FLAKE_SINK * (1 - medium.density) * dt;
-  const sinkY = Math.cos(angle) * GRAVITY * FLAKE_SINK * (1 - medium.density) * dt;
-
-  for (let i = 0; i < count; i += 1) {
-    const flake = flakes[i]!;
+  for (const flake of flakes) {
     // The fluid turns as one body, so its speed here is the swirl about the
-    // middle — the same field the glass is dragged against.
+    // middle.
     const flowX = -swirl * flake.y;
     const flowY = swirl * flake.x;
 
     flake.vx += (flowX - flake.vx) * grip + sinkX;
     flake.vy += (flowY - flake.vy) * grip + sinkY;
-    flake.x += flake.vx * dt;
-    flake.y += flake.vy * dt;
+    flake.x += flake.vx * step;
+    flake.y += flake.vy * step;
 
     const distance = Math.hypot(flake.x, flake.y);
 
-    // The wall. A flake has no size worth speaking of, so it simply stops at
-    // it rather than being pushed out of it, and loses whatever speed was
-    // carrying it through.
+    // The wall. A flake has no size worth speaking of, so it simply stops at it
+    // rather than being pushed out of it, and loses whatever speed was carrying
+    // it through.
     if (distance > CHAMBER_RADIUS && distance > 0) {
       const back = CHAMBER_RADIUS / distance;
 
@@ -242,37 +209,9 @@ export interface DrawGlitterOptions {
    * still when it does not.
    */
   light: { x: number; y: number; z: number };
-  /** How many flakes are live, from the Glitter setting. */
-  live: number;
   /** The foil the flakes are cut from. See {@link createFlakeSprites}. */
   sprites: FlakeSprites;
 }
-
-/**
- * What glitter is cut from.
- *
- * Foil, and foil has a colour even in shadow: silver, gold, and the pink that
- * craft glitter is full of. It matters because a flake is not only a flash —
- * see {@link BODY}.
- */
-const TINTS = ['rgb(232,238,246)', 'rgb(246,222,170)', 'rgb(246,206,222)'];
-
-/**
- * How solid a flake is when nothing is lighting it.
- *
- * A flake is an object and not a highlight, so it is drawn twice: once as
- * itself, which covers what is behind it, and again as the flash when it lines
- * up with the light. Drawing only the flash was tried first and is the trap the
- * whole effect falls into — **light added to a white ground is still white**,
- * and the chamber's ground is white, so half the cell's flakes were perfectly
- * invisible and the ones over the glass only tinged it. Which is also true of
- * the real thing: a mirror cannot be brighter than a lit white page. What it
- * can do is *sit on* it, which is this.
- */
-const BODY = 0.62;
-
-/** How much more solid it looks once it is catching the light. */
-const BODY_LIT = 0.38;
 
 /**
  * How sharply a flake has to be lined up before it lights.
@@ -285,19 +224,21 @@ const BODY_LIT = 0.38;
  */
 const SPECULAR = 90;
 
-/** Below this a flake would not be seen, so it is not drawn. */
+/** Below this a flake's flash would not be seen, so it is not drawn. */
 const TOO_DIM = 0.02;
 
-/** Paints the live glitter, additively, over whatever is already there. */
+/** How brightly each flake is lit this frame, worked out once and drawn twice. */
+let alight = new Float32Array(MOST_FLAKES);
+
+/** Paints the glitter: every flake as itself, and the lit ones again as light. */
 export function drawGlitter(
   ctx: CanvasRenderingContext2D,
   flakes: readonly Flake[],
-  { scale, rotation, pan, light, live, sprites }: DrawGlitterOptions,
+  { scale, rotation, pan, light, sprites }: DrawGlitterOptions,
 ): void {
-  const count = Math.min(flakes.length, Math.max(0, Math.floor(live)));
   const flash = sprites.flash();
 
-  if (count === 0 || scale <= 0 || !flash) {
+  if (flakes.length === 0 || scale <= 0 || !flash) {
     return;
   }
 
@@ -307,13 +248,17 @@ export function drawGlitter(
     return;
   }
 
+  if (alight.length < flakes.length) {
+    alight = new Float32Array(flakes.length);
+  }
+
   // The eye is straight ahead, so what a flake is measured against is the light
   // tipped halfway towards it.
   const midX = light.x / length;
   const midY = light.y / length;
   const midZ = (light.z + 1) / length;
 
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < flakes.length; i += 1) {
     const flake = flakes[i]!;
     const sine = Math.sin(flake.lean);
     const aligned =
@@ -329,7 +274,7 @@ export function drawGlitter(
   ctx.rotate(rotation);
 
   // The flakes themselves, which cover what is behind them.
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < flakes.length; i += 1) {
     const flake = flakes[i]!;
     const foil = sprites.body(flake.tint);
 
@@ -348,7 +293,7 @@ export function drawGlitter(
   // whatever it is lying on, which is why it is drawn wider than the flake is.
   ctx.globalCompositeOperation = 'lighter';
 
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < flakes.length; i += 1) {
     const lit = alight[i]!;
 
     if (lit < TOO_DIM) {
@@ -366,9 +311,6 @@ export function drawGlitter(
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = 'source-over';
 }
-
-/** How brightly each flake is lit this frame, worked out once and drawn twice. */
-const alight = new Float32Array(MAX_FLAKES);
 
 /** The foil the flakes are cut from, and the flash they make when lit. */
 export interface FlakeSprites {
@@ -439,4 +381,8 @@ export function createFlakeSprites(options: FlakeSpriteOptions = {}): FlakeSprit
     body: (tint) => cached(cut(tint), TINTS[cut(tint)]!),
     flash: () => cached(TINTS.length, 'rgb(255,255,255)'),
   };
+}
+
+function clamp(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }

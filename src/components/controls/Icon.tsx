@@ -14,6 +14,8 @@
 export type IconName =
   | 'shards'
   | 'liquid'
+  | 'lava'
+  | 'smoke'
   | 'photo'
   | 'camera'
   | 'shuffle'
@@ -29,6 +31,10 @@ const PATHS: Record<IconName, string> = {
   shards: 'M12 2 4 8l8 14 8-14zM4 8h16M12 2 8.5 8 12 22M12 2l3.5 6L12 22',
   // A drop, and a piece of glass adrift in it: the cell that is not dry.
   liquid: 'M12 3c3.4 4 5 6.7 5 9a5 5 0 0 1-10 0c0-2.3 1.6-5 5-9ZM12 9.6l2.2 2.6-2.2 2.6-2.2-2.6z',
+  // Two blobs of wax, one climbing past the other.
+  lava: 'M13.4 3.2c2.6 3 3.8 5.1 3.8 6.9a3.8 3.8 0 0 1-7.6 0c0-1.8 1.2-3.9 3.8-6.9ZM8.2 13.4c1.8 2.1 2.6 3.5 2.6 4.7a2.6 2.6 0 0 1-5.2 0c0-1.2.8-2.6 2.6-4.7Z',
+  // Three drifts of it, rising and folding.
+  smoke: 'M4 18c2-2.2 4-.2 6-1.4s3.2-3 6-1.6M4 13c2-2.2 4-.2 6-1.4s3.2-3 6-1.6M7 8c1.5-1.7 3 .5 4.5-.6s2.4-2.3 4.5-1.2',
   photo: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 8.5h.01',
   camera: 'M3 7h4l2-2h6l2 2h4v12H3zM12 16a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z',
   // Round arrows: another throw of the same dice.

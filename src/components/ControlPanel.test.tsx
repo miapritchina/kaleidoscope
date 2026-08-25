@@ -102,9 +102,11 @@ describe('ControlPanel', () => {
       expect(screen.getByRole('group', { name: /glass/i })).toBeInTheDocument();
       expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
       expect(screen.getByLabelText('Variety')).toBeInTheDocument();
-      expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
       expect(screen.getByLabelText('Seed')).toBeInTheDocument();
       expect(screen.queryByLabelText('Facing')).not.toBeInTheDocument();
+      // The substance is what a cell holds *instead* of pieces, so it has no
+      // business on the tab that holds pieces.
+      expect(screen.queryByRole('radiogroup', { name: 'Substance' })).not.toBeInTheDocument();
     });
 
     // The point of the tabs: a seed and a piece count mean nothing while a
@@ -114,7 +116,6 @@ describe('ControlPanel', () => {
 
       expect(screen.queryByLabelText('Pieces')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Glitter')).not.toBeInTheDocument();
       expect(screen.getByLabelText('Picture')).toBeInTheDocument();
     });
 
@@ -144,18 +145,40 @@ describe('ControlPanel', () => {
       expect(screen.queryByRole('tab', { name: 'Camera' })).not.toBeInTheDocument();
     });
 
-    // A cell of liquid is a chamber, so it keeps everything a chamber has, and
-    // adds the one thing that is only true of it.
-    it("gives the liquid cell the chamber's controls and a fluid of its own", () => {
+    // The whole point of the tab: a cell of liquid holds a substance *instead*
+    // of pieces, so there is no glass to choose and no piece count to set.
+    it('gives the liquid cell a substance and nothing to do with glass', () => {
       withSettings({ source: 'liquid' });
 
-      expect(screen.getByRole('group', { name: /glass/i })).toBeInTheDocument();
-      expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
-      expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
-      expect(screen.getByLabelText('Seed')).toBeInTheDocument();
-      expect(screen.getByLabelText('Variety')).toBeInTheDocument();
+      expect(screen.getByRole('radiogroup', { name: 'Substance' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Amount')).toBeInTheDocument();
       expect(screen.getByLabelText('Thickness')).toBeInTheDocument();
-      expect(screen.getByLabelText('Ink')).toBeInTheDocument();
+      expect(screen.getByLabelText('Seed')).toBeInTheDocument();
+
+      expect(screen.queryByRole('group', { name: /glass/i })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Pieces')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Variety')).not.toBeInTheDocument();
+    });
+
+    it('offers all three substances, with the current one chosen', () => {
+      withSettings({ source: 'liquid', substance: 'smoke' });
+
+      expect(screen.getAllByRole('radio').map((one) => one.textContent)).toEqual([
+        'Lava',
+        'Smoke',
+        'Glitter',
+      ]);
+      expect(screen.getByRole('radio', { name: 'Smoke' })).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByRole('radio', { name: 'Lava' })).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('changes what the cell is filled with', async () => {
+      const user = userEvent.setup();
+      const { props } = withSettings({ source: 'liquid', substance: 'lava' });
+
+      await user.click(screen.getByRole('radio', { name: 'Glitter' }));
+
+      expect(props.onChange).toHaveBeenCalledWith('substance', 'glitter');
     });
 
     // Both are the fluid's, and only the liquid cell has one.
@@ -164,22 +187,14 @@ describe('ControlPanel', () => {
         const { unmount } = withSettings({ source });
 
         expect(screen.queryByLabelText('Thickness')).not.toBeInTheDocument();
-        expect(screen.queryByLabelText('Ink')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Amount')).not.toBeInTheDocument();
         unmount();
       }
     });
 
-    it('names the ends of the variety and the ink rather than numbering them', () => {
-      const { unmount } = withSettings({ source: 'liquid', variety: 0, ink: 0 });
-
-      expect(screen.getByLabelText('Variety')).toHaveAttribute('aria-valuetext', 'one size');
-      expect(screen.getByLabelText('Ink')).toHaveAttribute('aria-valuetext', 'clear');
-      unmount();
-    });
-
     it('names the ends of the thickness rather than numbering them', () => {
       const { unmount } = withSettings({ source: 'liquid', thickness: LIMITS.thickness.min });
-      expect(screen.getByLabelText('Thickness')).toHaveAttribute('aria-valuetext', 'thin oil');
+      expect(screen.getByLabelText('Thickness')).toHaveAttribute('aria-valuetext', 'thin');
       unmount();
 
       withSettings({ source: 'liquid', thickness: LIMITS.thickness.max });
@@ -264,16 +279,16 @@ describe('ControlPanel', () => {
     });
 
     it('says what a slider is set to, in its own units', () => {
-      withSettings({ zoom: 1.5, glitter: 0.4 });
+      withSettings({ zoom: 1.5, source: 'liquid', amount: 0.4 });
 
       expect(screen.getByText('1.50x')).toBeInTheDocument();
       expect(screen.getByText('40%')).toBeInTheDocument();
     });
 
-    it('says "none" rather than nought per cent', () => {
-      withSettings({ glitter: 0 });
+    it('says "one size" rather than nought per cent', () => {
+      withSettings({ variety: 0 });
 
-      expect(screen.getByText('none')).toBeInTheDocument();
+      expect(screen.getByText('one size')).toBeInTheDocument();
     });
 
     it('reports the toggles', async () => {

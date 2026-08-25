@@ -560,174 +560,134 @@ deliberately and most releases leave it alone.
 
 ## A cell of liquid
 
-Plenty of real kaleidoscopes suspend the glass in oil, and it is a different instrument in
-the hand rather than a different picture of the same one: the pieces sink instead of
-falling, they go on sweeping round after the tube has stopped, and a heap that does form
-lies flat because wet glass slides. It is the **Liquid** tab, and it is the same solver
-told what the glass is moving through.
+A kaleidoscope's object cell does not have to hold loose pieces. Plenty of real ones do not,
+and the ones that do not are a different instrument entirely — so the **Liquid** tab holds a
+**substance instead of glass**. There are no shards in it, no piece count, no pile to settle.
+Whatever is in there is the whole content, and the mirrors repeat it.
 
-That is `Medium` in `lib/chamber.ts`, and it is three things.
+Three of them, chosen inside the tab:
 
-**Buoyancy.** A piece is held up by the weight of what it displaces, so it falls under
-`1 - density` of its own weight, with the fluid's density quoted as a fraction of the
-glass's. Glass is about two and a half times water and a light oil about nine tenths of it,
-which leaves a third of the pull behind. Measured on one piece dropped from the top of the
-cell to the floor:
+|             | what it is                                                | what you watch                           |
+| ----------- | --------------------------------------------------------- | ---------------------------------------- |
+| **Lava**    | blobs of a second liquid that will not mix with the first | them climbing, merging and coming apart  |
+| **Smoke**   | a fluid, and the colour carried on it                     | it folding over on itself                |
+| **Glitter** | flakes of foil hanging in clear fluid                     | them flashing as the light sweeps across |
 
-| cell        | time to fall |
-| ----------- | ------------ |
-| dry         | 1.1 s        |
-| thin oil    | 3.2 s        |
-| the default | 6.9 s        |
-| gel         | 45 s         |
+All three take the same two controls, because between them they are the whole of what a cell
+does to what is in it: **Amount**, which is how much of the stuff is in there, and
+**Thickness**, which is how hard the fluid resists whatever is moving through it. Both are
+the same question three times over and only a different noun each time.
 
-**Drag.** Velocity spent per second, which is what turns that reduced weight into a
-terminal speed rather than an acceleration — glass in oil reaches a drift and holds it,
-which is the thing that reads as liquid rather than as low gravity.
+They are a picker inside one tab rather than three tabs of their own, because five
+instruments across the top of a phone is a tab bar and not a choice.
 
-And **the big pieces sink faster**, which is the drag's doing rather than the weight's.
-Gravity is an acceleration, so on its own it moves a boulder and a grain at exactly the
-same rate — Galileo's point, and the reason a dry cell really does fall as one lump. In a
-fluid it is different: the resistance goes with how much surface is pushing through the
-liquid while the weight goes with how much piece there is. For a disc of radius `r` the
-drag force goes as `r · v` and the mass as `r²`, so the drag _rate_ goes as `1 / r` and
-the speed a piece settles at goes as `r`. Twice across, twice as fast down — measured, a
-0.12 piece falls 1.8× as far in a second as a 0.04 one, and in air the two land together
-to two decimal places.
+### Lava, which is metaballs and a heat cycle
 
-**The fluid's own turning.** A liquid does not turn with the tube. It lags while the tube
-is turning, and then carries on after it has stopped. That lag is one number — how fast the
-wall drags the body of fluid up to its own rate — and it is most of what a hand feels:
-start turning and the glass hangs back, stop and it sails on. Drag is taken against the
-fluid rather than against the cell, so a piece already travelling with a swirl feels none
-of it and one adrift in a swirl is carried round.
+`lib/lava.ts`. Two things make it, and neither of them is a picture of a blob.
 
-A cylinder of liquid spun about its axis does end up turning as one body, so a single rate
-is where this is heading anyway. What it leaves out is the spin-up profile across the
-radius, which nothing in a cell this size would show.
+**The heat cycle**, which is what a lava lamp actually is. A blob near the bottom warms;
+warm means lighter than what it is floating in, so it rises; near the top it cools and turns
+heavy again and comes back down. That one loop is the whole motion, and it is why the cell
+never settles — the bottom is always making new risers. Nothing else lifts a blob.
 
-### The dry cell is untouched, provably rather than nearly
+**Metaballs**, which is what makes it read as liquid rather than as a bag of circles. Each
+blob lays down a soft field around itself, the fields **add**, and the surface is drawn where
+the total crosses a threshold. So two blobs approaching _reach_ for each other and pinch into
+one shape before their circles ever touch, and one coming apart necks in the middle first.
+The shape is the sum and not the parts.
 
-Every number in the dry cell is the number it had before there was anything to fill it
-with, and the two new terms are exempt rather than approximated. Air's density is written
-as **nought** rather than the twelve ten-thousandths it really is, because buoyancy in air
-is a part in two thousand — finer than any other number in that file is meant to be — and
-nought is what makes the arithmetic identical instead of merely close. Its stir is nought
-too, which is read as _no body of fluid at all_ rather than as one that never catches up: a
-large finite number would have left a whisper of swirl behind on a fast display, which is a
-retuned chamber arriving by the back door. A test runs the two cells side by side, one
-handed air and a swirl and the other handed nothing, and expects them equal piece for
-piece.
+Blobs that meet properly become one, with the area added rather than the radius — two of a
+size make one about 1.4 across — and the colour mixed in proportion, because that is what
+two colours of wax running together do. Merging only ever runs one way, so a blob that has
+grown past a fraction of the cell is pulled into two along the way it was travelling. Between
+them the cell holds a steady population instead of ending as one lump.
 
-### Nothing sleeps in a liquid
+Three things had to be got right and all three were got wrong first, which is worth writing
+down because each of them looked reasonable:
 
-A dry pile stops jittering because a piece below a threshold speed is treated as at rest.
-A piece adrift in oil is _not_ at rest, and the same threshold would catch a slow sink and
-freeze the cell solid — the one thing a liquid cell must never do. So its thresholds are
-nought, and it simply never sleeps.
+- **The sizing has to go through the threshold.** A blob on its own is drawn at 0.54 of the
+  distance its field reaches, so sizing the blobs by their reach and not by what is drawn
+  gave a cell of dots when it was asked for a cell of lava.
+- **And it cannot be done on isolated areas either.** The fields add, so a cell of blobs at
+  arm's length already crosses the surface in the gaps between them. Asking for half the cell
+  covered, on the arithmetic for blobs that never overlap, filled the entire cell with one
+  shape.
+- **The palette has to be able to survive being averaged.** Merging averages, and averaging
+  colours from opposite sides of the wheel gives mud: a first go with rose, amber, violet and
+  teal in it was uniformly the colour of a puddle within a minute. All four are warm now, and
+  neighbours on the wheel average to neighbours on the wheel.
 
-That has a consequence at the other end: a fresh cell is settled by running it until it
-stops, which a liquid cell never does. So a liquid one is **unpacked** rather than settled
-— a second and a bit, enough for the fluid to push the glass out of itself — and it opens
-on the field as it was scattered rather than on a pile on the floor. Which is the point:
-the whole disc holds glass, and the picture is evenly full in a way the dry cell only
-manages in the moment after it is shuffled.
+### Smoke, which is a fluid rather than things in one
 
-Because unpacking asks the same second and a bit of every thickness, the arrangement a
-liquid cell opens on does not depend on where the **Thickness** slider is. That is what
-lets the slider move without rebuilding and resettling the pile under the finger; whatever
-it is set to takes over on the very next frame, so the fluid thickens under glass that is
-already drifting.
+`lib/smoke.ts`. Where lava and glitter are things _in_ a fluid, this is the fluid: a grid
+holding a velocity field and the dye carried on it. It is Stam's _Stable Fluids_ (SIGGRAPH 1999) — advect the velocity by tracing it backwards, make it divergence-free, then carry the
+dye along on the result. Semi-Lagrangian advection is unconditionally stable, which is what
+makes it safe against whatever frame time a phone hands over.
 
-### What it is not
+The roadmap put this on the GPU and per pixel it belongs there. At the size an object cell
+needs it does not have to be: 96×96 stepped at 30 Hz with the time banked measures **1.9 ms
+per rendered frame**, against the 0.6 the chamber of glass costs — and that mode is not
+running a chamber of glass. What it buys is that the smoke lives with the rest of the
+chamber rather than in the compositor, painted into the source triangle and folded by the
+mirrors with everything else.
 
-It is a medium, not a fluid: there is no liquid in the cell for the glass to displace, no
-surface to slosh, and no current except the one the wall stirs up. Real fluid in the cell
-is a different job — a density constraint in the same XPBD loop, rendered as screen-space
-metaballs — and it is still on the roadmap, along with smoke and ink, which is a grid
-solver and a different job again.
+Nothing outside stirs it. The tube's turning drags the body of fluid round, and the dye is a
+little heavier than what it hangs in, so it falls through itself and the falling is what
+curls it: a heavy patch sinks, the fluid it displaces comes up around it, and that is a
+plume. The cell is given a few swirls to start with, because round clouds falling straight
+down stay round for a long time and it needs a reason to be asymmetric before it can fold
+over on itself.
 
-### Glitter, which is now in the cell rather than on the picture
+Three dyes, and **subtractive** — each takes its own primary out of the light, the way real
+dye in a lit cell does, so the drawing composites with `multiply` and two dyes folded
+together read as the mixture rather than as the brighter of the pair.
 
-Real glitter is thousands of tiny flat mirrors lying at every angle, and it does not glow
-— it **flashes**, one flake at a time, as the angle between the eye, the flake and the
-light passes through alignment. Each flake keeps a normal of its own and is lit properly,
-so tipping the phone sets them off in waves. That part was always right.
+**Getting smoke rather than fog took two known techniques and a wrong turn between them.**
+Tracing backwards and sampling bilinearly is stable precisely because it _averages_, and what
+an average takes out first is the smallest swirls — which are the ones the eye reads as
+smoke. So:
 
-What was wrong is that the flakes were **nowhere**. They were a lattice in the source
-triangle's frame, evaluated per pixel in the shader, so they sat perfectly still while the
-glass avalanched underneath them and the fluid swept past. Now they are matter, and a
-flake goes wherever what surrounds it goes:
+- **Vorticity confinement** (Fedkiw, Stam and Jensen, SIGGRAPH 2001) measures the curl and
+  pushes each cell back towards where the turning is strongest, putting back energy the
+  method should not have lost. Taken straight it has a trap of its own: "where the turning is
+  strongest" decided by single cells points every cell at its own noisiest neighbour, and the
+  result was a row of grid-aligned comb teeth along the edge of every ribbon, plain enough to
+  see in a screenshot. One pass of blur over the curl's size first points it at the swirl
+  instead of at the grid.
+- **MacCormack advection** takes the blur off rather than papering over it: carry the field
+  forwards again from where it landed, and wherever that does not arrive back at what was
+  there is the error the trace introduced. Half of it comes off, clamped to the range the
+  plain trace already found so the correction can sharpen what is there and cannot invent
+  anything.
 
-- In a **dry** chamber it is caught on a piece of glass — glitter poured in with the
-  shards sits among them, it does not hang in the air — so it rides that piece exactly,
-  tumbling as it tumbles and resting when it rests. Nothing is integrated for it at all.
-- In a **liquid** one it is loose in the fluid, and it goes where the fluid goes: held up
-  almost perfectly, because a flake is a few microns of foil and weighs next to nothing
-  for its area, and swept round by the swirl long after the glass has given up.
+The wrong turn between them was an unsharp mask — take a little of the local average back out
+of every cell — which is the obvious way to sharpen and is a trap. Amplifying the difference
+from the neighbours amplifies the _shortest_ wavelength hardest, and the shortest wavelength
+a grid has is a checkerboard.
 
-A flake is drawn twice: once as itself, which covers what is behind it, and again as the
-flash. Drawing only the flash is the trap the whole effect falls into, and the shader fell
-into it — **light added to a white ground is still white**, and this chamber's ground is
-white, so half the cell's flakes were perfectly invisible and the rest only tinged the
-glass they lay on. Which is also true of the real thing: a mirror cannot be brighter than
-a lit white page. What it can do is _sit on_ it.
+### Glitter, which is flashes and also matter
 
-The Glitter slider spends a fixed population rather than scaling one field, so a fifth of
-the way up only a fifth of the flakes are simulated or drawn and the rest cost nothing.
-Because the flakes are chamber contents, glitter no longer applies to a photograph or the
-camera — there is nothing there for it to be suspended in.
+`lib/glitter.ts`. Real glitter is thousands of tiny flat mirrors lying at every angle, and it
+does not glow — it **flashes**, one flake at a time, as the angle between the eye, the flake
+and the light passes through alignment. Each flake keeps a normal of its own and is lit
+properly, so tipping the phone sets them off in waves. That half comes alive with **Real
+gravity** on, because then the room's light really is sweeping across them.
 
-### Ink, which is a fluid of a different kind
+A flake is drawn **twice**, and the second time is the part that is easy to leave out. Light
+added to a lit ground is still that ground, so a flake that only flashed is invisible over
+anything pale — which is true of the real thing as well, since a mirror cannot be brighter
+than a lit white page. What it can do is _sit on_ it. So the flake is drawn as itself first,
+covering what is behind it, and the flash goes over the top.
 
-The glass and the glitter are particles. The **Ink** slider is the other kind of fluid
-entirely: a grid, holding a velocity field and the dye carried in it. It is Stam's _Stable
-Fluids_ (SIGGRAPH 1999) — advect the velocity by tracing it backwards, make it
-divergence-free, then carry the dye along on the result. Semi-Lagrangian advection is
-unconditionally stable, which is what makes it safe against whatever frame time a phone
-hands over.
+A flake is a few microns of foil and weighs next to nothing for its area, so the fluid
+carries it almost perfectly: it rides the swirl of a turning tube rather than swimming
+through it, and sags only slowly when nothing is moving.
 
-The roadmap put this on the GPU, and per pixel it belongs there. At the size an object
-cell actually needs it does not have to be: 64×64 is four thousand cells, and stepped at
-30 Hz with the time banked it measures **0.9 ms per rendered frame** against the rest of
-the chamber's 0.6. What that buys is that the ink lives with the rest of the chamber
-rather than in the compositor — so it is painted into the source triangle and folded by
-the mirrors with everything else, six reflections of the same ribbon.
-
-Three things drive it, and the third is what makes it belong to this instrument:
-
-- The **wall** drags the whole body of fluid round, at the same rate the glass feels, so
-  the ink lags a turn and outlives it.
-- The **dye's own weight**, which is a little more than the fluid's, so a ribbon sags.
-- The **glass**. A piece sinking through the fluid pulls a wake behind it and an avalanche
-  leaves the whole cell churning. Only glass that is actually moving, and in proportion to
-  how fast: pulling the fluid towards every piece's velocity regardless is the same rule
-  read backwards, and a cell packed with settled shards would then hold the fluid still
-  everywhere at once and the ink would stop dead the moment the pile did.
-
-Three dyes rather than one, and **subtractive**: each takes its own primary out of the
-light, the way real dye in a lit cell does, so the drawing is composited with `multiply`
-and two dyes folded together read as the mixture rather than as the brighter of the pair.
-
-One honest caveat, written where the code is: tracing backwards and sampling bilinearly
-loses a little of the field every step, and over a minute that would turn ribbons into a
-flat wash. Real ink in oil does not do that, because it is suspended rather than
-dissolved; modelling _that_ means tracking the surface between two fluids, which is a
-much larger job. So the blur is fought rather than modelled — a little of the local
-average is taken back out of every cell each step. It is a countermeasure to a fault of
-the method, not a physical effect.
-
-A cell packed with 150 pieces of glass hides most of the ink, because the glass is in
-front of it and the glass is opaque. Fewer pieces is what shows it off.
-
-### Why a tab and not a switch
-
-The panel's tabs are the instruments the app can be: a chamber of glass, a chamber of
-liquid, and the mirrors pointed at something outside the tube. Which fluid the glass hangs
-in changes what the thing does in the hand, not what it looks like at rest, and a checkbox
-on the shard tab would have filed the difference between two instruments as a setting of
-one. The liquid tab carries everything the shard tab carries, because it is a chamber and
-all of it still means what it meant, plus the one control that is only true of it.
+The dry chamber's ground has always been white, on the reasoning that the objects are the
+subject and white is what a photographer would stand them on. Lava and smoke want the same
+thing for the same reason. Glitter does not, and its cell is a dark liquid — because the
+whole of what glitter does is be brighter than what is behind it, and against white it
+cannot be.
 
 ## Photo and camera
 

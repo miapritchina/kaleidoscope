@@ -1,25 +1,38 @@
-import { CHAMBER_RADIUS, type Medium } from './chamber';
+import { CHAMBER_RADIUS } from './chamber';
 import { mulberry32 } from './random';
-import type { Shard } from './scene';
 
 /**
- * Ink loose in the liquid cell.
+ * A cell of smoke.
  *
- * The glass and the glitter are particles; this is the other kind of fluid
- * entirely — a grid, holding a velocity field and the dye carried in it. It is
- * Stam's *Stable Fluids* (SIGGRAPH 1999) at a modest size: advect the velocity
- * by tracing it backwards, make it divergence-free, then carry the dye along
- * on the result. Semi-Lagrangian advection is unconditionally stable, which is
- * what makes it safe to run against whatever frame time a phone hands over.
+ * The whole content, not a tint over something else: what is in the chamber is
+ * moving fluid and the colour carried in it, and the mirrors repeat that. One
+ * of the three things this instrument's object cell can hold instead of loose
+ * pieces — see `lib/lava.ts` and `lib/glitter.ts` for the others.
  *
- * The roadmap put this on the GPU, and per-pixel it belongs there. At the size
+ * Where lava and glitter are things *in* a fluid, this is the fluid: a grid
+ * holding a velocity field and the dye carried on it. It is Stam's _Stable
+ * Fluids_ (SIGGRAPH 1999) — advect the velocity by tracing it backwards, make
+ * it divergence-free, then carry the dye along on the result. Semi-Lagrangian
+ * advection is unconditionally stable, which is what makes it safe to run
+ * against whatever frame time a phone hands over.
+ *
+ * The roadmap put this on the GPU, and per pixel it belongs there. At the size
  * an object cell actually needs it does not have to be: {@link GRID} squared is
- * four thousand cells, and stepped at {@link RATE} it measures **0.9 ms per
- * rendered frame** against the rest of the chamber's 0.6. What that buys is
- * that the ink lives with the rest of the chamber rather than in the
- * compositor, so it is painted into the source triangle and folded by the
- * mirrors along with everything else — six reflections of the same ribbon,
- * exactly as a real one would give.
+ * four thousand cells, and stepped at {@link RATE} it costs well under a
+ * millisecond of the frame. What that buys is that the smoke lives with the
+ * rest of the chamber rather than in the compositor, so it is painted into the
+ * source triangle and folded by the mirrors along with everything else — six
+ * reflections of the same ribbon, exactly as a real one would give.
+ *
+ * Nothing outside stirs it. The tube's own turning drags the body of fluid
+ * round, and the dye is a little heavier than the air it hangs in, so it falls
+ * through itself and the falling is what curls it: a heavy patch sinks, the
+ * fluid it displaces comes up around it, and that is a plume. Left alone the
+ * cell keeps folding over on itself for as long as anyone watches.
+ *
+ * Three dyes rather than one, and subtractive: each takes its own primary out
+ * of the light, the way real dye in a lit cell does, so where two of them fold
+ * together the colour is the mixture and not the brighter of the pair.
  *
  * One thing was tried here and did not pay. The wall is a circle on a square
  * grid, so nine cells in ten have all four neighbours inside it and could read
@@ -29,25 +42,23 @@ import type { Shard } from './scene';
  * to build and keep and three more branches in the hottest loops in the
  * chamber. The engine was already inlining the check. It was taken out again.
  *
- * Three dyes rather than one, and subtractive: each takes its own primary out
- * of the light, the way real dye in a lit cell does, so where two of them fold
- * together the colour is the mixture and not the brighter of the pair.
- *
  * The grid spans the cell's bounding square, in the cell's own frame — so it
- * turns with the tube, and gravity sweeps around it exactly as it does for the
- * glass.
+ * turns with the tube, and gravity sweeps around it exactly as it does for
+ * everything else in the chamber.
  */
 
 /**
  * Cells across the chamber.
  *
- * Sixty-four. Ink is smooth — it has no edges of its own to resolve, only
- * ribbons — so the picture is nearly as good at this size as at twice it, and
- * a quarter of the cost. The grid is drawn scaled up with smoothing, which is
- * a bilinear filter over the same field the solver samples bilinearly, so the
- * seam between what is simulated and what is shown never shows.
+ * Smoke is all structure — the whole of what it looks like is ribbons folding
+ * into finer ribbons — so unlike a dye tinting something else it does want the
+ * resolution. Sixty-four was tried while this was a tint over glass and reads
+ * as blur when it is the only thing on screen. The grid is drawn scaled up with
+ * smoothing, which is a bilinear filter over the same field the solver samples
+ * bilinearly, so the seam between what is simulated and what is shown never
+ * shows.
  */
-export const GRID = 64;
+export const GRID = 96;
 
 /** How many dyes there are. One per primary the light can lose. */
 export const DYES = 3;
@@ -75,35 +86,81 @@ const PASSES = 16;
  */
 const RATE = 30;
 
-/** Speed lost per second, so a stirred cell eventually goes still again. */
-const VISCOSITY = 0.35;
+/** Speed lost per second in a thin fluid, before Thickness is taken into account. */
+const VISCOSITY = 0.22;
 
-/** How much of the falling glass's motion is dragged into the fluid, per second. */
-const GLASS_GRIP = 6;
+/**
+ * How hard the small swirls are pushed back in, per second.
+ *
+ * Vorticity confinement, after Fedkiw, Stam and Jensen (SIGGRAPH 2001), and it
+ * is the difference between smoke and fog. Tracing backwards and sampling
+ * bilinearly is stable precisely because it *averages*, and what an average
+ * takes out first is the smallest swirls — which are the ones the eye reads as
+ * smoke. So the curl is measured, the direction that would sharpen each swirl
+ * is worked out from where the curl is strongest, and a little push is added
+ * back along it. It puts back energy the method should not have lost rather
+ * than inventing any: without it a cell of smoke is a cell of coloured blur,
+ * which is exactly what a first go at this looked like.
+ *
+ * It has to be pointed at something smooth, though, and that is the whole of
+ * the difficulty. Taken straight, "where the curl is strongest" is decided by
+ * single cells, so every cell is pushed towards its own noisiest neighbour and
+ * a fortnight of that draws a row of grid-aligned comb teeth along the edge of
+ * every ribbon — which is what it did, plainly enough to see in a screenshot.
+ * Smoothing the curl's size first, once, points it at the swirl instead of at
+ * the grid.
+ */
+const CONFINE = 6;
 
-/** The speed at which a piece of glass is stirring the fluid for all it is worth. */
-const STIR_SPEED = 0.3;
+/** How much more the far end of the Thickness slider takes out. */
+const THICKEST = 6;
 
-/** How much heavier the dye is than what it is floating in. */
-const INK_WEIGHT = 0.5;
+/** How fast the wall drags the whole body of fluid round with it, per second. */
+const WALL_GRIP = 2.4;
+
+/**
+ * How much heavier the dye is than what it hangs in.
+ *
+ * This is the whole of what keeps the cell alive. Nothing else pushes on the
+ * fluid unless the tube is turned, and a fluid with nothing pushing on it stops
+ * — so the dye falls through itself, the fluid it displaces comes up around it,
+ * and the folding never quite settles.
+ */
+const INK_WEIGHT = 1.2;
 
 /** Downward acceleration, matched to the chamber's own. */
 const GRAVITY = 6;
 
 /**
- * How hard the dye is pushed back against its own blurring, per second.
+ * How strongly the dye takes its colour out of the light.
  *
- * Tracing backwards and sampling bilinearly loses a little of the field at
- * every step, and over a minute that turns ribbons into a flat wash. Real ink
- * in oil does not do that — it is not dissolved in the oil, it is suspended in
- * it, and the ribbons stay ribbons for a very long time. Modelling that
- * properly means tracking the surface between two fluids, which is a different
- * and much larger job; this fights the blur instead of modelling what would
- * prevent it, by taking a little of the local average back out of every cell.
- * An honest description is that the smearing is a fault of the method and this
- * is a countermeasure, not a physical effect.
+ * Above one, and deliberately. Advection conserves the dye but spreads it, so
+ * the concentration anywhere falls as the ribbons draw out — and a cell that
+ * started saturated is a pale wash a minute later even though every drop of it
+ * is still in there. A strong dye is the honest fix: real ink is strong enough
+ * that a tenth of a cell's worth still colours what is behind it.
  */
-const SHARPEN = 1.4;
+const STRENGTH = 1.9;
+
+/**
+ * How much of the trace's own error is corrected, 0 to 1.
+ *
+ * MacCormack, and it is the second half of getting smoke rather than fog.
+ * Tracing backwards and sampling bilinearly blurs the field a little every
+ * step, and over a minute that turns ribbons into a flat wash. The trick is to
+ * measure the blur rather than guess at it: carry the field forwards again from
+ * where it landed, and wherever that does not arrive back at what was there to
+ * begin with is the error the trace introduced. Half of it is then taken off.
+ *
+ * An unsharp mask was tried first — take a little of the local average back out
+ * of every cell — and it is a trap. Sharpening by amplifying the difference
+ * from the neighbours amplifies the *shortest* wavelength hardest, and the
+ * shortest wavelength a grid has is a checkerboard, so after a minute every
+ * ribbon had a row of grid-aligned comb teeth along its edge. This does not:
+ * the correction is clamped to the range the plain trace already found, so it
+ * can sharpen what is there and cannot invent anything that was not.
+ */
+const CORRECT = 0.9;
 
 export interface Smoke {
   /** Velocity, one component per array, in cell units per second. */
@@ -129,8 +186,8 @@ function positionOf(index: number): number {
   return -CHAMBER_RADIUS + ((index + 0.5) * 2 * CHAMBER_RADIUS) / GRID;
 }
 
-/** Builds a cell of ink, deterministically, in a few clouds of each dye. */
-export function createSmoke(seed: number): Smoke {
+/** Builds a cell of smoke, deterministically, in a few clouds of each dye. */
+export function createSmoke(seed: number, amount = 1): Smoke {
   const cells = GRID * GRID;
   const rng = mulberry32(seed);
   const smoke: Smoke = {
@@ -160,12 +217,17 @@ export function createSmoke(seed: number): Smoke {
   for (let d = 0; d < DYES; d += 1) {
     const field = smoke.dye[d]!;
 
-    for (let blob = 0; blob < 2; blob += 1) {
+    // More of it is more clouds and bigger ones: a cell can hold a wisp or be
+    // full of the stuff.
+    const clouds = Math.max(1, Math.round(1 + 2 * Math.min(1, Math.max(0, amount))));
+
+    for (let blob = 0; blob < clouds; blob += 1) {
       const angle = rng() * Math.PI * 2;
       const distance = Math.sqrt(rng()) * CHAMBER_RADIUS * 0.8;
       const atX = Math.cos(angle) * distance;
       const atY = Math.sin(angle) * distance;
-      const reach = CHAMBER_RADIUS * (0.22 + rng() * 0.18);
+      const reach =
+        CHAMBER_RADIUS * (0.16 + 0.16 * Math.min(1, Math.max(0, amount)) + rng() * 0.16);
 
       for (let j = 0; j < GRID; j += 1) {
         for (let i = 0; i < GRID; i += 1) {
@@ -185,20 +247,48 @@ export function createSmoke(seed: number): Smoke {
     }
   }
 
+  // And a few swirls to start it off. Left perfectly still, the only thing
+  // pushing on the fluid is the dye's own weight straight down, and round
+  // clouds falling straight down stay round for a long time — the cell needs a
+  // reason to be asymmetric before it can fold over on itself.
+  for (let swirl = 0; swirl < 5; swirl += 1) {
+    const angle = rng() * Math.PI * 2;
+    const distance = Math.sqrt(rng()) * CHAMBER_RADIUS * 0.7;
+    const atX = Math.cos(angle) * distance;
+    const atY = Math.sin(angle) * distance;
+    const reach = CHAMBER_RADIUS * (0.25 + rng() * 0.3);
+    const spin = (rng() * 2 - 1) * 1.6;
+
+    for (let j = 0; j < GRID; j += 1) {
+      for (let i = 0; i < GRID; i += 1) {
+        const k = i + j * GRID;
+
+        if (!smoke.inside[k]) {
+          continue;
+        }
+
+        const x = positionOf(i) - atX;
+        const y = positionOf(j) - atY;
+        const much = Math.exp((-(x * x + y * y) / (reach * reach)) * 2);
+
+        smoke.u[k] = smoke.u[k]! - y * spin * much;
+        smoke.v[k] = smoke.v[k]! + x * spin * much;
+      }
+    }
+  }
+
   return smoke;
 }
 
 export interface SmokeUpdate {
   /** Seconds to advance. */
   dt: number;
-  /** What the cell is filled with. Ink needs a fluid to be loose in. */
-  medium: Medium;
+  /** How thick the fluid is, 0 thin to 1 gel. */
+  thickness: number;
   /** How fast the fluid is turning within the cell, radians per second. */
   swirl: number;
   /** Which way is down in the cell's own frame, radians. */
   angle: number;
-  /** The glass, which drags the fluid along behind it. */
-  shards: readonly Shard[];
 }
 
 /**
@@ -209,8 +299,8 @@ export interface SmokeUpdate {
  * carry the dye. Projecting after the advection as well as before is what
  * keeps a swirl from slowly collapsing into its own middle.
  */
-export function updateSmoke(smoke: Smoke, { dt, medium, swirl, angle, shards }: SmokeUpdate): void {
-  if (dt <= 0 || medium.stir <= 0) {
+export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: SmokeUpdate): void {
+  if (dt <= 0) {
     return;
   }
 
@@ -224,7 +314,8 @@ export function updateSmoke(smoke: Smoke, { dt, medium, swirl, angle, shards }: 
 
   smoke.due = 0;
 
-  stir(smoke, { medium, swirl, angle, shards, step });
+  stir(smoke, { thickness, swirl, angle, step });
+  confine(smoke, step);
   project(smoke);
   carry(smoke, step);
   project(smoke);
@@ -233,8 +324,7 @@ export function updateSmoke(smoke: Smoke, { dt, medium, swirl, angle, shards }: 
     const from = smoke.dye[d]!;
     const into = smoke.dye0[d]!;
 
-    advect(smoke, from, into, step);
-    sharpen(smoke, into, step);
+    carryDye(smoke, from, into, step);
     smoke.dye[d] = into;
     smoke.dye0[d] = from;
   }
@@ -244,27 +334,29 @@ export function updateSmoke(smoke: Smoke, { dt, medium, swirl, angle, shards }: 
 function stir(
   smoke: Smoke,
   {
-    medium,
+    thickness,
     swirl,
     angle,
-    shards,
     step,
   }: {
-    medium: Medium;
+    thickness: number;
     swirl: number;
     angle: number;
-    shards: readonly Shard[];
     step: number;
   },
 ): void {
   const { u, v, inside } = smoke;
-  // The wall drags the whole body of fluid round with it, exactly as it drags
-  // the glass — see `advanceFlow` in lib/chamber.ts, which is where this rate
-  // comes from and what makes the ink lag a turn and outlive it.
-  const wall = Math.min(1, medium.stir * step);
-  const slow = Math.max(0, 1 - VISCOSITY * step);
-  const downX = Math.sin(angle) * GRAVITY * INK_WEIGHT * (1 - medium.density) * step;
-  const downY = Math.cos(angle) * GRAVITY * INK_WEIGHT * (1 - medium.density) * step;
+  const thick = 1 + THICKEST * Math.min(1, Math.max(0, thickness));
+  // The wall drags the whole body of fluid round with it — which is what makes
+  // the smoke lag a turn and then outlive it — and a thicker fluid takes the
+  // wall's turning up sooner and gives it back over longer.
+  const wall = Math.min(1, WALL_GRIP * thick * step);
+  const slow = Math.max(0, 1 - VISCOSITY * thick * step);
+  // The dye's own weight, which is the only thing keeping the cell alive when
+  // nobody is turning it. Thicker fluid holds it up more.
+  const fall = (GRAVITY * INK_WEIGHT * step) / thick;
+  const downX = Math.sin(angle) * fall;
+  const downY = Math.cos(angle) * fall;
 
   for (let j = 0; j < GRID; j += 1) {
     for (let i = 0; i < GRID; i += 1) {
@@ -288,50 +380,94 @@ function stir(
       v[k] = (v[k]! + (swirl * x - v[k]!) * wall + downY * dyed) * slow;
     }
   }
+}
 
-  // And the glass, which is the part that makes the ink belong to this chamber
-  // rather than to a screensaver: a piece sinking through the fluid pulls a
-  // wake behind it, and an avalanche leaves the whole cell churning.
-  //
-  // Only glass that is actually moving, and in proportion to how fast. Pulling
-  // the fluid towards every piece's velocity regardless would be the same rule
-  // read backwards — a cell packed with settled glass would hold the fluid
-  // still everywhere the glass is, which is nearly everywhere, and the ink
-  // would stop dead the moment the pile did.
-  const grip = Math.min(1, GLASS_GRIP * step);
+/**
+ * Puts the small swirls back. See {@link CONFINE}.
+ *
+ * The curl of a two-dimensional field is one number per cell — how fast that
+ * patch is turning — and its gradient points at where the turning is
+ * strongest. Pushing each cell along the perpendicular of that gradient, in the
+ * direction its own curl is going, tightens the swirl instead of letting the
+ * next advection average it away.
+ */
+function confine(smoke: Smoke, step: number): void {
+  const { u, v, inside, pressure, divergence } = smoke;
+  const width = (2 * CHAMBER_RADIUS) / GRID;
+  // Borrowed: the pressure solve has not run yet this step, so its two scratch
+  // fields are free. `divergence` holds the curl and `pressure` its size.
+  const curl = divergence;
+  const strength = pressure;
 
-  for (const shard of shards) {
-    const speed = Math.hypot(shard.vx, shard.vy);
+  for (let j = 0; j < GRID; j += 1) {
+    for (let i = 0; i < GRID; i += 1) {
+      const k = i + j * GRID;
 
-    if (speed < STIR_SPEED * 0.1) {
-      continue;
-    }
-
-    const push = grip * Math.min(1, speed / STIR_SPEED);
-    const i = Math.round(((shard.x + CHAMBER_RADIUS) / (2 * CHAMBER_RADIUS)) * GRID - 0.5);
-    const j = Math.round(((shard.y + CHAMBER_RADIUS) / (2 * CHAMBER_RADIUS)) * GRID - 0.5);
-
-    for (let dj = -1; dj <= 1; dj += 1) {
-      for (let di = -1; di <= 1; di += 1) {
-        const at = i + di;
-        const to = j + dj;
-
-        if (at < 0 || at >= GRID || to < 0 || to >= GRID) {
-          continue;
-        }
-
-        const k = at + to * GRID;
-
-        if (!inside[k]) {
-          continue;
-        }
-
-        // The middle of the piece pulls hardest; its edges only brush past.
-        const share = push * (di === 0 && dj === 0 ? 1 : 0.4);
-
-        u[k]! += (shard.vx - u[k]!) * share;
-        v[k]! += (shard.vy - v[k]!) * share;
+      if (!inside[k]) {
+        curl[k] = 0;
+        strength[k] = 0;
+        continue;
       }
+
+      curl[k] =
+        (flow(v, inside, v[k]!, i + 1, j) -
+          flow(v, inside, v[k]!, i - 1, j) -
+          flow(u, inside, u[k]!, i, j + 1) +
+          flow(u, inside, u[k]!, i, j - 1)) /
+        (2 * width);
+      strength[k] = Math.abs(curl[k]);
+    }
+  }
+
+  // One pass of blur over how strong the turning is, so the push below follows
+  // the swirl rather than the grid. See CONFINE.
+  for (let j = 0; j < GRID; j += 1) {
+    for (let i = 0; i < GRID; i += 1) {
+      const k = i + j * GRID;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      const here = strength[k]!;
+
+      smoothed[k] =
+        (here +
+          flow(strength, inside, here, i + 1, j) +
+          flow(strength, inside, here, i - 1, j) +
+          flow(strength, inside, here, i, j + 1) +
+          flow(strength, inside, here, i, j - 1)) /
+        5;
+    }
+  }
+
+  const push = CONFINE * step * width;
+
+  for (let j = 0; j < GRID; j += 1) {
+    for (let i = 0; i < GRID; i += 1) {
+      const k = i + j * GRID;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      // Uphill towards the tightest turning nearby.
+      const alongX =
+        (flow(smoothed, inside, smoothed[k]!, i + 1, j) -
+          flow(smoothed, inside, smoothed[k]!, i - 1, j)) /
+        2;
+      const alongY =
+        (flow(smoothed, inside, smoothed[k]!, i, j + 1) -
+          flow(smoothed, inside, smoothed[k]!, i, j - 1)) /
+        2;
+      const length = Math.hypot(alongX, alongY);
+
+      if (length < 1e-6) {
+        continue;
+      }
+
+      u[k] = u[k]! + (alongY / length) * curl[k]! * push;
+      v[k] = v[k]! - (alongX / length) * curl[k]! * push;
     }
   }
 }
@@ -505,33 +641,61 @@ function flow(field: Float32Array, inside: Uint8Array, here: number, i: number, 
   return inside[k] ? field[k]! : here;
 }
 
-/** Takes a little of the local average back out of every cell. See {@link SHARPEN}. */
-function sharpen(smoke: Smoke, field: Float32Array, step: number): Float32Array {
+/**
+ * Carries the dye along the fluid, and takes the trace's own blurring back off.
+ *
+ * Three passes. Back down the flow, which is the plain trace and is where the
+ * blur comes from; forward again from there, which lands somewhere near where
+ * the dye started and misses by however much the first pass smeared; and then
+ * the first result with half that miss corrected out of it.
+ *
+ * The clamp at the end is what makes it safe. A correction can overshoot, and
+ * an overshoot in a dye field is a value that was never in it — which is a new
+ * extreme, and new extremes on a grid are what turn into grid-shaped noise. So
+ * the corrected value is held inside the range the plain trace already found
+ * nearby: it may sharpen what is there, and it may not invent.
+ */
+function carryDye(smoke: Smoke, from: Float32Array, into: Float32Array, step: number): void {
   const { inside } = smoke;
-  const push = Math.min(0.6, SHARPEN * step);
+
+  advect(smoke, from, back, step);
+  advect(smoke, back, forward, -step);
 
   for (let j = 0; j < GRID; j += 1) {
     for (let i = 0; i < GRID; i += 1) {
       const k = i + j * GRID;
 
       if (!inside[k]) {
+        into[k] = 0;
         continue;
       }
 
-      const here = field[k]!;
-      const around =
-        (flow(field, inside, here, i + 1, j) +
-          flow(field, inside, here, i - 1, j) +
-          flow(field, inside, here, i, j + 1) +
-          flow(field, inside, here, i, j - 1)) /
-        4;
+      const traced = back[k]!;
+      const corrected = traced + ((from[k]! - forward[k]!) * CORRECT) / 2;
+      let least = traced;
+      let most = traced;
 
-      field[k] = Math.min(1, Math.max(0, here + (here - around) * push));
+      for (const near of [
+        flow(back, inside, traced, i + 1, j),
+        flow(back, inside, traced, i - 1, j),
+        flow(back, inside, traced, i, j + 1),
+        flow(back, inside, traced, i, j - 1),
+      ]) {
+        least = Math.min(least, near);
+        most = Math.max(most, near);
+      }
+
+      into[k] = Math.min(1, Math.max(0, Math.min(most, Math.max(least, corrected))));
     }
   }
-
-  return field;
 }
+
+/** How strong the turning is nearby, blurred once. See {@link CONFINE}. */
+const smoothed = new Float32Array(GRID * GRID);
+
+/** Where the two halves of the correction are worked out. */
+const back = new Float32Array(GRID * GRID);
+const forward = new Float32Array(GRID * GRID);
 
 /**
  * Paints the ink onto a small canvas, one pixel per cell.
@@ -545,10 +709,10 @@ function sharpen(smoke: Smoke, field: Float32Array, step: number): Float32Array 
  * @param amount How strong the ink is, from the Ink setting.
  * @returns The canvas, or null where there is no canvas to be had.
  */
-export function paintSmoke(smoke: Smoke, amount: number): HTMLCanvasElement | null {
+export function paintSmoke(smoke: Smoke, strength = STRENGTH): HTMLCanvasElement | null {
   const surface = inkSurface();
 
-  if (!surface || amount <= 0) {
+  if (!surface || strength <= 0) {
     return null;
   }
 
@@ -559,7 +723,7 @@ export function paintSmoke(smoke: Smoke, amount: number): HTMLCanvasElement | nu
     const at = k * 4;
 
     for (let d = 0; d < DYES; d += 1) {
-      const taken = Math.min(1, Math.max(0, smoke.dye[d]![k]! * amount));
+      const taken = Math.min(1, Math.max(0, smoke.dye[d]![k]! * strength));
 
       pixels[at + d] = Math.round(255 * (1 - taken));
     }

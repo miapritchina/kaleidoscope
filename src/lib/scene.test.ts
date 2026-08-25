@@ -187,6 +187,55 @@ describe('the variety of the glass', () => {
   });
 });
 
+describe('a cell of substance', () => {
+  // The whole point of it: a chamber holds a substance *instead* of pieces, so
+  // there is no glass in it at all and nothing to settle.
+  it('holds no glass whatsoever', () => {
+    const scene = createScene('lamp', 150, { holds: 'substance', substance: 'lava' });
+
+    expect(scene.shards).toHaveLength(0);
+    expect(scene.substance).toBe('lava');
+  });
+
+  it('builds only the substance it was asked for', () => {
+    const lamp = createScene('one', 40, { holds: 'substance', substance: 'lava' });
+    const cloud = createScene('one', 40, { holds: 'substance', substance: 'smoke' });
+    const flakes = createScene('one', 40, { holds: 'substance', substance: 'glitter' });
+
+    expect([lamp.lava, lamp.smoke, lamp.flakes].filter(Boolean)).toHaveLength(1);
+    expect(cloud.smoke).not.toBeNull();
+    expect(cloud.lava).toBeNull();
+    expect(flakes.flakes).not.toBeNull();
+    expect(flakes.smoke).toBeNull();
+  });
+
+  it('leaves a cell of glass with no substance in it', () => {
+    const scene = createScene('glass', 12);
+
+    expect(scene.substance).toBeNull();
+    expect(scene.lava).toBeNull();
+    expect(scene.smoke).toBeNull();
+    expect(scene.flakes).toBeNull();
+    expect(scene.shards.length).toBeGreaterThan(0);
+  });
+
+  it('advances whatever is in it', () => {
+    const scene = createScene('moving', 40, { holds: 'substance', substance: 'lava' });
+    const before = scene.lava!.blobs.map((blob) => ({ x: blob.x, y: blob.y }));
+
+    for (let frame = 0; frame < 60; frame += 1) {
+      updateScene(scene, { dt: 1 / 60, turn: 0, drag: { x: 0, y: 0 } });
+    }
+
+    expect(
+      scene.lava!.blobs.some(
+        (blob, index) =>
+          before[index] && Math.hypot(blob.x - before[index].x, blob.y - before[index].y) > 0.01,
+      ),
+    ).toBe(true);
+  });
+});
+
 describe('updateScene', () => {
   const drag = { x: 0, y: 0 };
 

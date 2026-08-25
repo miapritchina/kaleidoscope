@@ -8,7 +8,7 @@ import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene, type SceneCut } from '../lib/scene';
-import type { Settings } from '../lib/settings';
+import type { Settings, SubstanceId } from '../lib/settings';
 import { frameworkRadians } from '../lib/tiling';
 
 import styles from './Kaleidoscope.module.css';
@@ -124,33 +124,56 @@ export function Kaleidoscope({
   // fixed objects, compared by identity — because what a fresh cell is settled
   // against is a dry cell or a wet one, and nothing finer. See FRESH_LIQUID.
   const fill = liquid ? FRESH_LIQUID : AIR;
-  const [cut, setCut] = useState<SceneCut>({
+  const wanted: SceneCut = {
     scale: settings.sourceScale,
     variety: settings.variety,
     medium: fill,
-  });
+    holds: liquid ? 'substance' : 'glass',
+    substance: settings.substance,
+    amount: settings.amount,
+  };
+  const [cut, setCut] = useState<SceneCut>(wanted);
   useEffect(() => {
-    if (
-      cut.scale === settings.sourceScale &&
-      cut.variety === settings.variety &&
-      cut.medium === fill
-    ) {
+    const settled =
+      cut.scale === wanted.scale &&
+      cut.variety === wanted.variety &&
+      cut.medium === wanted.medium &&
+      cut.holds === wanted.holds &&
+      cut.substance === wanted.substance &&
+      cut.amount === wanted.amount;
+
+    if (settled) {
       return;
     }
 
-    // Switching tabs is not a drag and does not wait: it should hand back the
-    // other instrument at once. Only the two a hand can slide are held back.
+    // Switching tabs or substances is not a drag and does not wait: it should
+    // hand back the other instrument at once. Only the sliders are held back,
+    // because a hand on one of those asks for a rebuild on every pointer move.
+    const dragged =
+      cut.holds === wanted.holds &&
+      cut.medium === wanted.medium &&
+      cut.substance === wanted.substance;
     const timer = window.setTimeout(
       () => {
-        setCut({ scale: settings.sourceScale, variety: settings.variety, medium: fill });
+        setCut(wanted);
       },
-      cut.medium === fill ? RECUT_DELAY_MS : 0,
+      dragged ? RECUT_DELAY_MS : 0,
     );
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [cut, settings.sourceScale, settings.variety, fill]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `wanted` is a
+    // fresh object every render; its fields are the dependencies.
+  }, [
+    cut,
+    wanted.scale,
+    wanted.variety,
+    wanted.medium,
+    wanted.holds,
+    wanted.substance,
+    wanted.amount,
+  ]);
 
   const scene = useMemo(
     () => createScene(settings.seed, settings.shards, cut),
@@ -221,11 +244,10 @@ export function Kaleidoscope({
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
         medium,
-        // What the loose contents of the cell are asked for. Both are spent
-        // rather than scaled: nothing is simulated for glitter that is not
-        // shown, and a cell with no ink in it never builds a fluid at all.
-        glitter: settings.glitter,
-        ink: settings.ink,
+        // The one thing a cell of substance takes live: how much its fluid
+        // resists whatever is moving through it. Which substance and how much
+        // of it are geometry, and wait with the rest of the cut.
+        thickness: settings.thickness,
         // The cell is drawn inside the framework, so the framework's angle has
         // to come off gravity's or the pile would lean with the instrument.
         // Derived by the same function the renderer uses, upright offset and
@@ -268,7 +290,14 @@ export function Kaleidoscope({
   );
 }
 
-function describe({ source, seed }: Settings): string {
+/** What a cell of liquid is holding, for a screen reader. */
+const SUBSTANCE_NAMES: Record<SubstanceId, string> = {
+  lava: 'a lava lamp',
+  smoke: 'smoke',
+  glitter: 'glitter',
+};
+
+function describe({ source, seed, substance }: Settings): string {
   // The mirror count is not a setting: a tube has three, and there is nothing
   // to announce about it that the word "kaleidoscope" does not already say.
   const assembly = 'Kaleidoscope';
@@ -281,6 +310,6 @@ function describe({ source, seed }: Settings): string {
     case 'objects':
       return `${assembly}, seed ${seed}`;
     case 'liquid':
-      return `${assembly}, glass suspended in liquid, seed ${seed}`;
+      return `${assembly}, a cell of ${SUBSTANCE_NAMES[substance]}, seed ${seed}`;
   }
 }

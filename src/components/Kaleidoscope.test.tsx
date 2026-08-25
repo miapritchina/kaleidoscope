@@ -22,15 +22,15 @@ describe('Kaleidoscope', () => {
     expect(canvas).toHaveAccessibleName(`Kaleidoscope, seed ${DEFAULT_SETTINGS.seed}`);
   });
 
-  // Which cell it is is worth saying: the seed alone would announce a liquid
-  // chamber and a dry one identically.
-  it('says which cell the glass is suspended in', () => {
+  // Which cell it is is worth saying: the seed alone would announce a cell of
+  // lava and a chamber of glass identically.
+  it('says what the cell is filled with', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     render(<Kaleidoscope settings={{ ...DEFAULT_SETTINGS, source: 'liquid' }} paused />);
 
     expect(screen.getByRole('img')).toHaveAccessibleName(
-      `Kaleidoscope, glass suspended in liquid, seed ${DEFAULT_SETTINGS.seed}`,
+      `Kaleidoscope, a cell of a lava lamp, seed ${DEFAULT_SETTINGS.seed}`,
     );
   });
 

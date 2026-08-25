@@ -4,18 +4,24 @@ import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
 import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
+import { paintLava } from './lava';
 import {
   applyCutShape,
   DRAG_CELLS,
   drawChamber,
-  liveFlakes,
   SKIN_PATCH,
   type Glass,
   type Scene,
 } from './scene';
 import { paintSmoke } from './smoke';
 import { createSkinPatches, measureSource, type SkinPatches } from './skin';
-import { isChamberSource, LIMITS, type Settings } from './settings';
+import {
+  isChamberSource,
+  isGlassSource,
+  LIMITS,
+  type Settings,
+  type SubstanceId,
+} from './settings';
 import {
   coverWithHexagons,
   frameworkRadians,
@@ -338,7 +344,10 @@ export class KaleidoscopeRenderer {
     // settled by the glass rather than by the frame. Applied here because
     // this is where the two meet: the scene knows nothing about pictures and
     // the pictures know nothing about the scene.
-    if (this.#girthOn !== scene || !sameGlasses(this.#girthGlasses, glasses)) {
+    if (
+      isGlassSource(settings.source) &&
+      (this.#girthOn !== scene || !sameGlasses(this.#girthGlasses, glasses))
+    ) {
       this.#girthGlasses = glasses;
       this.#girthOn = scene;
       applyCutShape(scene.shards, glasses);
@@ -507,7 +516,12 @@ export class KaleidoscopeRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.fillStyle = GROUND;
+    // What the cell is lit against. White for anything a dye or a coloured
+    // liquid is seen through, because that is what makes them read as
+    // transmitted colour rather than as paint; dark for glitter, because a
+    // flake cannot be brighter than a lit white page and its whole business is
+    // being brighter than what is behind it.
+    ctx.fillStyle = mode === 'chamber' ? groundFor(scene.substance) : GROUND;
     // The whole surface, not just the part this triangle uses. The bead samples
     // outside the triangle's own reach, and anything it finds unpainted comes
     // back as transparent black — which showed up as holes punched through the
@@ -543,9 +557,16 @@ export class KaleidoscopeRenderer {
       ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
 
       // The triangle's circumradius: the cell reaches all three corners and no
-      // further, so every chip that is simulated has a chance of being seen.
+      // further, so everything that is simulated has a chance of being seen.
       const cellScale = reach / Math.sqrt(3) / CHAMBER_RADIUS;
       const pan = { x: scene.drag.x * DRAG_CELLS, y: scene.drag.y * DRAG_CELLS };
+
+      if (scene.substance) {
+        this.#paintSubstance(ctx, scene, cellScale, pan);
+        ctx.restore();
+
+        return;
+      }
 
       drawChamber(ctx, scene, {
         scale: cellScale,
@@ -561,47 +582,79 @@ export class KaleidoscopeRenderer {
         glasses,
       });
 
-      // The ink, over the glass rather than behind it, and taken out of the
-      // light rather than added to it: dye between the eye and the chamber
-      // tints everything coming through — the ground, and the glass lying in
-      // it. Drawn at the grid's own size and let up to the cell's, which is a
-      // bilinear filter over a field the solver itself reads bilinearly.
-      const ink = scene.smoke ? paintSmoke(scene.smoke, settings.ink) : null;
+      ctx.restore();
+    }
+  }
 
-      if (ink) {
-        const across = CHAMBER_RADIUS * cellScale;
+  /**
+   * Paints whichever substance the cell is filled with.
+   *
+   * All three are drawn in the cell's own frame — turned with the tube and
+   * moved with the drag — because all three are things in the chamber rather
+   * than effects on the picture, and the mirrors are meant to fold them exactly
+   * as they fold a piece of glass.
+   */
+  #paintSubstance(
+    ctx: CanvasRenderingContext2D,
+    scene: Scene,
+    cellScale: number,
+    pan: { x: number; y: number },
+  ): void {
+    const across = CHAMBER_RADIUS * cellScale;
 
+    if (scene.lava) {
+      const painted = paintLava(scene.lava);
+
+      if (painted) {
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.imageSmoothingEnabled = true;
+        // Laid on rather than multiplied: the wax is a body of colour with a
+        // surface, and what is behind it does not come through.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
+        ctx.restore();
+      }
+
+      return;
+    }
+
+    if (scene.smoke) {
+      const painted = paintSmoke(scene.smoke);
+
+      if (painted) {
         ctx.save();
         ctx.translate(pan.x * cellScale, pan.y * cellScale);
         ctx.rotate(scene.cell);
         ctx.globalCompositeOperation = 'multiply';
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(ink, -across, -across, across * 2, across * 2);
+        // Taken out of the light rather than added to it, which is what a dye
+        // does: it does not paint the cell, it decides what gets through it.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over';
       }
 
-      // And the glitter last, because a flake is a highlight: it goes over
-      // whatever it is lying on, ink and glass alike.
+      return;
+    }
+
+    if (scene.flakes) {
+      this.#flakes ??= createFlakeSprites();
       drawGlitter(ctx, scene.flakes, {
         scale: cellScale,
         rotation: scene.cell,
         pan,
         // Where the room's light is, seen from a phone being held at the
         // scene's tilt. The light stays where it is and the instrument turns
-        // under it, so this is the tilt read back into the screen's own axes —
-        // which is why the flakes fire in waves as the phone moves and sit
-        // still when it does not.
+        // under it, which is why the flakes fire in waves as the phone moves
+        // and sit still when it does not.
         light: {
           x: Math.sin(scene.tilt) * LIGHT_THROW,
           y: Math.cos(scene.tilt) * LIGHT_THROW,
           z: 1,
         },
-        live: liveFlakes(settings.glitter),
-        sprites: this.#flakes ?? createFlakeSprites(),
+        sprites: this.#flakes,
       });
-
-      ctx.restore();
     }
   }
 
@@ -1172,3 +1225,20 @@ function sameGlasses(a: readonly Glass[], b: readonly Glass[]): boolean {
 function defaultCanvas(): HTMLCanvasElement {
   return document.createElement('canvas');
 }
+
+/**
+ * What a cell of substance is lit against.
+ *
+ * The dry chamber's ground has always been white, on the reasoning that the
+ * objects are the subject and white is what a photographer would stand them on.
+ * Two of the three substances want the same thing for the same reason. Glitter
+ * does not: a flake is a mirror, a mirror cannot be brighter than a lit white
+ * page, and the whole of what glitter does is be brighter than what is behind
+ * it. So its cell is a dark liquid, which is also what the real ones are.
+ */
+function groundFor(substance: SubstanceId | null): string {
+  return substance === 'glitter' ? GLITTER_GROUND : GROUND;
+}
+
+/** The dark liquid a cell of glitter hangs in. */
+const GLITTER_GROUND = '#0e1526';
