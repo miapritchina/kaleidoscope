@@ -4,8 +4,19 @@
   overflow: hidden;
 }
 
+/*
+ * Against the viewport rather than the page box, and that is the point: the
+ * page box is what iOS measures short in a home-screen app (see index.css), and
+ * the artwork is the one thing that must reach the edge of the screen whatever
+ * the units say. A fixed box's containing block is the viewport itself, which
+ * is a different measurement and has been the whole screen at both ends since
+ * `viewport-fit=cover` went in.
+ *
+ * Nothing here scrolls, so there is no difference between this and `absolute`
+ * on any browser that measures the page correctly.
+ */
 .stage {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: #000;
 }
