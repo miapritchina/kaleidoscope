@@ -155,3 +155,18 @@
   text-align: center;
   opacity: 0.75;
 }
+
+/*
+ * The substance picker: the same segmented row the tabs use, one level down.
+ * It is the same kind of choice — which instrument this is — so it is the same
+ * control, and a dropdown would have hidden two of the three answers behind a
+ * tap.
+ */
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 0.85rem;
+}

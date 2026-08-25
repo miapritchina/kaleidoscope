@@ -12,6 +12,24 @@ export function isSourceId(value: unknown): value is SourceId {
 }
 
 /**
+ * What a cell of liquid is filled with.
+ *
+ * Not glass in a liquid — *instead* of glass. A kaleidoscope's object cell does
+ * not have to hold loose pieces at all, and the ones that do not are a
+ * different instrument entirely: a lava lamp's blobs climbing and sinking past
+ * each other, smoke curling in a lit box, a cloud of glitter hanging in
+ * clear fluid. The mirrors repeat whatever is in there, and what is in there is
+ * the substance itself.
+ */
+export const SUBSTANCES = ['lava', 'smoke', 'glitter'] as const;
+
+export type SubstanceId = (typeof SUBSTANCES)[number];
+
+export function isSubstanceId(value: unknown): value is SubstanceId {
+  return typeof value === 'string' && (SUBSTANCES as readonly string[]).includes(value);
+}
+
+/**
  * Whether the mirrors are looking at a cell of glass rather than out of the
  * tube altogether.
  *
@@ -23,6 +41,11 @@ export function isSourceId(value: unknown): value is SourceId {
  */
 export function isChamberSource(source: SourceId): boolean {
   return source === 'objects' || source === 'liquid';
+}
+
+/** Whether the cell holds loose pieces rather than a substance. */
+export function isGlassSource(source: SourceId): boolean {
+  return source === 'objects';
 }
 
 /** Everything that describes a kaleidoscope. Serialisable by design. */
@@ -57,42 +80,26 @@ export interface Settings {
    * fuller. How full it is stays the piece count's business.
    */
   variety: number;
+  /** What the liquid cell is filled with. See {@link SUBSTANCES}. */
+  substance: SubstanceId;
   /**
-   * How thick the liquid cell's fluid is, from a thin oil to a gel.
+   * How much of that substance there is, from a trace to a cell full.
    *
-   * Only the liquid cell has one. It moves two things together, because in a
-   * real fluid they move together: how much of the glass's weight the fluid
-   * carries, and how much of its speed the fluid takes. At the thin end a
-   * piece crosses the cell in a few seconds and the pile drifts about the
-   * floor; at the thick end the glass hangs where it is, and the only thing
-   * that moves it is the swirl of turning the tube.
+   * One slider for all three, because it is one question — how much of the
+   * stuff is in there — and it only means a different noun each time: blobs of
+   * lava, smoke in the air, flakes of glitter.
+   */
+  amount: number;
+  /**
+   * How thick the liquid cell's fluid is, from thin to gel.
+   *
+   * Only the liquid cell has one. Thin, the substance moves freely and settles
+   * quickly; thick, everything slows and hangs, and the only thing that shifts
+   * it is the swirl of turning the tube. It is the same question for all three:
+   * how much the fluid resists what is moving through it.
    */
   thickness: number;
-  /**
-   * How much ink is loose in the liquid cell, from none to plenty.
-   *
-   * Only the liquid cell has one, because it is the only one with a fluid to
-   * carry it. The ink is a fluid of its own rather than a tint: it is advected
-   * by a velocity field that the turning tube stirs and the falling glass drags
-   * behind it, so it draws out into ribbons and folds back over itself the way
-   * ink in oil does. See `lib/smoke.ts`.
-   */
-  ink: number;
-  /**
-   * How much glitter is suspended in the chamber, from none to plenty.
-   *
-   * Real glitter is thousands of tiny flat mirrors at random orientations, and
-   * it does not glow — it *flashes*, one flake at a time, as the angle between
-   * you, the flake and the light passes through alignment. So this is only
-   * half a look: the other half is the phone moving, and it comes alive when
-   * **Real gravity** is on and the room's light starts sweeping across it.
-   *
-   * The flakes are matter in the cell rather than a speckle laid over it: in a
-   * dry chamber each one is caught on a piece of glass and tumbles with it, and
-   * in a liquid one they are loose in the fluid and go where it goes. See
-   * `lib/glitter.ts`.
-   */
-  glitter: number;
+
   /**
    * How much of a glass bead is in front of the mirrors, from none to all.
    *
@@ -184,8 +191,7 @@ export const LIMITS = {
   shards: { min: 30, max: 150, step: 1 },
   variety: { min: 0, max: 1, step: 0.05 },
   thickness: { min: 0, max: 1, step: 0.05 },
-  ink: { min: 0, max: 1, step: 0.05 },
-  glitter: { min: 0, max: 1, step: 0.05 },
+  amount: { min: 0.05, max: 1, step: 0.05 },
   bead: { min: 0, max: 1, step: 0.05 },
   sourceScale: { min: 0.4, max: 2.5, step: 0.05 },
   zoom: { min: 0.5, max: 3, step: 0.05 },
@@ -209,11 +215,10 @@ export const DEFAULT_SETTINGS: Settings = {
   // one to open on — nothing appears to be happening in it until the tube is
   // turned.
   thickness: 0.35,
-  // Enough to catch the light without becoming the subject.
-  glitter: 0.35,
-  // None. Ink is a strong look and a deliberate one — a cell arrives clear,
-  // and it is poured in.
-  ink: 0,
+  // A lamp of climbing blobs, which is the one everyone has watched.
+  substance: 'lava',
+  // Enough to fill the cell without crowding it.
+  amount: 0.55,
   bead: 0.6,
   sourceScale: 1,
   objects: [DEFAULT_OBJECTS],
@@ -257,8 +262,8 @@ export function sanitizeSettings(input: unknown): Settings {
     shards: clampToLimit(toNumber(raw.shards, DEFAULT_SETTINGS.shards), LIMITS.shards),
     variety: clampToLimit(toNumber(raw.variety, DEFAULT_SETTINGS.variety), LIMITS.variety),
     thickness: clampToLimit(toNumber(raw.thickness, DEFAULT_SETTINGS.thickness), LIMITS.thickness),
-    ink: clampToLimit(toNumber(raw.ink, DEFAULT_SETTINGS.ink), LIMITS.ink),
-    glitter: clampToLimit(toNumber(raw.glitter, DEFAULT_SETTINGS.glitter), LIMITS.glitter),
+    substance: isSubstanceId(raw.substance) ? raw.substance : DEFAULT_SETTINGS.substance,
+    amount: clampToLimit(toNumber(raw.amount, DEFAULT_SETTINGS.amount), LIMITS.amount),
     bead: clampToLimit(toNumber(raw.bead, DEFAULT_SETTINGS.bead), LIMITS.bead),
     sourceScale: clampToLimit(
       toNumber(raw.sourceScale, DEFAULT_SETTINGS.sourceScale),
@@ -291,7 +296,6 @@ export function randomizeSeed(settings: Settings): Settings {
 export function settingsToSearchParams(settings: Settings): URLSearchParams {
   const params = new URLSearchParams({
     shards: String(settings.shards),
-    glitter: String(settings.glitter),
     bead: String(settings.bead),
     sourceScale: String(settings.sourceScale),
     objects: settings.objects.join(','),
@@ -299,7 +303,8 @@ export function settingsToSearchParams(settings: Settings): URLSearchParams {
     angle: String(settings.angle),
     variety: String(settings.variety),
     thickness: String(settings.thickness),
-    ink: String(settings.ink),
+    substance: settings.substance,
+    amount: String(settings.amount),
     seed: settings.seed,
   });
 
@@ -337,6 +342,11 @@ const KNOWN_PARAMS: readonly string[] = [
   'chipSize',
   'metallic',
   'palette',
+  // The two the liquid cell had while it still held glass: how much glitter was
+  // sprinkled over the pile, and how much ink was poured around it. Both are
+  // now the `substance` the cell is filled with instead of pieces.
+  'glitter',
+  'ink',
 ];
 
 /** True when a URL carries anything this module would read. */
@@ -356,8 +366,8 @@ export function settingsFromSearchParams(params: URLSearchParams): Settings {
     shards: params.get('shards'),
     variety: params.get('variety'),
     thickness: params.get('thickness'),
-    ink: params.get('ink'),
-    glitter: params.get('glitter'),
+    substance: params.get('substance'),
+    amount: params.get('amount'),
     bead: params.get('bead'),
     sourceScale: params.get('sourceScale') ?? params.get('chipSize'),
     objects: params.get('objects'),

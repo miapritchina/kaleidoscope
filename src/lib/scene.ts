@@ -8,10 +8,12 @@ import {
   type Medium,
 } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
-import { createGlitter, MAX_FLAKES, updateGlitter, type Flake } from './glitter';
+import { createGlitter, updateGlitter, type Flake } from './glitter';
+import { createLava, updateLava, type Lava } from './lava';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 import { ROUND, shapeOf, type Shape } from './shape';
 import { measureSource, type SkinCut, type SkinPatches } from './skin';
+import type { SubstanceId } from './settings';
 import { createSmoke, updateSmoke, type Smoke } from './smoke';
 
 /**
@@ -114,18 +116,19 @@ export interface Scene {
    */
   flow: number;
   /**
-   * The glitter, which goes wherever what surrounds it goes — see
-   * `lib/glitter.ts`.
-   */
-  readonly flakes: Flake[];
-  /**
-   * The ink, if the cell is ever asked for any.
+   * What the cell is filled with instead of glass, or null when it holds glass.
    *
-   * A grid rather than particles, and the only part of the chamber that is
-   * built when it is first wanted rather than with the scene: it is a couple of
-   * hundred kilobytes of fields, and a dry cell can never use them.
+   * A chamber is one thing or the other and never both: either loose pieces in
+   * {@link Scene.shards}, or a substance — and then `shards` is empty and one
+   * of the three below is what is in there.
    */
+  readonly substance: SubstanceId | null;
+  /** Blobs of a second liquid, climbing and sinking. See `lib/lava.ts`. */
+  lava: Lava | null;
+  /** A fluid and the dye carried on it. See `lib/smoke.ts`. */
   smoke: Smoke | null;
+  /** Flakes of foil hanging in clear fluid. See `lib/glitter.ts`. */
+  flakes: Flake[] | null;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -156,12 +159,12 @@ export interface SceneUpdate {
    */
   framework?: number | undefined;
   /**
-   * How much glitter is wanted, from none to plenty. Spends the flakes the
-   * scene was made with rather than scaling one fixed field.
+   * How thick the substance cell's fluid is, 0 thin to 1 gel.
+   *
+   * The one number all three substances share: how much the fluid resists what
+   * is moving through it.
    */
-  glitter?: number | undefined;
-  /** How much ink is wanted, from none to plenty. */
-  ink?: number | undefined;
+  thickness?: number | undefined;
   /**
    * What the cell is filled with. Left out, the dry one.
    *
@@ -272,6 +275,18 @@ export function pieceRadius(draw: number, variety: number): number {
 /** How a chamber's glass is cut, over and above how many pieces there are. */
 export interface SceneCut {
   /**
+   * What the cell holds: loose pieces, or a substance instead of them.
+   *
+   * Two instruments rather than two settings of one. A cell of glass is built
+   * and settled; a cell of substance has no pieces in it at all, and nothing to
+   * settle.
+   */
+  holds?: 'glass' | 'substance';
+  /** Which substance, when that is what it holds. */
+  substance?: SubstanceId;
+  /** How much of it there is, from a trace to a cell full. */
+  amount?: number;
+  /**
    * Multiplies every piece's size, from the pinch on the artwork.
    *
    * Geometry rather than drawing: a bigger piece displaces its neighbours and
@@ -296,11 +311,18 @@ export interface SceneCut {
   variety?: number;
 }
 
-/** Builds a deterministic chamber of glass for the given seed. */
+/** Builds a deterministic chamber for the given seed. */
 export function createScene(seed: string, shardCount: number, cut: SceneCut = {}): Scene {
-  const { scale: chipScale = 1, medium = AIR, variety = 0.5 } = cut;
+  const {
+    scale: chipScale = 1,
+    medium = AIR,
+    variety = 0.5,
+    holds = 'glass',
+    substance = 'lava',
+    amount = 0.55,
+  } = cut;
   const rng = mulberry32(hashSeed(seed));
-  const count = Math.max(1, Math.floor(shardCount));
+  const count = holds === 'glass' ? Math.max(1, Math.floor(shardCount)) : 0;
   const shards: Shard[] = [];
 
   for (let i = 0; i < count; i += 1) {
@@ -343,19 +365,31 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
     contents: 0,
     drag: { x: 0, y: 0 },
     flow: 0,
-    // Seeded off the same seed as the glass, one turn along, so a chamber is
-    // reproduced whole from its seed — the flakes with the shards.
-    flakes: createGlitter(hashSeed(`${seed}:glitter`), shards.length),
-    smoke: null,
+    substance: holds === 'substance' ? substance : null,
+    // Whichever one the cell is filled with, and only that one: the other two
+    // are not built, so switching between them costs a rebuild of the one being
+    // switched to and nothing else.
+    lava:
+      holds === 'substance' && substance === 'lava'
+        ? createLava(hashSeed(`${seed}:lava`), amount, chipScale)
+        : null,
+    smoke:
+      holds === 'substance' && substance === 'smoke'
+        ? createSmoke(hashSeed(`${seed}:smoke`), amount)
+        : null,
+    flakes:
+      holds === 'substance' && substance === 'glitter'
+        ? createGlitter(hashSeed(`${seed}:glitter`), amount, chipScale)
+        : null,
     elapsed: 0,
   };
 
-  // Open on a resting pile rather than letting the chips visibly rain down. A
-  // liquid cell is given far less time, and for the opposite reason: its glass
-  // only needs pushing out of itself, and left to settle properly it would all
-  // be lying on the floor before the first frame — which is the one arrangement
-  // a suspended cell is not about.
-  settleChamber(shards, 0, medium.settleSeconds, medium);
+  // Open on a resting pile rather than letting the chips visibly rain down.
+  // Nothing to do for a cell of substance: there is no pile in it, and every
+  // one of the three is meant to be caught mid-motion.
+  if (holds === 'glass') {
+    settleChamber(shards, 0, medium.settleSeconds, medium);
+  }
 
   return scene;
 }
@@ -439,7 +473,7 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  */
 export function updateScene(
   scene: Scene,
-  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR, glitter = 0, ink = 0 }: SceneUpdate,
+  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR, thickness = 0.35 }: SceneUpdate,
 ): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
@@ -480,27 +514,23 @@ export function updateScene(
 
   updateChamber(scene.shards, { dt: step, angle, medium, swirl });
 
-  updateGlitter(scene.flakes, scene.shards, {
-    dt: step,
-    medium,
-    swirl,
-    angle,
-    live: liveFlakes(glitter),
-  });
+  // Whichever substance the cell holds, if it holds one. All three take the
+  // same three things — how thick the fluid is, how fast it is turning, and
+  // which way is down — because those are the whole of what a cell does to
+  // what is in it.
+  if (scene.lava) {
+    updateLava(scene.lava, { dt: step, thickness, swirl, angle });
+  }
 
-  if (ink > 0 && medium.stir > 0) {
-    // Built the first time a cell is asked for ink, and kept from then on, so
-    // pouring it in and taking it out again does not start the pattern over.
-    scene.smoke ??= createSmoke(hashSeed(`${scene.seed}:ink`));
-    updateSmoke(scene.smoke, { dt: step, medium, swirl, angle, shards: scene.shards });
+  if (scene.smoke) {
+    updateSmoke(scene.smoke, { dt: step, thickness, swirl, angle });
+  }
+
+  if (scene.flakes) {
+    updateGlitter(scene.flakes, { dt: step, thickness, swirl, angle });
   }
 
   return scene;
-}
-
-/** How many flakes a given amount of glitter is worth. */
-export function liveFlakes(glitter: number): number {
-  return Math.round(Math.min(1, Math.max(0, glitter)) * MAX_FLAKES);
 }
 
 export interface DrawChamberOptions {

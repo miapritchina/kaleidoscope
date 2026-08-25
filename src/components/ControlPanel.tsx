@@ -5,7 +5,13 @@ import type { CameraStatus } from '../hooks/useCamera';
 import { buildLine } from '../lib/build';
 import { CAMERA_FACINGS, type CameraFacing } from '../lib/camera';
 import { CUSTOM, OBJECT_SETS } from '../lib/objectSets';
-import { isChamberSource, LIMITS, type Settings, type SourceId } from '../lib/settings';
+import {
+  isChamberSource,
+  LIMITS,
+  type Settings,
+  type SourceId,
+  type SubstanceId,
+} from '../lib/settings';
 
 import { FileField } from './controls/FileField';
 import { Icon, type IconName } from './controls/Icon';
@@ -68,6 +74,20 @@ const KINDS: { id: SourceId; label: string; icon: IconName }[] = [
 function tabFor(source: SourceId): SourceId {
   return isChamberSource(source) ? source : 'image';
 }
+
+/**
+ * What a cell of liquid can be filled with.
+ *
+ * Instead of pieces, not as well as them. Each is a different thing to watch —
+ * a lamp circulating, a fluid folding over on itself, a field of flashes — so
+ * they are a choice made once inside the tab rather than three tabs of their
+ * own, which would have put five instruments across the top of a phone.
+ */
+const SUBSTANCE_KINDS: { id: SubstanceId; label: string; icon: IconName }[] = [
+  { id: 'lava', label: 'Lava', icon: 'lava' },
+  { id: 'smoke', label: 'Smoke', icon: 'smoke' },
+  { id: 'glitter', label: 'Glitter', icon: 'glitter' },
+];
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
   environment: 'Back',
@@ -178,7 +198,7 @@ export function ControlPanel({
         id={`panel-${kind}`}
         aria-labelledby={`kind-${kind}`}
       >
-        {isChamberSource(kind) && (
+        {kind === 'objects' && (
           <>
             <PictureChecklist
               label="Glass"
@@ -229,46 +249,73 @@ export function ControlPanel({
               }}
             />
 
-            {kind === 'liquid' && (
-              <RangeField
-                label="Thickness"
-                value={settings.thickness}
-                limit={LIMITS.thickness}
-                // Named at both ends rather than numbered: the middle is a
-                // proportion of nothing anybody can picture, but the ends are
-                // two things everyone has held.
-                format={(value) =>
-                  value <= LIMITS.thickness.min
-                    ? 'thin oil'
-                    : value >= LIMITS.thickness.max
-                      ? 'gel'
-                      : `${String(Math.round(value * 100))}%`
-                }
-                onChange={(value) => {
-                  onChange('thickness', value);
-                }}
-              />
-            )}
+            <TextField
+              label="Seed"
+              value={seedDraft}
+              maxLength={32}
+              placeholder="kaleido"
+              onChange={(value) => {
+                setSeedDraft(value);
+                onChange('seed', value);
+              }}
+            />
+          </>
+        )}
 
-            {kind === 'liquid' && (
-              <RangeField
-                label="Ink"
-                value={settings.ink}
-                limit={LIMITS.ink}
-                format={(value) => (value === 0 ? 'clear' : `${String(Math.round(value * 100))}%`)}
-                onChange={(value) => {
-                  onChange('ink', value);
-                }}
-              />
-            )}
+        {kind === 'liquid' && (
+          <>
+            {/* Which substance, and not how much of what else: a cell of
+                liquid holds no glass at all, so there is no piece count and no
+                glass to choose here. */}
+            <div className={styles.field} role="radiogroup" aria-label="Substance">
+              <span className={styles.label}>Substance</span>
+              <div className={styles.tabs}>
+                {SUBSTANCE_KINDS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={settings.substance === entry.id}
+                    className={
+                      settings.substance === entry.id ? `${styles.tab} ${styles.here}` : styles.tab
+                    }
+                    onClick={() => {
+                      onChange('substance', entry.id);
+                    }}
+                  >
+                    <Icon name={entry.icon} size={1.4} />
+                    <span className={styles.tabLabel}>{entry.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <RangeField
-              label="Glitter"
-              value={settings.glitter}
-              limit={LIMITS.glitter}
-              format={(value) => (value === 0 ? 'none' : `${String(Math.round(value * 100))}%`)}
+              label="Amount"
+              value={settings.amount}
+              limit={LIMITS.amount}
+              format={(value) => `${String(Math.round(value * 100))}%`}
               onChange={(value) => {
-                onChange('glitter', value);
+                onChange('amount', value);
+              }}
+            />
+
+            <RangeField
+              label="Thickness"
+              value={settings.thickness}
+              limit={LIMITS.thickness}
+              // Named at both ends rather than numbered: the middle is a
+              // proportion of nothing anybody can picture, but the ends are two
+              // things everyone has poured.
+              format={(value) =>
+                value <= LIMITS.thickness.min
+                  ? 'thin'
+                  : value >= LIMITS.thickness.max
+                    ? 'gel'
+                    : `${String(Math.round(value * 100))}%`
+              }
+              onChange={(value) => {
+                onChange('thickness', value);
               }}
             />
 

@@ -145,7 +145,7 @@ Brief specular hits on individual pieces as they tumble, alpha driven by each
 piece's `rotation` against a virtual light. One small radial gradient per lit
 piece. Makes a settling pile feel alive rather than merely animated. **2D.**
 
-### ~~Glitter~~ — done, then done properly
+### ~~Glitter~~ — done, then done properly, then made a substance of its own
 
 `lib/glitter.ts`, behind a **Glitter** slider. It began as `glitterAt` in the
 compositor and has been taken out of there.
@@ -427,6 +427,31 @@ ceiling in "Make the chamber round" measured it.
 The middle is the same size a medium's drag is quoted at, deliberately: "normal"
 ought to mean one thing in the chamber.
 
+### ~~A lava lamp~~ — done
+
+`lib/lava.ts`, and it is the substance the Liquid tab opens on. Blobs of a
+second liquid that will not mix with the first: they climb, flatten against the
+top, cool, sink, gather, and run into each other on the way.
+
+**The heat cycle** is what a lava lamp is, and it is four lines. A blob near the
+bottom warms, warm is lighter than what it floats in so it rises, near the top
+it cools and comes back down. Nothing else lifts a blob, which is why the cell
+never settles.
+
+**Metaballs** are what make it read as liquid rather than as a bag of circles.
+The fields add and the surface is the contour of the sum, so two blobs
+approaching pinch into one shape before their circles touch and one coming apart
+necks first. Merging adds areas and mixes colours; anything that grows past a
+fraction of the cell is pulled into two, because merging only runs one way and
+without that every cell ends as one lump.
+
+Three things were got wrong first and each looked reasonable at the time: sizing
+the blobs by how far their fields reach rather than by where the surface lands
+(0.54 of it) gave dots; sizing them on the areas of blobs that never overlap —
+when the whole point is that the fields add — filled the cell with one shape;
+and a palette drawn from opposite sides of the colour wheel averaged, through
+merge after merge, to the colour of a puddle.
+
 ### Actual fluid, on the solver we already built
 
 The unusual-physics one, and the reason it is realistic to want it: **Position
@@ -453,10 +478,32 @@ Rendered as screen-space metaballs, which is another piece of luck: pieces are
 *already* chains of 2–4 circles for collision, so the metaball field is sitting
 there waiting to be drawn. **GL** to render; the solver work is **2D**-agnostic.
 
-### ~~Smoke and ink~~ — done, and on the CPU
+### ~~Smoke and ink~~ — done, on the CPU, and then given the cell to itself
 
-`lib/smoke.ts`, behind an **Ink** slider on the Liquid tab. The standard Stam
-solver, and it did look like nothing else.
+`lib/smoke.ts`, and it is one of the three substances a cell of liquid can hold
+rather than a tint poured around a pile of glass. The standard Stam solver, and
+it did look like nothing else.
+
+Two things had to be added before it looked like *smoke* rather than fog, and
+both are known techniques that exist for exactly this reason: semi-Lagrangian
+advection is stable because it averages, and what an average takes out first is
+the smallest swirls. **Vorticity confinement** (Fedkiw, Stam and Jensen, 2001)
+measures the curl and pushes it back — but pointed straight at the raw curl it
+chases single cells, and drew a row of grid-aligned comb teeth along the edge of
+every ribbon; one pass of blur over the curl's size first points it at the swirl
+instead of at the grid. **MacCormack advection** takes the blur off by measuring
+it: carry the field forward again from where it landed, and the miss is the
+error the trace introduced.
+
+Between them was a wrong turn worth recording, because it is the obvious idea:
+an unsharp mask, taking a little of the local average back out of every cell.
+Sharpening by amplifying the difference from the neighbours amplifies the
+*shortest* wavelength hardest, and the shortest wavelength a grid has is a
+checkerboard.
+
+The grid went from 64 to 96 when this stopped being a tint and became the whole
+picture, and the cost with it: **1.9 ms per rendered frame** against the 0.6 a
+chamber of glass costs — and a cell of smoke is not running one.
 
 **GL** turned out not to be needed, and the reason is worth writing down: ink is
 smooth. It has no edges of its own to resolve, only ribbons, so the picture at
@@ -505,7 +552,27 @@ physically motivated. **2D.**
 
 ## Housekeeping
 
-### ~~A Liquid tab~~ — done
+### ~~A Liquid tab~~ — done, and then done for the right reason
+
+**The first version of this had the idea backwards, and the note below is what
+that mistake looked like from inside it.** It read "a chamber of liquid" as
+*glass suspended in a liquid* — the same pile of shards, sinking more slowly,
+with dye poured around it and flakes sprinkled over it. The owner's correction
+was one sentence: instead of chunks there is a different substance in the
+chamber. A lava lamp. Smoke in air. Glitter.
+
+So a cell of liquid now holds **no glass at all**. The substance *is* the
+content, and there are three of them behind a picker in the tab: `lib/lava.ts`,
+`lib/smoke.ts` and `lib/glitter.ts`. The oil cell below stays exactly as it was
+and is still what the **Shards** tab's chamber falls through; what went is the
+idea that suspending glass in it was the interesting thing to do with it.
+
+Worth keeping the shape of the mistake: every piece of it worked, was measured,
+was tested and was documented, and all of that was in service of an answer to
+the wrong question. Nothing in the numbers could have caught it — only the
+picture, and only somebody who knew what the thing was supposed to be.
+
+### ~~A Liquid tab~~ — the note from the first version
 
 The oil cell above landed, so it is a tab: **Shards**, **Liquid**, **View**. A
 checkbox on the shard tab would have filed the difference between two
