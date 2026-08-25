@@ -4,6 +4,7 @@ import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
 import { useStageGesture } from '../hooks/useStageGesture';
 import { AIR, FRESH_LIQUID, liquidCell } from '../lib/chamber';
+import { createChime, readImpacts, type Chime, type Impact } from '../lib/chime';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
@@ -104,6 +105,25 @@ export function Kaleidoscope({
   // cell would do.
   const stagePointerRef = useRef<{ x: number; y: number } | null>(null);
   const stirTrackerRef = useRef<{ last: { x: number; y: number } | null }>({ last: null });
+
+  // The instrument's sound, built only while the switch is on — the switch is
+  // the user gesture browsers demand before audio may start — and torn down
+  // the moment it is off, so no context lingers making silence.
+  const chimeRef = useRef<Chime | null>(null);
+  const heardRef = useRef<{ velocities: Float32Array }>({ velocities: new Float32Array(0) });
+  const impactsRef = useRef<Impact[]>([]);
+  useEffect(() => {
+    if (!settings.sound) {
+      return;
+    }
+
+    chimeRef.current = createChime();
+
+    return () => {
+      chimeRef.current?.dispose();
+      chimeRef.current = null;
+    };
+  }, [settings.sound]);
 
   // A new seed, count or piece size means a genuinely different scene; anything
   // else is applied to the running simulation without resetting it. Size counts
@@ -285,6 +305,22 @@ export function Kaleidoscope({
         // all — computed separately the pile leans by the difference.
         framework: frameworkRadians(settings.angle),
       });
+      // What the frame sounded like: the glass's collisions, read off the
+      // solver's own velocity changes, and the fluid's swirl as a wash.
+      const chime = chimeRef.current;
+
+      if (chime && !paused) {
+        readImpacts(scene.shards, heardRef.current, impactsRef.current);
+
+        for (const impact of impactsRef.current) {
+          chime.clink(impact.strength, impact.size);
+        }
+
+        chime.wash(
+          scene.substance ? Math.min(1, Math.abs(scene.flow - gesture.turnRef.current) / 2) : 0,
+        );
+      }
+
       renderer.render(scene, settings, media, skins);
     },
     !paused || gesture.mode !== null || tiltRef !== undefined,

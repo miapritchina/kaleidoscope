@@ -64,6 +64,7 @@ describe('sanitizeSettings', () => {
       zoom: 1.5,
       angle: DEFAULT_SETTINGS.angle,
       tilt: DEFAULT_SETTINGS.tilt,
+      sound: DEFAULT_SETTINGS.sound,
       debug: DEFAULT_SETTINGS.debug,
       seed: 'drifting',
     });
