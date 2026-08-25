@@ -10,6 +10,8 @@ const CHANGES = [
   ['cameraFacing', 'user'],
   ['shards', 40],
   ['thickness', 0.8],
+  ['variety', 0.9],
+  ['ink', 0.6],
   ['glitter', 0.8],
   ['bead', 0.25],
   ['sourceScale', 1.5],

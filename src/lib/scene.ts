@@ -2,14 +2,17 @@ import {
   advanceFlow,
   AIR,
   CHAMBER_RADIUS,
+  REFERENCE_PIECE,
   settleChamber,
   updateChamber,
   type Medium,
 } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
+import { createGlitter, MAX_FLAKES, updateGlitter, type Flake } from './glitter';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 import { ROUND, shapeOf, type Shape } from './shape';
 import { measureSource, type SkinCut, type SkinPatches } from './skin';
+import { createSmoke, updateSmoke, type Smoke } from './smoke';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
@@ -110,6 +113,19 @@ export interface Scene {
    * starts and sail on after it stops. See `advanceFlow` in `lib/chamber.ts`.
    */
   flow: number;
+  /**
+   * The glitter, which goes wherever what surrounds it goes — see
+   * `lib/glitter.ts`.
+   */
+  readonly flakes: Flake[];
+  /**
+   * The ink, if the cell is ever asked for any.
+   *
+   * A grid rather than particles, and the only part of the chamber that is
+   * built when it is first wanted rather than with the scene: it is a couple of
+   * hundred kilobytes of fields, and a dry cell can never use them.
+   */
+  smoke: Smoke | null;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -139,6 +155,13 @@ export interface SceneUpdate {
    * instrument sideways would have the pile falling sideways with it.
    */
   framework?: number | undefined;
+  /**
+   * How much glitter is wanted, from none to plenty. Spends the flakes the
+   * scene was made with rather than scaling one fixed field.
+   */
+  glitter?: number | undefined;
+  /** How much ink is wanted, from none to plenty. */
+  ink?: number | undefined;
   /**
    * What the cell is filled with. Left out, the dry one.
    *
@@ -196,23 +219,86 @@ function frac(value: number): number {
 }
 
 /**
- * How big a piece is, in cell units, before the size gesture scales it.
+ * Normal size for a piece, in cell units, before the size gesture scales it.
  *
- * The range is wide because a real cell holds everything from a splinter to a
- * bead. How *full* the cell is lives in the piece count rather than here — see
- * the `shards` default and limits in `lib/settings.ts`, which fill the cell as
- * far as the pile can stand while still resting and still avalanching.
+ * The same size a medium's drag is quoted at, deliberately: "normal" ought to
+ * mean one thing in the chamber, and the piece that feels exactly the drag
+ * written down is the piece the glass is cut around. How *full* the cell is
+ * lives in the piece count rather than here — see the `shards` default and
+ * limits in `lib/settings.ts`, which fill the cell as far as the pile can stand
+ * while still resting and still avalanching.
  */
-const PIECE_SMALLEST = 0.038;
-const PIECE_LARGEST = 0.12;
+const PIECE_MIDDLE = REFERENCE_PIECE;
+
+/**
+ * How far the widest variety spreads the sizes, as a natural logarithm.
+ *
+ * A ratio rather than a width, because size is felt as a proportion: a piece
+ * twice its neighbour reads the same way whether the two are grit or boulders.
+ * At the widest, `e^1.15` is a little over three, so the biggest piece is ten
+ * times the smallest across the whole range — everything from a speck to a
+ * bead, which is what a real cell holds.
+ */
+const PIECE_SPREAD = 1.15;
+
+/**
+ * How much bigger the average piece comes out for a given spread.
+ *
+ * Sizes are spread evenly in the logarithm, so with `r = m·e^(u·h)` for `u`
+ * even over `[-1, 1]`, the mean of `r²` is `m²·sinh(2h)/2h`. Dividing the
+ * middle by the root of that holds the total area of glass constant, which is
+ * the point: **the variety slider changes only the variety.** Left alone, a
+ * wider spread would put more glass in the cell than a narrow one — a piece
+ * three times across is nine times the area — so widening it would fill the
+ * chamber as well as mixing it, and there would be no way to ask for one
+ * without the other.
+ */
+function evenness(half: number): number {
+  return half === 0 ? 1 : Math.sinh(2 * half) / (2 * half);
+}
+
+/**
+ * How big one piece is cut, in cell units.
+ *
+ * @param draw Where in the spread this piece falls, in `[0, 1)`.
+ */
+export function pieceRadius(draw: number, variety: number): number {
+  const half = PIECE_SPREAD * Math.min(1, Math.max(0, variety));
+  const middle = PIECE_MIDDLE / Math.sqrt(evenness(half));
+
+  return middle * Math.exp((Math.min(1, Math.max(0, draw)) * 2 - 1) * half);
+}
+
+/** How a chamber's glass is cut, over and above how many pieces there are. */
+export interface SceneCut {
+  /**
+   * Multiplies every piece's size, from the pinch on the artwork.
+   *
+   * Geometry rather than drawing: a bigger piece displaces its neighbours and
+   * piles differently, so the glass is recut rather than the sprites magnified.
+   */
+  scale?: number;
+  /**
+   * What the cell is filled with. The fresh glass is settled against it, and a
+   * liquid cell is unpacked rather than settled — see `settleChamber`.
+   */
+  medium?: Medium;
+  /**
+   * How far the piece sizes spread, from 0 for one size to 1 for the widest.
+   *
+   * Nought is every piece exactly {@link PIECE_MIDDLE}; the spread opens
+   * symmetrically about that in proportion rather than in width, and the total
+   * area of glass is held constant across the whole range. See {@link evenness}.
+   *
+   * Left out, the middle of the range — which is about the spread this chamber
+   * has always been cut at, and is what the app opens on.
+   */
+  variety?: number;
+}
 
 /** Builds a deterministic chamber of glass for the given seed. */
-export function createScene(
-  seed: string,
-  shardCount: number,
-  chipScale = 1,
-  medium: Medium = AIR,
-): Scene {
+export function createScene(seed: string, shardCount: number, cut: SceneCut = {}): Scene {
+  const { scale: chipScale = 1, medium = AIR, variety = 0.5 } = cut;
   const rng = mulberry32(hashSeed(seed));
   const count = Math.max(1, Math.floor(shardCount));
   const shards: Shard[] = [];
@@ -223,7 +309,7 @@ export function createScene(
     // bigger piece: it displaces its neighbours, packs differently and piles
     // differently. Scaling only the sprite leaves every arrangement identical
     // and just draws it smaller, which is a picture of the same chamber.
-    const radius = randomBetween(rng, PIECE_SMALLEST, PIECE_LARGEST) * Math.max(0.05, chipScale);
+    const radius = pieceRadius(rng(), variety) * Math.max(0.05, chipScale);
     // Scattered over the disc by area, not by radius, so the middle does not
     // come out crowded — and held inside the wall by its own radius, so
     // nothing starts beyond it and has to be shoved in.
@@ -257,6 +343,10 @@ export function createScene(
     contents: 0,
     drag: { x: 0, y: 0 },
     flow: 0,
+    // Seeded off the same seed as the glass, one turn along, so a chamber is
+    // reproduced whole from its seed — the flakes with the shards.
+    flakes: createGlitter(hashSeed(`${seed}:glitter`), shards.length),
+    smoke: null,
     elapsed: 0,
   };
 
@@ -349,7 +439,7 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  */
 export function updateScene(
   scene: Scene,
-  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR }: SceneUpdate,
+  { dt, turn, drag, tilt = 0, framework = 0, medium = AIR, glitter = 0, ink = 0 }: SceneUpdate,
 ): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
@@ -381,16 +471,36 @@ export function updateScene(
   // off again, and tipping the phone moves it once more without turning
   // anything on screen. Nothing else moves the pieces — they tip, avalanche and
   // settle, which is what a real one does and why it never repeats.
-  updateChamber(scene.shards, {
+  // Which way is down, in the cell's own frame. Everything loose in the cell
+  // wants it: the glass, the flakes and the ink alike.
+  const angle = scene.cell + framework + tilt;
+  // The fluid's turning as the cell sees it: the tube's own rate taken off,
+  // since everything in the cell is held in the cell's frame, not the world's.
+  const swirl = scene.flow - turn;
+
+  updateChamber(scene.shards, { dt: step, angle, medium, swirl });
+
+  updateGlitter(scene.flakes, scene.shards, {
     dt: step,
-    angle: scene.cell + framework + tilt,
     medium,
-    // The fluid's turning as the cell sees it: the tube's own rate taken off,
-    // since the pieces are held in the cell's frame and not the world's.
-    swirl: scene.flow - turn,
+    swirl,
+    angle,
+    live: liveFlakes(glitter),
   });
 
+  if (ink > 0 && medium.stir > 0) {
+    // Built the first time a cell is asked for ink, and kept from then on, so
+    // pouring it in and taking it out again does not start the pattern over.
+    scene.smoke ??= createSmoke(hashSeed(`${scene.seed}:ink`));
+    updateSmoke(scene.smoke, { dt: step, medium, swirl, angle, shards: scene.shards });
+  }
+
   return scene;
+}
+
+/** How many flakes a given amount of glitter is worth. */
+export function liveFlakes(glitter: number): number {
+  return Math.round(Math.min(1, Math.max(0, glitter)) * MAX_FLAKES);
 }
 
 export interface DrawChamberOptions {

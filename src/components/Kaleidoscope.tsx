@@ -7,7 +7,7 @@ import { AIR, FRESH_LIQUID, liquidCell } from '../lib/chamber';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
-import { createScene, updateScene } from '../lib/scene';
+import { createScene, updateScene, type SceneCut } from '../lib/scene';
 import type { Settings } from '../lib/settings';
 import { frameworkRadians } from '../lib/tiling';
 
@@ -102,27 +102,6 @@ export function Kaleidoscope({
   // into a different pile, which cannot be done by scaling what is already
   // there.
   //
-  // The size waits for the hand to stop, though. Building a scene settles the
-  // pile, which takes an appreciable slice of a second at a full chamber — and
-  // a pinch changes the scale on every pointer move, so rebuilding on each one
-  // froze the whole app mid-gesture, on every tab, whether or not the chamber
-  // was even on screen. A photo and the camera read the live value; only the
-  // glass is worth recutting, once, when the size has come to rest.
-  const [chamberScale, setChamberScale] = useState(settings.sourceScale);
-  useEffect(() => {
-    if (chamberScale === settings.sourceScale) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setChamberScale(settings.sourceScale);
-    }, RECUT_DELAY_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [chamberScale, settings.sourceScale]);
-
   // What the glass is suspended in. Six numbers, rebuilt whenever the slider
   // moves; the running simulation takes the new one on the very next frame, so
   // the fluid thickens under a pile that is already drifting.
@@ -132,14 +111,50 @@ export function Kaleidoscope({
     [liquid, settings.thickness],
   );
 
-  // The cell itself is rebuilt when the fluid changes kind and not when it
-  // merely thickens — a dry cell and a wet one open on quite different
-  // arrangements, one a pile on the floor and one a field still hanging where
-  // it was scattered, but two thicknesses of the same fluid open on the same
-  // one. See FRESH_LIQUID.
+  // How the glass is cut, which waits for the hand to stop. Building a scene
+  // settles the pile, which takes an appreciable slice of a second at a full
+  // chamber — and a pinch changes the size on every pointer move, so rebuilding
+  // on each one froze the whole app mid-gesture, on every tab, whether or not
+  // the chamber was even on screen. A photo and the camera read the live value;
+  // only the glass is worth recutting, once, when the hand has come to rest.
+  // The variety waits the same way and for the same reason: both of them say
+  // what size each piece is cut to, which is geometry and not drawing.
+  //
+  // The fluid in here is the *kind* of cell and not the thickness — one of two
+  // fixed objects, compared by identity — because what a fresh cell is settled
+  // against is a dry cell or a wet one, and nothing finer. See FRESH_LIQUID.
+  const fill = liquid ? FRESH_LIQUID : AIR;
+  const [cut, setCut] = useState<SceneCut>({
+    scale: settings.sourceScale,
+    variety: settings.variety,
+    medium: fill,
+  });
+  useEffect(() => {
+    if (
+      cut.scale === settings.sourceScale &&
+      cut.variety === settings.variety &&
+      cut.medium === fill
+    ) {
+      return;
+    }
+
+    // Switching tabs is not a drag and does not wait: it should hand back the
+    // other instrument at once. Only the two a hand can slide are held back.
+    const timer = window.setTimeout(
+      () => {
+        setCut({ scale: settings.sourceScale, variety: settings.variety, medium: fill });
+      },
+      cut.medium === fill ? RECUT_DELAY_MS : 0,
+    );
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [cut, settings.sourceScale, settings.variety, fill]);
+
   const scene = useMemo(
-    () => createScene(settings.seed, settings.shards, chamberScale, liquid ? FRESH_LIQUID : AIR),
-    [settings.seed, settings.shards, chamberScale, liquid],
+    () => createScene(settings.seed, settings.shards, cut),
+    [settings.seed, settings.shards, cut],
   );
 
   useImperativeHandle(
@@ -206,6 +221,11 @@ export function Kaleidoscope({
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
         medium,
+        // What the loose contents of the cell are asked for. Both are spent
+        // rather than scaled: nothing is simulated for glitter that is not
+        // shown, and a cell with no ink in it never builds a fluid at all.
+        glitter: settings.glitter,
+        ink: settings.ink,
         // The cell is drawn inside the framework, so the framework's angle has
         // to come off gravity's or the pile would lean with the instrument.
         // Derived by the same function the renderer uses, upright offset and

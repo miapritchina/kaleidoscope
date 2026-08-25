@@ -101,6 +101,7 @@ describe('ControlPanel', () => {
 
       expect(screen.getByRole('group', { name: /glass/i })).toBeInTheDocument();
       expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
+      expect(screen.getByLabelText('Variety')).toBeInTheDocument();
       expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
       expect(screen.getByLabelText('Seed')).toBeInTheDocument();
       expect(screen.queryByLabelText('Facing')).not.toBeInTheDocument();
@@ -152,16 +153,28 @@ describe('ControlPanel', () => {
       expect(screen.getByLabelText('Pieces')).toBeInTheDocument();
       expect(screen.getByLabelText('Glitter')).toBeInTheDocument();
       expect(screen.getByLabelText('Seed')).toBeInTheDocument();
+      expect(screen.getByLabelText('Variety')).toBeInTheDocument();
       expect(screen.getByLabelText('Thickness')).toBeInTheDocument();
+      expect(screen.getByLabelText('Ink')).toBeInTheDocument();
     });
 
-    it('offers the thickness nowhere else, since nothing else has a fluid', () => {
+    // Both are the fluid's, and only the liquid cell has one.
+    it("offers the fluid's controls nowhere else", () => {
       for (const source of ['objects', 'image', 'camera'] as const) {
         const { unmount } = withSettings({ source });
 
         expect(screen.queryByLabelText('Thickness')).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Ink')).not.toBeInTheDocument();
         unmount();
       }
+    });
+
+    it('names the ends of the variety and the ink rather than numbering them', () => {
+      const { unmount } = withSettings({ source: 'liquid', variety: 0, ink: 0 });
+
+      expect(screen.getByLabelText('Variety')).toHaveAttribute('aria-valuetext', 'one size');
+      expect(screen.getByLabelText('Ink')).toHaveAttribute('aria-valuetext', 'clear');
+      unmount();
     });
 
     it('names the ends of the thickness rather than numbering them', () => {
