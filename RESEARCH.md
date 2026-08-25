@@ -239,6 +239,8 @@ invariant the phase creates, and the record moved into ROADMAP.md.
    angle of repose, avalanche feel — against the incumbent and the ROADMAP's
    recorded numbers. Adopt only if the feel survives; either way the
    numbers go in ROADMAP.md next to the broad-phase and substep records.
+   **Built 2026-08-25 — see "The Rapier spike, measured" below. Adoption
+   still open, pending feel on a real phone.**
 7. **Sound.** Web Audio, gesture-unlocked, off by default: synthesized glass
    clinks from chamber contact impulses (velocity → gain/pitch,
    rate-limited), a low fluid wash for the liquid cell keyed to swirl
@@ -247,3 +249,93 @@ invariant the phase creates, and the record moved into ROADMAP.md.
 Phases 1–3 are the excitement-per-effort front-runners; 4–5 are the
 substance-quality debt; 6 is the big swing and can proceed in parallel as a
 spike; 7 is garnish and can land any time after 1.
+
+---
+
+## 2026-08-25 — The Rapier spike, measured
+
+Phase 6 of the plan above, built. `lib/chamberRapier.ts` is the object chamber
+on `@dimforge/rapier2d-compat` 0.20, behind the same contract as the classic
+solver — same `Shard[]`, same update, same mutated fields — reached through the
+seam in `lib/solver.ts`. Nothing adopts it by default: the app switches onto it
+only when opened with **`?solver=rapier`**, and falls back silently if the WASM
+fails to load. `npm run dev` then `http://localhost:5173/?solver=rapier` is the
+whole procedure.
+
+What the spike does differently, and how:
+
+- **Hull colliders.** `shapeOf` now takes the traced outline and carries its
+  convex hull on the `Shape` (`hull`, in radius multiples, unused by the
+  classic solver). Rapier collides a traced sliver as that hull; pieces
+  without one fall back to the classic chain of circles as ball compounds.
+- **The world is built ×10.** Rapier's sleep thresholds are tuned for metres
+  and the cell is about one unit across — at true scale a visibly drifting
+  piece counts as asleep. Positions, radii and accelerations are scaled in and
+  back out.
+- **The medium is a script, not a material.** In air the engine's own gravity
+  and damping model the cell and the pile is left alone to sleep (woken
+  whenever the angle moves, since a sleeping island does not feel gravity
+  change). In a liquid the classic solver's velocity script — buoyancy,
+  size-dependent drag against the _swirling_ fluid rather than against rest —
+  runs before each of the four substeps, and the engine keeps the contacts.
+- **Settling stays classic.** `settleChamber` (used once, at scene build) still
+  runs the incumbent; the spike takes over from whatever arrangement it left.
+
+### The numbers
+
+Node 22 via Vite SSR, one process per comparison, 600 frames after 60 of
+warm-up, cell turning slowly throughout. Round pieces collide as single balls
+in both solvers; "slivers" are 8-corner hulls against the classic 4-circle
+chains.
+
+| pieces | classic, round | rapier, round | classic, sliver | rapier, sliver |
+| ------ | -------------- | ------------- | --------------- | -------------- |
+| 60     | 0.31 ms        | 0.97 ms       | 2.80 ms         | 1.65 ms        |
+| 150    | 0.95 ms        | 1.63 ms       | 8.93 ms         | 3.60 ms        |
+| 250    | 1.71 ms        | 2.80 ms       | —               | —              |
+| 400    | 3.62 ms        | 4.03 ms       | —               | —              |
+
+Two findings, one each way:
+
+- **On round glass the classic solver wins** — about 1.7× cheaper at the
+  default 150, converging by 400. Its inlined sweep over plain circles is
+  simply a very good fit for that case.
+- **On slivers Rapier wins by 2.5× at 150 pieces**, because one hull–hull
+  test replaces up to sixteen circle-pair tests — and it is colliding the
+  _actual traced shape_, not an approximation of it. A chamber loaded from a
+  photograph of splinters is exactly the case the classic solver is weakest
+  in, on both counts.
+
+**The fill ceiling did not move in a crude test.** Settled 12 s then tipped
+90° for 4 s, mean distance moved per piece: at 150 pieces classic 0.454 /
+rapier 0.389; at 200 pieces (past the recorded wedge point) classic 0.172 /
+rapier 0.117. Rapier's pile, if anything, wedges slightly _sooner_ at these
+sizes. The hypothesis that rate-independence alone raises the ceiling is not
+supported yet — though this test used uniform round glass and a fixed tip, not
+ROADMAP's coverage methodology, so it bounds rather than settles the question.
+
+**The picture was looked at**, per house rule: the built app at 150 pieces,
+screenshotted headless under SwiftShader, renders a sane resting pile under
+both solvers — nothing exploded, nothing outside the wall, no
+interpenetration, coverage comparable. The arrangements differ (different
+solver, same seed), which with determinism dropped as a requirement is
+accepted.
+
+### What it costs to carry
+
+- The chunk: **2.1 MB minified, 804 KB gzipped**, split by the dynamic import
+  in `lib/solver.ts` — downloaded only behind the flag, main bundle unmoved
+  (286 KB). Adopting it as the default would put that on every first load.
+- Tests: `chamberRapier.test.ts` holds the spike to the classic solver's
+  behavioural suite — falls, stays inside the wall, stacks, holds a pile at
+  5° and avalanches at 50°, suspends in oil, collides slivers as hulls.
+
+### The open adoption question
+
+The numbers say: adopt for traced-object chambers (the common case — every
+bundled set is traced), keep classic for round glass, or keep classic outright
+and take the sliver cost. What the numbers cannot say is **feel** — how an
+avalanche reads in the hand — and that wants the flag tried on a real phone
+before anything is switched. The ceiling result also weakens the strongest
+argument for wholesale replacement; the honest summary is that Rapier's win is
+_fidelity and sliver cost_, not the ceiling.

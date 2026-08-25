@@ -15,6 +15,7 @@ import { ROUND, shapeOf, type Shape } from './shape';
 import { measureSource, type SkinCut, type SkinPatches } from './skin';
 import type { SubstanceId } from './settings';
 import { createSmoke, updateSmoke, type Smoke } from './smoke';
+import { chamberOverride } from './solver';
 
 /**
  * The object chamber of the kaleidoscope: the loose glass that the mirrors
@@ -452,7 +453,7 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
     let shape = ROUND;
 
     if (cut) {
-      shape = shapes.get(cut) ?? shapeOf(cut.extent, cut.area);
+      shape = shapes.get(cut) ?? shapeOf(cut.extent, cut.area, cut.outline);
       shapes.set(cut, shape);
     }
 
@@ -512,7 +513,10 @@ export function updateScene(
   // since everything in the cell is held in the cell's frame, not the world's.
   const swirl = scene.flow - turn;
 
-  updateChamber(scene.shards, { dt: step, angle, medium, swirl });
+  // The classic solver unless the Rapier spike has been asked for and has
+  // loaded — see `lib/solver.ts`. Both take the same update and mutate the
+  // same shards, so the rest of the scene cannot tell them apart.
+  (chamberOverride() ?? updateChamber)(scene.shards, { dt: step, angle, medium, swirl });
 
   // Whichever substance the cell holds, if it holds one. All three take the
   // same three things — how thick the fluid is, how fast it is turning, and

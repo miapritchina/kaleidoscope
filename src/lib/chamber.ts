@@ -70,8 +70,11 @@ const DRAG_SIZE_LIMIT = 3;
  * The room's pull, not the cell's. What a piece actually falls under is less
  * than this in anything but air, because the fluid it displaces holds part of
  * its weight up — see {@link Medium.density}.
+ *
+ * Exported so an alternative solver (see `lib/chamberRapier.ts`) pulls on the
+ * glass exactly as hard as this one does, rather than keeping a copy to drift.
  */
-const GRAVITY = 6;
+export const GRAVITY = 6;
 
 /**
  * What the cell is filled with.

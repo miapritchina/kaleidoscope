@@ -23,8 +23,24 @@ export interface Bead {
   radius: number;
 }
 
+/** A corner of a hull, in the same frame. */
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface Shape {
   readonly beads: readonly Bead[];
+  /**
+   * Convex hull of the traced silhouette, in multiples of the piece's radius,
+   * or absent where there is no silhouette to take one of.
+   *
+   * Not for this solver: the chain of circles is all it can collide. It is for
+   * a solver that can take a polygon — see `lib/chamberRapier.ts` — so a
+   * splinter collides as the splinter that was traced rather than as the
+   * circles laid along it.
+   */
+  readonly hull?: readonly Point[];
   /**
    * Area of the glass as a fraction of the circle it was cut to fit.
    *
@@ -66,8 +82,15 @@ export const ROUND: Shape = {
  * @param extent Half-width and half-height, the longer of them 1, as
  *   `lib/skin.ts` reports them for a traced object.
  * @param area Area of the glass in the same units, or left out for the circle.
+ * @param outline The traced silhouette in the same units, for a solver that can
+ *   collide a polygon. Left out, the shape carries no hull and every solver
+ *   falls back to the chain.
  */
-export function shapeOf(extent: { x: number; y: number }, area?: number): Shape {
+export function shapeOf(
+  extent: { x: number; y: number },
+  area?: number,
+  outline?: readonly Point[],
+): Shape {
   const long = Math.max(extent.x, extent.y);
   const short = Math.min(extent.x, extent.y);
 
@@ -90,11 +113,59 @@ export function shapeOf(extent: { x: number; y: number }, area?: number): Shape 
     return { x: alongX ? at : 0, y: alongX ? 0 : at, radius };
   });
 
-  return {
+  const shape: Shape = {
     beads,
     bulk: Math.min(1, Math.max(0.02, (area ?? Math.PI) / Math.PI)),
     gyration: gyrationOf(beads),
   };
+
+  return outline && outline.length >= 3 ? { ...shape, hull: convexHull(outline) } : shape;
+}
+
+/**
+ * The convex hull of a traced outline, by Andrew's monotone chain.
+ *
+ * The trace is star-shaped rather than convex, so its outline can fold in on
+ * itself in ways no contact solver wants to reason about; the hull is the
+ * tightest shape that cannot. What it gives away is the concavities, which for
+ * the compact, roughly convex objects the tracer is built for is very little.
+ */
+function convexHull(outline: readonly Point[]): readonly Point[] {
+  const points = outline
+    .slice()
+    .sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
+    .filter((point, index, all) => {
+      const prior = all[index - 1];
+
+      return prior?.x !== point.x || prior.y !== point.y;
+    });
+
+  if (points.length < 3) {
+    return points;
+  }
+
+  const cross = (o: Point, a: Point, b: Point): number =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (walk: readonly Point[]): Point[] => {
+    const chain: Point[] = [];
+
+    for (const point of walk) {
+      while (
+        chain.length >= 2 &&
+        cross(chain[chain.length - 2]!, chain[chain.length - 1]!, point) <= 0
+      ) {
+        chain.pop();
+      }
+
+      chain.push(point);
+    }
+
+    chain.pop();
+
+    return chain;
+  };
+
+  return [...half(points), ...half(points.slice().reverse())];
 }
 
 /**
