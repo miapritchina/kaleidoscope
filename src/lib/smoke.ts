@@ -10,6 +10,7 @@ import {
   projectFlow,
   type Flow,
 } from './flow';
+import { createNoise, type Noise } from './noise';
 import { mulberry32 } from './random';
 
 /**
@@ -134,10 +135,52 @@ const STRENGTH = 1.9;
  */
 const CORRECT = 0.9;
 
+/** How hard warmth lifts, against gravity, per unit of heat. */
+const FIRE = 1.1;
+
+/**
+ * The breeze: a whisper of divergence-free force from a wandering noise
+ * potential, so a cell nobody is turning never quite comes to rest.
+ *
+ * Curl noise (Bridson, Hourihan and Nordenstam, SIGGRAPH 2007): take a
+ * smooth potential, and push along its curl. The curl of anything smooth is
+ * divergence-free by construction, so the push cannot fight the pressure
+ * solve — it only ever stirs, never inflates. The potential is sampled on a
+ * coarse lattice and interpolated, because a breeze is a large slow thing
+ * and evaluating noise per fluid cell would spend milliseconds on what a
+ * sixteen-by-sixteen grid already describes.
+ */
+const BREEZE = 0.32;
+
+/** Noise cells across the chamber: the breeze's spatial grain. */
+const BREEZE_GRAIN = 2.6;
+
+/** How fast the breeze wanders, in noise cells per second of its own time. */
+const BREEZE_TEMPO = 0.22;
+
+/** Lattice points across the breeze's coarse grid. */
+const COARSE = 16;
+
 export interface Smoke extends Flow {
   /** How much of each dye is in each cell, 0 to 1. */
   dye: Float32Array[];
   dye0: Float32Array[];
+  /**
+   * How warm each cell is, 0 to 1.
+   *
+   * The other half of what makes smoke go up. The dye's weight alone makes
+   * sinking curtains; warmth makes rising plumes, and the shear between a
+   * plume and the cool air beside it is what rolls the top of it into the
+   * mushroom cap everyone recognises as smoke (Fedkiw, Stam and Jensen,
+   * 2001). Born where the dye is born — the clouds arrive warm — carried on
+   * the same fluid, and spent by rising.
+   */
+  heat: Float32Array;
+  heat0: Float32Array;
+  /** Seconds the cell has been alive, for the breeze's slow wandering. */
+  elapsed: number;
+  /** The cell's own draught. See {@link BREEZE}. */
+  draught: Noise;
 }
 
 /** Where a cell's middle is, in cell units. */
@@ -152,6 +195,10 @@ export function createSmoke(seed: number, amount = 1): Smoke {
     ...createFlow(GRID),
     dye: Array.from({ length: DYES }, () => new Float32Array(GRID * GRID)),
     dye0: Array.from({ length: DYES }, () => new Float32Array(GRID * GRID)),
+    heat: new Float32Array(GRID * GRID),
+    heat0: new Float32Array(GRID * GRID),
+    elapsed: 0,
+    draught: createNoise(seed),
   };
 
   // Two clouds of each dye, placed anywhere in the cell. Round and soft, so
@@ -219,6 +266,18 @@ export function createSmoke(seed: number, amount = 1): Smoke {
     }
   }
 
+  // The clouds arrive warm: heat everywhere the dye is, so the cell opens
+  // with plumes about to rise rather than curtains about to fall.
+  for (let k = 0; k < GRID * GRID; k += 1) {
+    let dyed = 0;
+
+    for (let d = 0; d < DYES; d += 1) {
+      dyed += smoke.dye[d]![k]!;
+    }
+
+    smoke.heat[k] = Math.min(1, dyed * 0.55);
+  }
+
   return smoke;
 }
 
@@ -260,12 +319,23 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
   // nobody is turning it. Thicker fluid holds it up more. Applied before the
   // shared drive, so the wall's grip and the viscosity act on the pushed
   // field the way they always did.
+  smoke.elapsed += step;
   fall(smoke, step, thickness, angle);
+  breeze(smoke, step);
   driveFlow(smoke, { step, thickness, swirl });
   confineFlow(smoke, step, CONFINE);
   projectFlow(smoke);
   carryFlow(smoke, step);
   projectFlow(smoke);
+
+  // The warmth rides the same fluid as the dye. A plain trace is enough: heat
+  // is a force, not a picture, and a slightly blurred force is still a force.
+  advectField(smoke, smoke.heat, smoke.heat0, step);
+
+  const swap = smoke.heat;
+
+  smoke.heat = smoke.heat0;
+  smoke.heat0 = swap;
 
   for (let d = 0; d < DYES; d += 1) {
     const from = smoke.dye[d]!;
@@ -277,13 +347,18 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
   }
 }
 
-/** The dye falling through the fluid that carries it. See {@link INK_WEIGHT}. */
+/**
+ * The dye falling and the warmth lifting, through the fluid that carries
+ * both. See {@link INK_WEIGHT} and {@link FIRE}: the two pull opposite ways
+ * along the same axis, and the shear where they disagree is the folding.
+ */
 function fall(smoke: Smoke, step: number, thickness: number, angle: number): void {
   const { u, v, inside } = smoke;
   const thick = 1 + THICKEST * Math.min(1, Math.max(0, thickness));
   const drop = (GRAVITY * INK_WEIGHT * step) / thick;
-  const downX = Math.sin(angle) * drop;
-  const downY = Math.cos(angle) * drop;
+  const lift = (GRAVITY * FIRE * step) / thick;
+  const downX = Math.sin(angle);
+  const downY = Math.cos(angle);
 
   for (let j = 0; j < GRID; j += 1) {
     for (let i = 0; i < GRID; i += 1) {
@@ -299,8 +374,54 @@ function fall(smoke: Smoke, step: number, thickness: number, angle: number): voi
         dyed += smoke.dye[d]![k]!;
       }
 
-      u[k] = u[k]! + downX * dyed;
-      v[k] = v[k]! + downY * dyed;
+      const pull = drop * dyed - lift * smoke.heat[k]!;
+
+      u[k] = u[k]! + downX * pull;
+      v[k] = v[k]! + downY * pull;
+    }
+  }
+}
+
+/** Scratch for the breeze's coarse potential. One ring of padding all round. */
+const potential = new Float32Array((COARSE + 2) * (COARSE + 2));
+
+/** The idle stirring. See {@link BREEZE}. */
+function breeze(smoke: Smoke, step: number): void {
+  const { u, v, inside } = smoke;
+  const t = smoke.elapsed * BREEZE_TEMPO;
+
+  for (let cj = 0; cj < COARSE + 2; cj += 1) {
+    for (let ci = 0; ci < COARSE + 2; ci += 1) {
+      potential[ci + cj * (COARSE + 2)] = smoke.draught(
+        ((ci - 0.5) / COARSE) * BREEZE_GRAIN,
+        ((cj - 0.5) / COARSE) * BREEZE_GRAIN,
+        t,
+      );
+    }
+  }
+
+  const push = BREEZE * step;
+  // Coarse cells per fluid cell.
+  const scale = COARSE / GRID;
+
+  for (let j = 0; j < GRID; j += 1) {
+    for (let i = 0; i < GRID; i += 1) {
+      const k = i + j * GRID;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      // The curl of the potential, read off the coarse lattice around this
+      // cell: along y for the x push, along x (negated) for the y push.
+      const cx = i * scale + 0.5;
+      const cy = j * scale + 0.5;
+      const ci = Math.min(COARSE, Math.max(1, Math.round(cx)));
+      const cj = Math.min(COARSE, Math.max(1, Math.round(cy)));
+      const at = ci + cj * (COARSE + 2);
+
+      u[k] = u[k]! + (potential[at + COARSE + 2]! - potential[at - COARSE - 2]!) * push;
+      v[k] = v[k]! - (potential[at + 1]! - potential[at - 1]!) * push;
     }
   }
 }

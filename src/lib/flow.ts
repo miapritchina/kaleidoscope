@@ -374,6 +374,13 @@ export function carryFlow(flow: Flow, step: number): void {
  * which can overshoot and blow up — it asks where this cell's contents came
  * from, which cannot, because whatever it lands on is a value the field
  * already held.
+ *
+ * The trace is second order — RK2, the midpoint method. A single Euler step
+ * back reads the velocity only where the trace *starts*, so in a tight swirl
+ * it walks a chord of the circle rather than the arc, and every step leaks
+ * the field a little way out of every vortex. Stepping halfway back, reading
+ * the velocity *there*, and tracing with that instead costs one extra
+ * bilinear read per cell and takes most of that rotational drift out.
  */
 export function advectField(
   flow: Flow,
@@ -394,8 +401,14 @@ export function advectField(
         continue;
       }
 
-      const backX = Math.min(grid - 1.001, Math.max(0, i - u[k]! * rate));
-      const backY = Math.min(grid - 1.001, Math.max(0, j - v[k]! * rate));
+      // Half a step back, on the velocity here...
+      const midX = Math.min(grid - 1.001, Math.max(0, i - u[k]! * rate * 0.5));
+      const midY = Math.min(grid - 1.001, Math.max(0, j - v[k]! * rate * 0.5));
+      // ...then the whole step, on the velocity there.
+      const uMid = bilinear(u, grid, midX, midY);
+      const vMid = bilinear(v, grid, midX, midY);
+      const backX = Math.min(grid - 1.001, Math.max(0, i - uMid * rate));
+      const backY = Math.min(grid - 1.001, Math.max(0, j - vMid * rate));
       const i0 = Math.floor(backX);
       const j0 = Math.floor(backY);
       const fx = backX - i0;
@@ -493,6 +506,21 @@ export function projectFlow(flow: Flow): void {
         width;
     }
   }
+}
+
+/** A plain bilinear read of one field, for the midpoint of the trace. */
+function bilinear(field: Float32Array, grid: number, x: number, y: number): number {
+  const i0 = Math.floor(x);
+  const j0 = Math.floor(y);
+  const fx = x - i0;
+  const fy = y - j0;
+  const i1 = Math.min(grid - 1, i0 + 1);
+  const j1 = Math.min(grid - 1, j0 + 1);
+
+  return (
+    (1 - fx) * ((1 - fy) * field[i0 + j0 * grid]! + fy * field[i0 + j1 * grid]!) +
+    fx * ((1 - fy) * field[i1 + j0 * grid]! + fy * field[i1 + j1 * grid]!)
+  );
 }
 
 /** A neighbour, with the wall standing in for anything beyond it. */
