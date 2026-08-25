@@ -779,6 +779,27 @@ collapses the bar and brings the two into line. That is exactly how the drawer u
 half off the bottom, and correct after a scroll. The body does not scroll at all; the only
 thing that does is the drawer's own contents, and it opens at the top of them.
 
+**Installed to the home screen the units disagree the other way**, and it took a photograph
+of a phone to see it. There is no address bar to dodge in standalone, so `dvh` and `%` ought
+to be the same thing and the screen; instead each of them stops short of the strip the status
+bar is laid over, while `vh` does not. The page came out **793pt of an iPhone 15 Pro's 852**
+— short by exactly the 59pt the Dynamic Island's inset takes — and because the artwork starts
+at the top of the screen, the missing strip showed up at the _bottom_, as a band of page
+background under the picture.
+
+So in standalone the height is `max(100%, 100vh, 100dvh)`. Nothing collapses there, so none
+of the three can be taller than the screen and the largest of them is it; taking the largest
+is also the safe way round, since it can only ever add to what the page already covered. The
+artwork is pinned with `position: fixed` on top of that, which measures against the viewport
+rather than against the page box — a different question, and the one that matters for the
+thing that has to reach the edge.
+
+None of this is visible to a test that can run here: jsdom has no viewport and a desktop
+browser measures every one of those units the same. `test/fullscreen.test.ts` reads the rules
+instead, the way `test/manifest.test.ts` reads the manifest, so that the two lines holding
+the picture against the edge of a phone are not tidied away by someone who never saw the
+band.
+
 The panel comes in from the right, or up from the bottom on a narrow screen, and lies over
 the artwork rather than squeezing it — the canvas keeps its size, so opening the panel costs
 no re-render and no reflow of the pattern. Closed it is not hidden but **absent**: a scroll

@@ -42,16 +42,29 @@ body,
   height: 100dvh;
 }
 
-/* Installed to the home screen there is no address bar to dodge, and iOS
-   measures the dynamic viewport *inside* the safe areas there — which left a
-   black band behind the status bar and the home indicator where the artwork
-   should run. Plain 100% is the whole screen in standalone; the controls keep
-   clear of the notch with their own insets, as they always have. */
+/* Installed to the home screen there is no address bar to dodge, and the status
+   bar is laid over the artwork rather than given a strip of its own — see the
+   meta tags in index.html. What that costs is a discrepancy iOS has had for
+   years: the units disagree about whether the strip under the status bar is
+   part of the page. `100dvh` was tried first and stopped short of it at both
+   ends; `100%` starts at the top of the screen but still measures short, so the
+   page ends above the bottom of the screen by exactly the height of the strip
+   it is running under, and the gap shows as a band of page background along the
+   bottom edge. Measured on an iPhone 15 Pro: 793pt of page on an 852pt screen,
+   short by the 59pt the Dynamic Island's inset takes.
+
+   Nothing collapses in standalone — there is no chrome to slide away — so none
+   of these can be taller than the screen, and the largest of them is it. Taking
+   the largest is also the safe way round: it can only ever add to what the page
+   already covered.
+
+   The controls keep clear of the notch with their own insets, as they always
+   have. */
 @media (display-mode: standalone) {
   html,
   body,
   #root {
-    height: 100%;
+    height: max(100%, 100vh, 100dvh);
   }
 }
 
