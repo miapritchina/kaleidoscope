@@ -1,65 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHAMBER_RADIUS } from './chamber';
-import { triangleSideFor } from './renderer';
-import { heldPoint, stirPoint, trackStir, type StirView } from './stir';
-
-const view = (over: Partial<StirView> = {}): StirView => ({
-  width: 1000,
-  height: 1000,
-  zoom: 1,
-  angleDegrees: 0,
-  cell: 0,
-  drag: { x: 0, y: 0 },
-  ...over,
-});
-
-describe('stirPoint', () => {
-  it('maps the middle of the stage to the middle of the cell', () => {
-    const at = stirPoint({ x: 500, y: 500 }, view());
-
-    expect(Math.hypot(at.x, at.y)).toBeLessThan(0.01);
-  });
-
-  // Zero on the mirror-angle slider carries a sixty-degree upright turn (see
-  // frameworkRadians), so these hold the framework at a true zero to test the
-  // scale and the cell turn on their own.
-  it('maps an offset to cell units through the triangle scale', () => {
-    const side = triangleSideFor(1000, 1000, 1);
-    const cellScale = side / Math.sqrt(3) / CHAMBER_RADIUS;
-    const at = stirPoint({ x: 500 + cellScale * 0.5, y: 500 }, view({ angleDegrees: -60 }));
-
-    expect(at.x).toBeCloseTo(0.5, 1);
-    expect(at.y).toBeCloseTo(0, 1);
-  });
-
-  it('turns with the cell, so the stir lands where the fluid is', () => {
-    const side = triangleSideFor(1000, 1000, 1);
-    const cellScale = side / Math.sqrt(3) / CHAMBER_RADIUS;
-    const at = stirPoint(
-      { x: 500 + cellScale * 0.5, y: 500 },
-      view({ angleDegrees: -60, cell: Math.PI / 2 }),
-    );
-
-    expect(at.x).toBeCloseTo(0, 1);
-    expect(at.y).toBeCloseTo(-0.5, 1);
-  });
-
-  it('folds a finger far out on the field back into the cell', () => {
-    // Anywhere on the stage: the point is over some reflection of the cell,
-    // and the fold carries it home. Never outside the wall.
-    for (const point of [
-      { x: 30, y: 40 },
-      { x: 950, y: 100 },
-      { x: 80, y: 900 },
-      { x: 990, y: 990 },
-    ]) {
-      const at = stirPoint(point, view());
-
-      expect(Math.hypot(at.x, at.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-6);
-    }
-  });
-});
+import { trackStir } from './stir';
 
 describe('trackStir', () => {
   it('has a position and no velocity on the first frame of a touch', () => {
@@ -95,37 +37,40 @@ describe('trackStir', () => {
     expect(Math.hypot(sample!.vx, sample!.vy)).toBeLessThanOrEqual(CHAMBER_RADIUS * 2 + 1e-9);
   });
 
-  it('stirs nothing at all while the finger is still and the cell turns', () => {
-    const tracker = { last: null };
-    const point = { x: 620, y: 470 };
-    const turning = (cell: number) => view({ cell });
+  // The reason the tracking happens in the body's frame at all. A finger
+  // resting on the glass of a tube being turned under it has not stirred
+  // anything; differenced after the bearing had been divided out, it reported
+  // more stir than the wax can manage on its own, pointed against the turn,
+  // everywhere at once, for as long as it was held.
+  it('stirs nothing at all while the finger is still and the chamber turns', () => {
+    const tracker = { last: null as { x: number; y: number } | null };
+    // One point in the body's frame, which is where a still finger stays.
+    const held = { x: 0.42, y: -0.31 };
 
-    trackStir(tracker, heldPoint(point, turning(0)), 0, 1 / 60);
+    trackStir(tracker, held, 0, 1 / 60);
 
-    // A brisk turn, and a finger that has not moved a pixel. It is resting on
-    // the glass of a tube that is being turned under it, which is no stir.
-    for (const cell of [0.1, 0.2, 0.3]) {
-      const sample = trackStir(tracker, heldPoint(point, turning(cell)), cell, 1 / 60);
+    for (const bearing of [0.1, 0.2, 0.3]) {
+      const sample = trackStir(tracker, held, bearing, 1 / 60);
 
       expect(sample).not.toBeNull();
       expect(Math.hypot(sample!.vx, sample!.vy)).toBeCloseTo(0, 10);
     }
   });
 
-  it('reads a moving finger the same however far the cell has turned', () => {
+  it('reads a moving finger the same however far the chamber has turned', () => {
     // The same movement of the same finger is the same stir, said in whatever
-    // frame the cell happens to be in — so its size cannot depend on the turn,
-    // and its direction has to turn with the cell exactly.
-    const from = { x: 620, y: 470 };
-    const to = { x: 660, y: 470 };
+    // frame the chamber happens to be in — so its size cannot depend on the
+    // bearing, and its direction has to turn with the chamber exactly.
+    const from = { x: 0.42, y: -0.31 };
+    const to = { x: 0.52, y: -0.31 };
     const speeds: number[] = [];
 
-    for (const cell of [0, 1, 2.5, -0.7]) {
+    for (const bearing of [0, 1, 2.5, -0.7]) {
       const tracker = { last: null as { x: number; y: number } | null };
 
-      trackStir(tracker, heldPoint(from, view({ cell })), cell, 1 / 60);
+      trackStir(tracker, from, bearing, 1 / 60);
 
-      const sample = trackStir(tracker, heldPoint(to, view({ cell })), cell, 1 / 60);
+      const sample = trackStir(tracker, to, bearing, 1 / 60);
 
       expect(sample).not.toBeNull();
       speeds.push(Math.hypot(sample!.vx, sample!.vy));
@@ -134,5 +79,21 @@ describe('trackStir', () => {
     for (const speed of speeds) {
       expect(speed).toBeCloseTo(speeds[0]!, 10);
     }
+  });
+
+  // And the direction does turn with it: the same movement read at a quarter
+  // turn comes back rotated by a quarter turn, which is what puts the stir
+  // under the finger rather than a quarter of the cell away from it.
+  it("turns the reading into the chamber's frame", () => {
+    const tracker = { last: null as { x: number; y: number } | null };
+
+    // Slow enough not to meet the cap, so this is about direction alone.
+    trackStir(tracker, { x: 0, y: 0 }, Math.PI / 2, 1 / 60);
+
+    const sample = trackStir(tracker, { x: 0.02, y: 0 }, Math.PI / 2, 1 / 60);
+
+    expect(sample).not.toBeNull();
+    expect(sample!.vx).toBeCloseTo(0, 6);
+    expect(sample!.vy).toBeCloseTo(-1.2, 6);
   });
 });

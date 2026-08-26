@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { CHAMBER_RADIUS } from './chamber';
 import {
   advanceFlow,
   AIR,
-  CHAMBER_RADIUS,
   FRESH_LIQUID,
   liquidCell,
   settleChamber,
   updateChamber,
   type Medium,
-} from './chamber';
+} from './physics';
 import { createScene, type Shard } from './scene';
 import { ROUND, shapeOf } from './shape';
 
@@ -121,7 +121,7 @@ describe('updateChamber', () => {
   });
 
   // The one that matters, and the one a test of the chamber alone cannot see:
-  // the renderer draws the cell rotated by its own angle, so "down" in the cell
+  // the body draws the cell rotated by its bearing, so "down" in the cell
   // has to come out down on the screen whatever that angle is.
   // Signed the other way it sweeps round at twice the turn rate — a quarter
   // turn puts the pile at the top of the screen — and the whole mechanism reads
@@ -135,7 +135,7 @@ describe('updateChamber', () => {
 
       const x = glass.reduce((sum, shard) => sum + shard.x, 0) / glass.length;
       const y = centre(glass);
-      // Into screen space: the same rotation the renderer applies to the field.
+      // Into screen space: the same rotation the body applies to the field.
       const screenY = x * Math.sin(angle) + y * Math.cos(angle);
       const screenX = x * Math.cos(angle) - y * Math.sin(angle);
 

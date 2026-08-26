@@ -34,10 +34,61 @@ The dev server prints a local URL (http://localhost:5173 by default).
 | `npm run test:watch`    | Vitest, watch mode                          |
 | `npm run test:coverage` | Vitest with a V8 coverage report            |
 
+## Two parts
+
+A kaleidoscope is two things that know almost nothing about one another, and this one is
+built that way on purpose.
+
+The **body** is the tube: three mirrors, the framework they are set in, the barrel, the
+eyehole, and the glass bead over the far end. It is in `lib/body.ts`, and it is where every
+question about the figure is settled — how big the triangle is, how the six of them make a
+hexagon, how that hexagon tiles, where the joins go, what the mirrors cost, how the barrel
+darkens the rim.
+
+The **chamber** is whatever is at the far end. Loose glass, a cell of oil, a photograph, a
+live camera. There are three of them today — `lib/glassChamber.ts`, `lib/substanceChamber.ts`
+and `lib/mediaChamber.ts` — and a single switch in `lib/chambers.ts` that picks between them.
+
+Between the two is one small file, `lib/chamber.ts`, and it is worth reading before
+anything else here. It is a bargain in two clauses:
+
+- **The body promises** that the chamber is always the same size, that it is handed a clean
+  context with the middle of the cell at the origin, that the clock is already clamped, and
+  that gravity arrives worked out — one angle, in the chamber's own frame. A chamber never
+  sees a mirror.
+- **The chamber promises** to fill its own disc. Out to a little past the wall, every pixel
+  is covered.
+
+That is the whole of it. Keep those and the figure cannot come out wrong, because the body's
+sampling is contained in the disc by construction and the disc is painted. `lib/body.ts`
+imports neither the glass nor the substances nor the pictures, so it _cannot_ branch on the
+contents; there is no code path where the triangle is right for one kind of chamber and
+wrong for another.
+
+It is also why a new chamber is cheap. A video is a `<video>` element handed to the media
+chamber, which already takes one. Something genuinely new — a shader, a game, a page of
+text — is a file with four members in it and one line in `lib/chambers.ts`.
+
+### Which rotation is which
+
+Three things turn, and they are not the same thing:
+
+- **The body's own angle** — the **Mirror angle** slider. It turns the mirrors, and the
+  chamber goes round with them, because the chamber is fixed in the tube behind them. The
+  whole figure turns on screen.
+- **The chamber's bearing** — a swipe across the artwork. It turns the chamber alone,
+  against fixed mirrors, the way plenty of real kaleidoscopes are built. The framework holds
+  still on screen and only what is inside it moves.
+- **The tilt** — how far the phone is being held over. It turns nothing at all on screen. It
+  moves gravity.
+
+The body composes all three into one direction and hands it to the chamber, so gravity is
+defined by the mirrors and passed in. Whatever is turned, the floor comes out where the room
+put it — which is the one thing a real one does that a spinning picture does not.
+
 ## How it renders
 
-A kaleidoscope is a small chamber of loose chips seen through mirrors, and the renderer
-works the same way:
+The body works the way the instrument does:
 
 1. **The light.** It sits at your eye, the way a phone's torch does next to its lens. So
    the pieces are opaque solids lit from the front: a facet turned towards you is the one
@@ -45,11 +96,13 @@ works the same way:
    in the same place the shading does rather than off to one side. Behind them the ground is
    white — the objects are the subject, and white is what a photographer would stand them
    on, which is also what the pictures they come from were cut from.
-2. **The source.** `lib/scene.ts` holds the object chamber — loose pieces in a bounded cell,
-   simulated in `lib/chamber.ts`. `lib/media.ts` substitutes a photo or a camera frame for
-   that cell. Each chip is a pre-rendered sprite (`lib/chips.ts`), see below.
-3. **The triangle.** Once per frame the source is painted from scratch onto the surface the
-   mirrors sample (`lib/renderer.ts`). From scratch every time rather than drawn over: the
+2. **The chamber.** Whichever one is fitted paints itself into its own disc. `lib/scene.ts`
+   holds the contents of a cell — loose pieces, or a substance instead of them — simulated in
+   `lib/physics.ts`. `lib/media.ts` paints a photo or a camera frame. Each chip is a
+   pre-rendered sprite (`lib/chips.ts`), see below.
+3. **The triangle.** Once per frame the chamber is painted from scratch onto the surface the
+   mirrors sample (`lib/body.ts`), with its middle at the middle of the triangle and its wall
+   on the triangle's three corners. From scratch every time rather than drawn over: the
    pieces composite with `multiply` and `lighter`, neither of which is idempotent, so a
    still pile stamped over its own remains walks away from a single pass of it.
 4. **The mirrors.** Six mirrored triangles are assembled into one hexagon (`lib/tiling.ts`),
@@ -496,14 +549,16 @@ Both are position-level rather than impulses: the overlap has just been resolved
 positions, so the friction that goes with it has to come out of the same ledger, or the
 velocity read back at the end of the substep will not agree with where the glass ended up.
 
-The renderer draws the cell rotated by its own angle, so world-down has to be turned back
+The body draws the cell rotated by its own bearing, so world-down has to be turned back
 by that same angle to land in the cell's axes. Signing that the other way — the easy
 mistake, since it reads as "undo the rotation" — sweeps gravity round at twice the turn
 rate instead of holding it still, which puts the pile at the top of the screen at a quarter
-turn and makes the whole mechanism read as no gravity at all. There is a test that settles
-the chamber at twelve angles and checks the pile comes out below centre **on screen** each
-time; a test of the chamber alone cannot see this, because in the cell's own coordinates
-both signs look equally plausible. Measured on the built app: essentially still at rest, a burst of change on the
+turn and makes the whole mechanism read as no gravity at all. Since the body and the chamber were separated the claim is
+tested as arithmetic instead, in `body.test.ts`: whatever is turned — the mirrors, the
+bearing, or both — gravity in the chamber's frame less the two rotations the figure is drawn
+through comes out at the tilt and at nothing else. That is the same statement, and it does
+not need a pile to make it. What the pile is for is the other half, in `glassChamber.test.ts`:
+that it gathers wherever gravity actually points. Measured on the built app: essentially still at rest, a burst of change on the
 swipe, then back to rest.
 
 Contacts are resolved by moving positions and reading the velocity back off how far each
@@ -547,7 +602,7 @@ compound rather than starting over, and the Zoom slider follows along live.
 Settings persist to `localStorage`, and **Copy link** encodes them into the URL. A shared
 link wins over stored settings on load. Both are treated as untrusted input and clamped to
 the ranges above, so a hand-edited link cannot push an out-of-range value into the
-renderer. `Input` is deliberately absent from the URL and reset on load — a link cannot
+instrument. `Input` is deliberately absent from the URL and reset on load — a link cannot
 carry the recipient's photo, and reopening on `camera` would fire a permission prompt
 nobody asked for.
 
@@ -910,6 +965,12 @@ point at things, and a phone's front camera points at your face. It is asked for
 preference rather than a requirement, so a laptop with only a front camera still gets that
 one instead of failing outright.
 
+Both are the same chamber — `lib/mediaChamber.ts`, handed a different element. It is the one
+chamber that reports itself **open**, and that is what decides where the glass bead goes: a
+cell of objects caps the tube and has no objective in front of it to put a marble over, while
+an open end is exactly what a teleidoscope's marble is for. A video would be the third
+element handed to this same file.
+
 Both stay on the device. The photo is read through an object URL, drawn to a canvas, and
 the URL revoked; the camera is a `getUserMedia` stream drawn frame by frame. Nothing is
 uploaded, and no frame is stored. The camera is requested only while it is the selected
@@ -920,9 +981,18 @@ Shift-drag, or a two-finger drag, moves the source around; pinching those two fi
 it, and a scroll over the artwork does the same for a hand with no second finger on glass.
 It follows the pointer and stays where it is let go.
 
-A photo cannot tile the way the shard field does, so zoom is floored at 1x — below that
-its edges would show inside the wedge — and its travel is bounded by however much of the
-image hangs outside the mirrored area.
+Past its own edges the picture continues as its **own mirror image**, the way the mirrors
+continue everything else, so there is no zoom and no drag that can leave bare ground showing
+inside the wedge and no floor on the zoom to protect it. A full drag moves it by the cell's
+own reach plus however much of the picture hangs outside — bounded at the wall, as it used to
+be, a full drag at zoom 1 was no travel at all and read as the drag being broken.
+
+The picture is drawn about the **middle of the cell**, like everything else in a chamber. It
+used to be drawn about the mirror triangle's corner instead, which put the middle of the
+picture somewhere the bead's axis was not: a photograph was seen through the edge of the
+marble rather than its centre, and a grid photograph through a full bead showed it plainly as
+a blown-out patch off to one side of every rosette. Fitting the picture as a chamber like any
+other fixed it, because a chamber is painted about its own middle by definition.
 
 The camera draws a fresh frame into the mirrors on every animation frame, so what you see
 is live rather than a snapshot.
@@ -1139,7 +1209,7 @@ view, so baked into a tile it comes back at every repeat as a visible grid:
 
 - the **barrel** and the **mirror falloff**, which are radial. They describe looking down a
   tube, not the pattern, and would put a dark blot in the middle of every copy. This is why
-  `lib/renderer.ts` keeps the field and the optics in front of it as separate steps.
+  `lib/body.ts` keeps the field and the optics in front of it as separate steps.
 - the **per-hexagon exposure**, which is deliberately aperiodic on screen so the field does
   not read as a printed pattern. Here a printed pattern is the point, and that variation is
   the one thing standing between the field and an exact repeat. The variation _between the

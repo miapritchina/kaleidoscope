@@ -196,7 +196,7 @@ export interface NumericLimit {
 /**
  * Single source of truth for the numeric ranges. The controls render from these
  * and every inbound value (storage, URL) is clamped to them, so an out-of-range
- * value can never reach the renderer.
+ * value can never reach the instrument.
  */
 export const LIMITS = {
   // The cell is round and the mirror triangle sees 41% of it, so these are

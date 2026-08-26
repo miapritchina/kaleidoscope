@@ -89,7 +89,7 @@ export interface Folded {
  *
  * The point is in the field's own frame — the one where the source triangle has
  * its apex at the origin — so a caller working in screen pixels has to undo the
- * view's placement first. See `placeField` in the renderer.
+ * view's placement first. See `placeField` in `lib/body.ts`.
  */
 export function foldIntoTriangle(point: Vector, side: number): Folded {
   if (!(side > 0) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {

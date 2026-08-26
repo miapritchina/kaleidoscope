@@ -40,31 +40,45 @@ export function isMediaReady(media: MediaElement | null | undefined): media is M
 }
 
 export interface DrawMediaOptions {
-  /** Side of the square wedge surface, in device pixels. */
+  /**
+   * What "covered" means, in device pixels.
+   *
+   * At zoom 1 the picture covers a `2 * size` square centred on the origin,
+   * and a full drag moves it by this much on top of whatever hangs outside.
+   * Two jobs for one number because they are the same judgement: how big the
+   * picture is, and how far it may be pushed about.
+   */
   size: number;
-  /** Magnification, about covering the wedge at 1. */
+  /** Magnification, about covering that square at 1. */
   zoom: number;
-  /** Rotation of the media about the wedge apex, in radians. */
+  /** Rotation of the media about the origin, in radians. */
   rotation: number;
   /** Drag position, each axis in `[-1, 1]`. */
   pan: { x: number; y: number };
+  /**
+   * How far from the origin has to come out painted, in device pixels.
+   *
+   * What the caller will actually look at, which is not the same as how big
+   * the picture is drawn: shrunk below cover, or dragged until an edge came
+   * in, the surface would show bare ground past the picture — so the picture
+   * is repeated in mirror out to here and there is no edge to fall off.
+   * Left out, the covered square's own far corner.
+   */
+  reach?: number;
 }
 
 /**
- * Draws the media across the wedge surface, centred on the wedge apex.
+ * Draws the media about the origin, covering a `2 * size` square.
  *
- * The apex sits at the origin and the sector reaches `size` pixels along both
- * axes, so the media has to cover a `2 * size` square centred there for the
- * wedge to be full whatever the segment count. Centring on the apex also puts
- * the middle of the photo at the middle of the kaleidoscope, which is where a
- * viewer expects to find it.
- *
- * The caller must have translated the context so the apex is at `(0, 0)`.
+ * The caller decides what the origin is. In a kaleidoscope it is the middle of
+ * the chamber, which is where the middle of a picture belongs — the optics are
+ * built around that point, so a picture centred anywhere else is a picture seen
+ * through the edge of the lens.
  */
 export function drawMedia(
   ctx: CanvasRenderingContext2D,
   media: MediaElement,
-  { size, zoom, rotation, pan }: DrawMediaOptions,
+  { size, zoom, rotation, pan, reach = size * Math.SQRT2 }: DrawMediaOptions,
 ): void {
   const { width, height } = getMediaSize(media);
 
@@ -104,13 +118,13 @@ export function drawMedia(
   // ground back as a pale hole at every rosette centre. Tiled in mirror there
   // is no edge to fall off, whatever the zoom, the drag and the bead ask for.
   //
-  // How far the tiling has to reach from the picture's centre: the furthest
-  // sampled point sits within one and a third wedge-reaches of the apex — the
-  // mirrored circumdisc's far corner — plus however far the picture has been
-  // dragged away from it. A circle, so the rotation cannot change the answer.
-  const reach = size * 1.35 + Math.hypot(offset.x, offset.y);
-  const across = Math.max(0, Math.ceil((reach - drawWidth / 2) / drawWidth));
-  const down = Math.max(0, Math.ceil((reach - drawHeight / 2) / drawHeight));
+  // How far the tiling has to reach from the picture's own centre: whatever
+  // the caller says has to come out painted, plus however far the picture has
+  // been dragged away from that. A circle, so the rotation cannot change the
+  // answer.
+  const covered = reach + Math.hypot(offset.x, offset.y);
+  const across = Math.max(0, Math.ceil((covered - drawWidth / 2) / drawWidth));
+  const down = Math.max(0, Math.ceil((covered - drawHeight / 2) / drawHeight));
 
   const stamp = (i: number, j: number) => {
     ctx.save();
