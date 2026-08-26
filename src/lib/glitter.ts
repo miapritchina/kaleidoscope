@@ -342,6 +342,19 @@ const SPECULAR = 90;
 /** Below this a flake's flash would not be seen, so it is not drawn. */
 const TOO_DIM = 0.02;
 
+/**
+ * The smallest a flake is ever drawn, in device pixels of half-width.
+ *
+ * The one place this substance is allowed to stop being to scale. A wide
+ * mirror triangle draws the cell small — at the top of the **Mirror size**
+ * slider it is about a third of what the default draws — and a flake scaled
+ * faithfully with it is a pixel and a half across, which is not a flake, it is
+ * noise: the whole cell went back to reading as a dark grainy field at exactly
+ * the setting that shows the most repeats of it. Below this the flake is drawn
+ * at this size instead, so what the mirrors repeat is still an object.
+ */
+const SMALLEST_DRAWN = 3.5;
+
 /** How brightly each flake is lit this frame, worked out once and drawn twice. */
 let alight = new Float32Array(MOST_FLAKES);
 
@@ -403,7 +416,7 @@ export function drawGlitter(
       continue;
     }
 
-    const reach = flake.size * scale;
+    const reach = Math.max(SMALLEST_DRAWN, flake.size * scale);
     // Foreshortened: a flake leaning over shows its edge, and the thinning is
     // what lets the eye see it turning. Turned as well as thinned, because a
     // cut flake has corners and a field of them all squared to the screen
@@ -432,7 +445,7 @@ export function drawGlitter(
     }
 
     const flake = flakes[i]!;
-    const reach = flake.size * scale * 3;
+    const reach = Math.max(SMALLEST_DRAWN, flake.size * scale) * 3;
 
     ctx.globalAlpha = Math.min(1, lit);
     ctx.drawImage(flash, flake.x * scale - reach, flake.y * scale - reach, reach * 2, reach * 2);
