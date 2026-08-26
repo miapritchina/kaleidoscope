@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { CHAMBER_RADIUS, liquidCell, updateChamber } from './chamber';
-import { dropWorld, initRapier, updateChamberRapier } from './chamberRapier';
+import { CHAMBER_RADIUS } from './chamber';
+import { liquidCell, updateChamber } from './physics';
+import { dropWorld, initRapier, updateChamberRapier } from './physicsRapier';
 import type { Shard } from './scene';
 import { ROUND, shapeOf } from './shape';
 import { adoptRapierChamber, chamberOverride, dropChamberOverride } from './solver';

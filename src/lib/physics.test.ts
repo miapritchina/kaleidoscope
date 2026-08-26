@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
+import { CHAMBER_RADIUS } from './chamber';
 import {
   advanceFlow,
   AIR,
-  CHAMBER_RADIUS,
   FRESH_LIQUID,
   liquidCell,
   settleChamber,
   updateChamber,
   type Medium,
-} from './chamber';
+} from './physics';
 import { createScene, type Shard } from './scene';
 import { ROUND, shapeOf } from './shape';
 

@@ -36,7 +36,7 @@ export interface Shape {
    * or absent where there is no silhouette to take one of.
    *
    * Not for this solver: the chain of circles is all it can collide. It is for
-   * a solver that can take a polygon — see `lib/chamberRapier.ts` — so a
+   * a solver that can take a polygon — see `lib/physicsRapier.ts` — so a
    * splinter collides as the splinter that was traced rather than as the
    * circles laid along it.
    */

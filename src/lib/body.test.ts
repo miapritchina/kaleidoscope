@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanvas';
-import { KaleidoscopeRenderer, TILE } from './renderer';
+import { KaleidoscopeRenderer, TILE } from './body';
 import { createScene } from './scene';
 import { DEFAULT_SETTINGS } from './settings';
 import { frameworkRadians, latticePeriod } from './tiling';

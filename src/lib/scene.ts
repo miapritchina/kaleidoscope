@@ -1,12 +1,12 @@
+import { CHAMBER_RADIUS } from './chamber';
 import {
   advanceFlow,
   AIR,
-  CHAMBER_RADIUS,
   REFERENCE_PIECE,
   settleChamber,
   updateChamber,
   type Medium,
-} from './chamber';
+} from './physics';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { createDrops, updateDrops, type Drops } from './drops';
 import { createFilm, updateFilm, type Film } from './film';
@@ -117,7 +117,7 @@ export interface Scene {
    * The world's frame, not the cell's. Nought for a dry cell, where there is
    * nothing to turn; in a liquid one it chases the tube's own rate and lags
    * behind it both ways, which is what makes the glass hang back as a turn
-   * starts and sail on after it stops. See `advanceFlow` in `lib/chamber.ts`.
+   * starts and sail on after it stops. See `advanceFlow` in `lib/physics.ts`.
    */
   flow: number;
   /**

@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext } from '../test/fakeCanvas';
 import { createChipSprites } from './chips';
-import { CHAMBER_RADIUS, settleChamber } from './chamber';
+import { CHAMBER_RADIUS } from './chamber';
+import { settleChamber } from './physics';
 import {
   createScene,
   DEPTH_OVERLAP,

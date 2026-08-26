@@ -3,11 +3,11 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObje
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
 import { useStageGesture } from '../hooks/useStageGesture';
-import { AIR, FRESH_LIQUID, liquidCell } from '../lib/chamber';
+import { AIR, FRESH_LIQUID, liquidCell } from '../lib/physics';
 import { createChime, readImpacts, type Chime, type Impact } from '../lib/chime';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
-import { KaleidoscopeRenderer } from '../lib/renderer';
+import { KaleidoscopeRenderer } from '../lib/body';
 import { createScene, updateScene, type SceneCut } from '../lib/scene';
 import type { Settings, SubstanceId } from '../lib/settings';
 import { heldPoint, trackStir } from '../lib/stir';

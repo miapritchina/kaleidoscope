@@ -1,19 +1,13 @@
 import RAPIER from '@dimforge/rapier2d-compat';
 
-import {
-  AIR,
-  CHAMBER_RADIUS,
-  GRAVITY,
-  REFERENCE_PIECE,
-  type ChamberUpdate,
-  type Medium,
-} from './chamber';
+import { CHAMBER_RADIUS } from './chamber';
+import { AIR, GRAVITY, REFERENCE_PIECE, type ChamberUpdate, type Medium } from './physics';
 import type { Shard } from './scene';
 import type { Shape } from './shape';
 
 /**
  * The object chamber on Rapier — a spike, being measured against the classic
- * solver in `lib/chamber.ts` rather than replacing it. See RESEARCH.md,
+ * solver in `lib/physics.ts` rather than replacing it. See RESEARCH.md,
  * phase 6, for why it is worth trying: real polygon colliders where the
  * classic solver approximates every piece as a chain of circles, and a
  * rate-independent solver where the classic one's constants are per-pass —
@@ -175,7 +169,7 @@ export function updateChamberRapier(
 /**
  * What fraction of its speed a piece keeps across one substep, in a fluid.
  *
- * The classic solver's own arithmetic — see `dampingFor` in `lib/chamber.ts`
+ * The classic solver's own arithmetic — see `dampingFor` in `lib/physics.ts`
  * for why the rate goes as one over the radius.
  */
 function dampingFor(shard: Shard, medium: Medium, step: number): number {

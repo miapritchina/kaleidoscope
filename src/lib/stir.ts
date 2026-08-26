@@ -1,6 +1,6 @@
 import { CHAMBER_RADIUS } from './chamber';
 import { foldIntoTriangle } from './fold';
-import { triangleSideFor } from './renderer';
+import { triangleSideFor } from './body';
 import { DRAG_CELLS } from './scene';
 import { frameworkRadians, triangleCentre } from './tiling';
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHAMBER_RADIUS } from './chamber';
-import { triangleSideFor } from './renderer';
+import { triangleSideFor } from './body';
 import { heldPoint, stirPoint, trackStir, type StirView } from './stir';
 
 const view = (over: Partial<StirView> = {}): StirView => ({
