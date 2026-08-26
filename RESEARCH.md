@@ -131,7 +131,7 @@ a library must replace a real machine, not wrap one we have.
 | `matter-js`                  | easiest API                                                                          | least accurate stacking; not worth the trade                                                                        |
 | LiquidFun (`liquidfun-wasm`) | Box2D + particle fluids                                                              | glass sinking through real liquid — fun, but stale ports; PBF-on-our-solver (ROADMAP) covers the same ground better |
 
-**Why Rapier fits this chamber specifically.** `lib/chamber.ts` approximates
+**Why Rapier fits this chamber specifically.** `lib/physics.ts` approximates
 every piece as a chain of 2–4 circles because a hand-rolled polygon solver is
 a different machine (contact manifolds, inertia tensors). Rapier _is_ that
 machine: the traced 28-corner silhouettes in `lib/skin.ts` become convex-hull
@@ -322,7 +322,7 @@ spike; 7 is garnish and can land any time after 1.
 
 ## 2026-08-25 — The Rapier spike, measured
 
-Phase 6 of the plan above, built. `lib/chamberRapier.ts` is the object chamber
+Phase 6 of the plan above, built. `lib/physicsRapier.ts` is the object chamber
 on `@dimforge/rapier2d-compat` 0.20, behind the same contract as the classic
 solver — same `Shard[]`, same update, same mutated fields — reached through the
 seam in `lib/solver.ts`. Nothing adopts it by default: the app switches onto it
@@ -394,7 +394,7 @@ accepted.
 - The chunk: **2.1 MB minified, 804 KB gzipped**, split by the dynamic import
   in `lib/solver.ts` — downloaded only behind the flag, main bundle unmoved
   (286 KB). Adopting it as the default would put that on every first load.
-- Tests: `chamberRapier.test.ts` holds the spike to the classic solver's
+- Tests: `physicsRapier.test.ts` holds the spike to the classic solver's
   behavioural suite — falls, stays inside the wall, stacks, holds a pile at
   5° and avalanches at 50°, suspends in oil, collides slivers as hulls.
 

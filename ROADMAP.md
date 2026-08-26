@@ -4,12 +4,12 @@ Things worth building, why they are worth building, and what they cost. Nothing
 here is a commitment; it is a list to argue with and pull from.
 
 Each item says which renderer it needs. **2D** works on the canvas pipeline that
-exists today. **GL** needs the WebGL move in "The renderer" below, because it is
+exists today. **GL** needs the WebGL move in "The body" below, because it is
 per-pixel work that a 2D canvas can only fake badly. That split is the main
 thing this list is for: several of these are cheap once the renderer moves and
 unaffordable before it.
 
-## The renderer
+## The body
 
 ### ~~Move compositing to WebGL2~~ — done
 
@@ -235,7 +235,7 @@ Needs `ctx.filter` in 2D, which wants Safari 17+ and a fallback; free in **GL.**
 ### ~~Make the chamber round~~ — done
 
 The cell is now the disc the mirror triangle is inscribed in, which is how
-most real instruments are built. `lib/chamber.ts` keeps a single circular wall
+most real instruments are built. `lib/physics.ts` keeps a single circular wall
 and none of the three flat ones; `CORNER` and the corner-wedging compromise
 went with them, and so did the `bounds` parameter — a circle is
 rotation-invariant, so turning the tube is gravity's business alone.
@@ -276,14 +276,41 @@ garlands of glass on bare ground, the new one as a full field. A coverage test
 in `scene.test.ts` now samples the settled triangle so the bare strip cannot
 quietly come back.
 
-### The media axis, still wrong for photographs
+### ~~The media axis, still wrong for photographs~~ — done, by taking it out of the optics
 
-Carried over from the round-cell notes, and still to do: the bead's axis is
-the triangle's middle, which is wrong for a photograph, because `drawMedia`
-centres a picture on the apex. Centring on the apex is worse — most of the
-picture is clipped off-canvas around it and the figure goes black. It needs
-the media given somewhere on the surface to be drawn around. A grid photograph
-shows the fault immediately and is the test to use.
+The bead's axis is the triangle's middle, and a photograph used to be drawn
+about the triangle's _corner_, so a photo was seen through the edge of the
+marble rather than its centre. The note said what was needed — "the media given
+somewhere on the surface to be drawn around" — and the body/chamber split
+supplied it for nothing: a photograph is now a chamber like the glass and the
+oil, and a chamber is painted about its own middle by definition, which is the
+middle of the triangle, which is the bead's axis.
+
+The grid photograph the note recommended is the record. Before: a blown-out
+white patch off to one side of every rosette, the rosettes visibly asymmetric.
+After: a marble, with the middle of the picture in the middle of it.
+
+Two things came with it, both deliberate. The picture keeps the magnification it
+had — `sqrt(3)` chamber radii at zoom 1, which is what a triangle-side-sized
+cover came to — so an existing photograph opens at the size it always did. And
+`drawMedia` now takes the reach it must cover rather than assuming one, which
+cut the mirror tiling from nine stamps to one at zoom 1, since the disc it
+actually has to fill is smaller than the square it used to guess at.
+
+### A chamber that is not a picture and not a cell
+
+Cheap now, and worth writing down while it is: `lib/chamber.ts` asks four things
+of a chamber and none of them is about mirrors. A chamber that shows a video is
+`lib/mediaChamber.ts` handed a `<video>`, which it already takes. A chamber that
+runs a shader, or a game, or a page of type, is one file with a `ground`, an
+`open`, an `update` it may leave empty, and a `paint` that fills its own disc,
+plus one line in `lib/chambers.ts`.
+
+The only thing that needs care is the disc. The optics sample it all over — that
+is what the bead does — so a chamber that paints a shape instead of filling its
+disc puts a hole in the figure. `ChamberView.reach` says how far out is worth
+painting; there is a test in `mediaChamber.test.ts` that holds the media chamber
+to it at every zoom and every drag, and a new chamber wants the same one.
 
 ### ~~The chamber came up with no glass in it~~ — fixed
 
@@ -383,7 +410,7 @@ rest at three quarters packed, wedged solid at 160 pieces — is made of the sam
 step-sized units. Raising that ceiling is what would close the last chinks of
 bare ground at the apex corners.
 
-A second road exists now: `lib/chamberRapier.ts` runs this chamber on Rapier —
+A second road exists now: `lib/physicsRapier.ts` runs this chamber on Rapier —
 a rate-independent solver with real polygon colliders — behind `?solver=rapier`
 while it is being measured. First numbers, and a caution: on traced slivers it
 is 2.5× cheaper than the chains of circles at 150 pieces, but a crude 90°-tip
@@ -392,7 +419,7 @@ in RESEARCH.md.
 
 ### ~~An oil cell~~ — done
 
-`Medium` in `lib/chamber.ts`, behind the **Liquid** tab, with a **Thickness**
+`Medium` in `lib/physics.ts`, behind the **Liquid** tab, with a **Thickness**
 slider running from a thin oil to a gel. It was the best value on this list for
 the effort and it turned out to be that: the solver did not change, it was
 told what the glass is moving through.
@@ -780,7 +807,7 @@ neither could measure it.
 
 The unusual-physics one, and the reason it is realistic to want it: **Position
 Based Fluids** (Macklin & Müller, 2013) is XPBD with a density constraint, and
-`lib/chamber.ts` is already an XPBD solver doing substeps and constraint
+`lib/physics.ts` is already an XPBD solver doing substeps and constraint
 projection. A fluid is not a different engine here. It is another constraint in
 the loop we have.
 
