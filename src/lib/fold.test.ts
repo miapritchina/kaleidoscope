@@ -224,6 +224,32 @@ describe('cellNoise', () => {
     }
   });
 
+  // The hexagon at the origin is the middle of the view, and the exposure this
+  // feeds only ever darkens — so a hash with a fixed point at zero leaves the
+  // one hexagon nobody can look away from as the one hexagon never dimmed.
+  // Against the white ground a liquid cell is lit on it read as a hole punched
+  // in the figure.
+  it('dims the hexagon at the origin like any other', () => {
+    expect(cellNoise(0, 0)).toBeGreaterThan(0.05);
+  });
+
+  // A field with a half-turn symmetry in it is the same tell this variation
+  // exists to remove, one step subtler: a third of all hexagons used to wear
+  // exactly the exposure of their opposite number through the middle.
+  it('gives no hexagon the value of its opposite number', () => {
+    let paired = 0;
+
+    for (let i = -30; i <= 30; i += 1) {
+      for (let j = -30; j <= 30; j += 1) {
+        if ((i !== 0 || j !== 0) && cellNoise(i, j) === cellNoise(-i, -j)) {
+          paired += 1;
+        }
+      }
+    }
+
+    expect(paired).toBe(0);
+  });
+
   it('spreads evenly enough to break up the field', () => {
     const buckets = [0, 0, 0, 0];
 

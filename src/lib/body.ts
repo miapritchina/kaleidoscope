@@ -8,7 +8,7 @@ import {
 } from './chamber';
 import { GROUND, rgbToCss } from './color';
 import { Compositor } from './compositor';
-import { foldIntoTriangle } from './fold';
+import { cellNoise, foldIntoTriangle } from './fold';
 import { LIMITS } from './settings';
 import {
   coverWithHexagons,
@@ -1186,21 +1186,6 @@ export class KaleidoscopeBody {
       return null;
     }
   }
-}
-
-/**
- * A fixed, evenly spread value in `[0, 1)` for the hexagon at `(i, j)`.
- *
- * An integer hash rather than a seeded generator: this is wanted per hexagon
- * per frame, in any order, and it has to give the same answer for the same cell
- * every time or the field would shimmer as it is panned across.
- */
-function cellNoise(i: number, j: number): number {
-  let hash = Math.imul(i, 0x27d4eb2d) ^ Math.imul(j, 0x165667b1);
-  hash = Math.imul(hash ^ (hash >>> 15), 0x2545f491);
-  hash ^= hash >>> 13;
-
-  return (hash >>> 0) / 4294967296;
 }
 
 function defaultCanvas(): HTMLCanvasElement {

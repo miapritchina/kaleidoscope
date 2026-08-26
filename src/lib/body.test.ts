@@ -283,6 +283,29 @@ describe('KaleidoscopeBody', () => {
     expect([...new Set(directions)].sort((a, b) => a - b)).toEqual([0, 60, 120]);
   });
 
+  // Every hexagon differs from its neighbours, or the field reads as a printed
+  // pattern. The middle one included: it is stamped at the lattice origin, and
+  // a hash with a fixed point there leaves it at full brightness while all its
+  // neighbours are dimmed — a hole punched through the middle of the figure,
+  // and one only the 2D path can show, since the shader shades per pixel. The
+  // body takes `cellNoise` from `lib/fold.ts` rather than keeping a copy, so
+  // there is only one of these to get right.
+  it('dims every hexagon it stamps, the one in the middle included', () => {
+    const { body, main } = createBody();
+
+    body.resize(240, 240, 1);
+    body.render(glass(6), OPTICS);
+
+    const stamps = main.stylesOf('drawImage');
+
+    expect(stamps.length).toBeGreaterThan(6);
+
+    for (const stamp of stamps) {
+      expect(stamp.globalAlpha).toBeLessThan(1);
+      expect(stamp.globalAlpha).toBeGreaterThan(0.9);
+    }
+  });
+
   // The mirrors dim the light on its way through; the barrel is in front of
   // them. Two separate things, and they composite differently.
   it('multiplies the view by the mirror falloff, then lays the barrel over it', () => {
@@ -593,23 +616,36 @@ describe('probe', () => {
     expect(at.y).toBeCloseTo(0, 1);
   });
 
-  it('turns with the chamber, so the stir lands where the fluid is', () => {
-    const side = triangleSideFor(1000, 1000, 1);
-    const scale = side / Math.sqrt(3) / CHAMBER_RADIUS;
+  /**
+   * The claim the stir reading rests on, and the reason `probe` stops where it
+   * does. A finger resting on the glass of a tube being turned under it has
+   * not moved, and the point it reads back must not move either — differenced
+   * after the bearing had been divided out, a still finger reported more stir
+   * than the wax can manage on its own, pointed against the turn, everywhere
+   * at once, for as long as it was held. Carrying the reading the rest of the
+   * way is `trackStir`'s, once the differencing is done.
+   */
+  it('does not move a still finger when the chamber turns under it', () => {
     const body = sized();
+    const at = { x: 620, y: 470 };
+    const before = body.probe(at, flat);
 
-    body.step(stub().chamber, {
-      dt: 1 / 20,
-      turn: 10 * Math.PI,
-      drag: { x: 0, y: 0 },
-      tilt: 0,
-      angle: -60,
-    });
+    // Turned both ways, and never back to where it started.
+    for (const turn of [2, -6, 5]) {
+      body.step(stub().chamber, {
+        dt: 1 / 20,
+        turn,
+        drag: { x: 0, y: 0 },
+        tilt: 0,
+        angle: -60,
+      });
 
-    const at = body.probe({ x: 500 + scale * 0.5, y: 500 }, flat);
+      const after = body.probe(at, flat);
 
-    expect(at.x).toBeCloseTo(0, 1);
-    expect(at.y).toBeCloseTo(-0.5, 1);
+      expect(body.bearing).not.toBe(0);
+      expect(after.x).toBeCloseTo(before.x, 12);
+      expect(after.y).toBeCloseTo(before.y, 12);
+    }
   });
 
   it('folds a finger far out on the field back into the chamber', () => {
