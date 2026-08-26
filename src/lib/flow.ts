@@ -80,14 +80,146 @@ export const RATE = 30;
  */
 const PASSES = 16;
 
-/** Speed lost per second in a thin fluid, before Thickness is taken into account. */
-const VISCOSITY = 0.22;
+/**
+ * Speed lost per second in a thin fluid, before Thickness is taken into
+ * account.
+ *
+ * A quarter of what it was, and what it stands for has changed with it. It
+ * used to be nearly the whole of the fluid's dissipation — a drag pulling
+ * every cell towards standing still — and between it and a wall grip applied
+ * at full strength everywhere, the cell was not a fluid at all: an eddy left in
+ * it lost a quarter of itself *per step*, so a stir was gone in a tenth of a
+ * second and nothing the finger did ever survived long enough to be watched.
+ * Measured on a single smooth swirl with nothing else pushing, the whole field
+ * fell to a millionth of itself in three seconds.
+ *
+ * Dissipation is {@link RUB}'s business now, which is viscosity in the shape
+ * viscosity actually has — a thing that passes momentum between neighbours,
+ * kills the smallest swirls first and leaves the largest alone. What is left
+ * here is the small honest loss to everything else the cell rubs against, and
+ * it is what stops a thin cell coasting for ever.
+ */
+const VISCOSITY = 0.05;
+
+/**
+ * How much of the grid's own shortest wavelength one step takes out.
+ *
+ * The least viscosity a fluid can have and still be a fluid, and it is aimed
+ * at exactly one thing. A five-point average is a filter whose effect depends
+ * on the wavelength it is applied to: a swirl ten cells across has neighbours
+ * that nearly agree with it and passes through untouched, while a
+ * *checkerboard* — the shortest thing a grid can hold, where every cell
+ * disagrees with all four of its neighbours — has an average of exactly the
+ * opposite sign and is cut by `1 - 2·share` every step. So at this share a
+ * checkerboard is halved in a fifth of a second and a swirl loses well under a
+ * per cent a second.
+ *
+ * That is the mode the confinement runs away in. Vorticity confinement pushes
+ * towards where the turning is strongest, and nothing turns harder per unit of
+ * speed than a checkerboard, so the shortest wavelength is the one it feeds
+ * fastest; the only thing against it is the viscosity, which at the thin end of
+ * the Thickness slider is nearly nothing. Damping the grid's own wavelength
+ * rather than turning the confinement down is what keeps the smoke's small
+ * swirls — they are eight or ten cells across, and this cannot see them.
+ */
+const SMOOTH = 0.06;
+
+/**
+ * How fast a thick fluid passes momentum between neighbouring cells, per
+ * second, on top of {@link SMOOTH}.
+ *
+ * Viscosity, done as viscosity: a cell is drawn towards the average of the
+ * four around it, so what dies first is whatever varies fastest from cell to
+ * cell and what survives longest is the broad turning of the whole cell. That
+ * is the difference between a gel and a thin oil in one number — the gel loses
+ * its small swirls almost at once and slumps as a body, the thin one holds
+ * eddies long after the hand has come off the glass.
+ *
+ * Sharing more than half of a cell per step is unstable in the way any
+ * explicit diffusion is, so the total share is held well below it.
+ */
+const RUB = 6;
+
+/** The most of itself a cell may hand its neighbours in one step. */
+const MOST_RUB = 0.3;
 
 /** How much more the far end of the Thickness slider takes out. */
 const THICKEST = 6;
 
-/** How fast the wall drags the whole body of fluid round with it, per second. */
-const WALL_GRIP = 2.4;
+/** How fast the wall drags the fluid at the wall round with it, per second. */
+const WALL_GRIP = 3.4;
+
+/**
+ * How fast the body of the cell comes round to the tube's rate, per second.
+ *
+ * The wall turns and the fluid against it is dragged round at once; the middle
+ * of a real cell is only reached through the fluid in between, which is
+ * viscosity and takes minutes on a cell this size. Taken literally the middle
+ * would never learn the tube had been turned at all, and a swipe has to move
+ * the picture — so the body of the fluid is brought round directly as well.
+ *
+ * What it is applied to is the whole point, and it is the difference between
+ * this and a turntable. It acts on **how fast the cell as a whole is going
+ * round** — one number, the fluid's own angular rate, measured and nudged
+ * towards the tube's — rather than on each cell's velocity. So a swirl, an
+ * eddy, a wake left by a finger — anything that is a departure from the cell
+ * turning as a body — is not touched by it at all, and lives exactly as long
+ * as the viscosity lets it. Pointed at each cell instead, as it used to be, it
+ * is a drag towards rigid rotation: every eddy in the cell is erased at this
+ * rate, which at the old numbers was a quarter of it *per step*, and the
+ * finger might as well not have been there.
+ */
+const BODY_GRIP = 1.4;
+
+/**
+ * How far in from the wall its full grip reaches, as a share of the radius.
+ *
+ * The boundary layer. Inside it the fluid is dragged round at the wall's own
+ * rate, and it eases to {@link INNER_GRIP} over this distance.
+ */
+const WALL_LAYER = 0.36;
+
+/**
+ * The most turning the confinement is allowed to see, in radians per second.
+ *
+ * Vorticity confinement is a positive feedback and nothing in the method
+ * bounds it: the push it adds goes as the curl, the curl goes as the speed, so
+ * a cell gains speed in proportion to the speed it already has — an
+ * exponential whose rate is the confinement strength. The only thing against it
+ * is the viscosity, which is a race the confinement wins as soon as the fluid
+ * is thin enough. Measured before this ceiling existed, a cell of smoke at
+ * Thickness 0 held a median speed of **156 cell units a second after five
+ * seconds**, 10^13 by ten, and nothing but NaN by thirty — the thin end of the
+ * slider was not a thin fluid, it was a broken one. ROADMAP.md recorded it and
+ * nobody had fixed it.
+ *
+ * Clamping what the confinement *reads* fixes it at the source and keeps the
+ * method: below the ceiling it is the same correction it always was, and above
+ * it the push stops growing, so the fluid reaches a speed and stays there. The
+ * value is well over twice the fastest turning a healthy cell of smoke shows
+ * left to itself (about 4.8 rad/s, measured), so nothing the eye was ever
+ * shown is touched.
+ *
+ * It also takes out an artefact nobody had connected to it. The curl at the
+ * cells against the round wall runs an order of magnitude above the body of the
+ * fluid — 87 rad/s against 5 while the tube is turned — because the wall is a
+ * velocity step and a difference of neighbours across a step is enormous. That
+ * spike was the confinement's strongest push in the cell, pointed by the grid
+ * rather than by any swirl, and it is where the comb teeth along the rim came
+ * from.
+ */
+const CURL_CEILING = 12;
+
+/**
+ * The fastest the fluid may run anywhere, in cell units a second.
+ *
+ * A backstop and nothing else: {@link CURL_CEILING} is what actually keeps the
+ * cell sane, and this is here so that no combination of a slider, a frame time
+ * and a swipe can ever put a NaN on the screen. It is above anything the
+ * instrument can ask for — the tube tops out at two turns a second, which
+ * drags the wall itself round at about 14.5 — so it never binds on real motion.
+ */
+const FASTEST = 18;
 
 /** Where a cell's middle is, in cell units. */
 export function positionOf(grid: number, index: number): number {
@@ -150,6 +282,18 @@ export interface FlowStep {
   swirl: number;
   /** Confinement strength, for a substance whose small swirls are the look. */
   confine?: number;
+  /**
+   * The idle breeze, for a cell that has to stay alive with nothing in it that
+   * pushes.
+   *
+   * Smoke has the weight of its own dye and the film has the weight of its own
+   * oil; a cell of glitter has neither — foil rides the fluid and does nothing
+   * to it — so without this a cell nobody is turning comes to rest and stays
+   * there. What the breeze is and why its curl cannot fight the pressure solve
+   * is in {@link breatheFlow}; the strength, grain and tempo stay the
+   * substance's own.
+   */
+  breeze?: Omit<Breath, 'step'>;
 }
 
 /**
@@ -158,7 +302,10 @@ export interface FlowStep {
  * runs these stages itself so it can push between them; a substance that only
  * rides — glitter, a film — hands the whole step here.
  */
-export function stepFlow(flow: Flow, { dt, thickness, swirl, confine = 0 }: FlowStep): void {
+export function stepFlow(
+  flow: Flow,
+  { dt, thickness, swirl, confine = 0, breeze }: FlowStep,
+): void {
   if (dt <= 0) {
     return;
   }
@@ -173,6 +320,10 @@ export function stepFlow(flow: Flow, { dt, thickness, swirl, confine = 0 }: Flow
 
   flow.due = 0;
 
+  if (breeze) {
+    breatheFlow(flow, { ...breeze, step });
+  }
+
   driveFlow(flow, { step, thickness, swirl });
 
   if (confine > 0) {
@@ -182,26 +333,96 @@ export function stepFlow(flow: Flow, { dt, thickness, swirl, confine = 0 }: Flow
   projectFlow(flow);
   carryFlow(flow, step);
   projectFlow(flow);
+  capFlow(flow);
+}
+
+/**
+ * Holds every cell to {@link FASTEST}, and takes any NaN out of the field.
+ *
+ * The last thing a step does, whoever is running the stages. See
+ * {@link FASTEST}: the confinement's ceiling is what keeps a cell sane, and
+ * this is the guarantee underneath it — whatever else goes wrong, the fluid
+ * hands the substance riding it a number.
+ */
+export function capFlow(flow: Flow): void {
+  const { u, v, inside } = flow;
+  const cells = u.length;
+
+  for (let k = 0; k < cells; k += 1) {
+    if (!inside[k]) {
+      u[k] = 0;
+      v[k] = 0;
+      continue;
+    }
+
+    const x = u[k]!;
+    const y = v[k]!;
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      u[k] = 0;
+      v[k] = 0;
+      continue;
+    }
+
+    const speed = Math.hypot(x, y);
+
+    if (speed > FASTEST) {
+      u[k] = (x / speed) * FASTEST;
+      v[k] = (y / speed) * FASTEST;
+    }
+  }
 }
 
 /**
  * Everything that pushes on the fluid from outside, this step.
  *
- * The wall drags the whole body of fluid round — which is what makes a
- * substance lag a turn and then outlive it — and a thicker fluid takes the
- * wall's turning up sooner and gives it back over longer. Queued stirs are
- * blended in here too: a finger in the cell is a moving wall of its own, so
- * it sets the fluid to its own velocity rather than adding to it, which is
- * why stirring faster does not pump the cell up without limit.
+ * The wall drags the fluid *against it* round — hard, and easing off inwards,
+ * so the cell shears rather than turning as one disc (see {@link WALL_LAYER}
+ * and {@link INNER_GRIP}) — the viscosity passes what is moving on to the
+ * neighbours it is moving past ({@link RUB}), and what is left of the drag
+ * stands for everything else the fluid rubs against.
+ *
+ * Queued stirs are blended in here too: a finger in the cell is a moving wall
+ * of its own, so it sets the fluid to its own velocity rather than adding to
+ * it, which is why stirring faster does not pump the cell up without limit.
  *
  * Forces particular to a substance — a dye's weight, a film's nothing —
  * belong to the substance, applied to `u`/`v` directly before this runs.
  */
 export function driveFlow(flow: Flow, { step, thickness, swirl }: FlowDrive): void {
   const { grid, u, v, inside } = flow;
-  const thick = 1 + THICKEST * Math.min(1, Math.max(0, thickness));
+  const much = Math.min(1, Math.max(0, thickness));
+  const thick = 1 + THICKEST * much;
   const wall = Math.min(1, WALL_GRIP * thick * step);
   const slow = Math.max(0, 1 - VISCOSITY * thick * step);
+
+  // Viscosity, and under it the floor that keeps the grid's own shortest
+  // wavelength from growing on its own. See RUB and SMOOTH.
+  relaxFlow(flow, Math.min(MOST_RUB, SMOOTH + RUB * much * step));
+
+  // How fast the cell is going round as a body, so the tube can bring that one
+  // number along without touching anything else in the field. See BODY_GRIP.
+  let moment = 0;
+  let spread = 0;
+
+  for (let j = 0; j < grid; j += 1) {
+    for (let i = 0; i < grid; i += 1) {
+      const k = i + j * grid;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      const x = positionOf(grid, i);
+      const y = positionOf(grid, j);
+
+      moment += x * v[k]! - y * u[k]!;
+      spread += x * x + y * y;
+    }
+  }
+
+  const going = spread > 0 ? moment / spread : 0;
+  const catchUp = (swirl - going) * Math.min(1, BODY_GRIP * thick * step);
 
   for (let j = 0; j < grid; j += 1) {
     for (let i = 0; i < grid; i += 1) {
@@ -215,9 +436,17 @@ export function driveFlow(flow: Flow, { step, thickness, swirl }: FlowDrive): vo
 
       const x = positionOf(grid, i);
       const y = positionOf(grid, j);
+      // The boundary layer: the fluid against the glass is dragged to the
+      // wall's own speed, and the grip eases off over WALL_LAYER inwards.
+      const away = Math.hypot(x, y) / CHAMBER_RADIUS;
+      const into = Math.min(1, Math.max(0, (1 - away) / WALL_LAYER));
+      const grip = wall * (1 - into * into * (3 - 2 * into));
 
-      u[k] = (u[k]! + (-swirl * y - u[k]!) * wall) * slow;
-      v[k] = (v[k]! + (swirl * x - v[k]!) * wall) * slow;
+      // Three things, in the order they belong: the wall's own drag on what is
+      // against it, the whole cell coming round with the tube, and the small
+      // loss to everything else.
+      u[k] = (u[k]! + (-swirl * y - u[k]!) * grip - y * catchUp) * slow;
+      v[k] = (v[k]! + (swirl * x - v[k]!) * grip + x * catchUp) * slow;
     }
   }
 
@@ -269,6 +498,112 @@ export function driveFlow(flow: Flow, { step, thickness, swirl }: FlowDrive): vo
 }
 
 /**
+ * Blends every cell a little way towards its four neighbours.
+ *
+ * Viscosity — see {@link RUB} — and under it the floor that keeps the grid's
+ * own shortest wavelength from growing on its own, see {@link SMOOTH}. It is a
+ * filter that can tell a swirl from the grid, which is what lets one number be
+ * both. Read from a copy so the blend is
+ * simultaneous: taken in place, a pass over the array carries the cells it has
+ * already changed into the ones it has not, which is a smear along the rows
+ * rather than a blur.
+ */
+function relaxFlow(flow: Flow, share: number): void {
+  const { grid, u, v, inside } = flow;
+  const cells = grid * grid;
+
+  if (share <= 0) {
+    return;
+  }
+
+  if (wasU.length !== cells) {
+    wasU = new Float32Array(cells);
+    wasV = new Float32Array(cells);
+  }
+
+  if (deep.length !== cells) {
+    markDeep(flow);
+  }
+
+  wasU.set(u);
+  wasV.set(v);
+
+  const quarter = share / 4;
+
+  for (let j = 0; j < grid; j += 1) {
+    for (let i = 0; i < grid; i += 1) {
+      const k = i + j * grid;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      const hereU = wasU[k]!;
+      const hereV = wasV[k]!;
+
+      // A cell with all four neighbours in the fluid — nine in ten of them —
+      // reads them straight out of the array. The rest go through the wall,
+      // which hands back what the asking cell holds, so a neighbour outside
+      // contributes nothing to the difference.
+      if (deep[k]) {
+        u[k] =
+          hereU +
+          (wasU[k - 1]! + wasU[k + 1]! + wasU[k - grid]! + wasU[k + grid]! - 4 * hereU) * quarter;
+        v[k] =
+          hereV +
+          (wasV[k - 1]! + wasV[k + 1]! + wasV[k - grid]! + wasV[k + grid]! - 4 * hereV) * quarter;
+        continue;
+      }
+
+      const alongU =
+        neighbour(wasU, inside, grid, hereU, i + 1, j) +
+        neighbour(wasU, inside, grid, hereU, i - 1, j) +
+        neighbour(wasU, inside, grid, hereU, i, j + 1) +
+        neighbour(wasU, inside, grid, hereU, i, j - 1);
+      const alongV =
+        neighbour(wasV, inside, grid, hereV, i + 1, j) +
+        neighbour(wasV, inside, grid, hereV, i - 1, j) +
+        neighbour(wasV, inside, grid, hereV, i, j + 1) +
+        neighbour(wasV, inside, grid, hereV, i, j - 1);
+
+      u[k] = hereU + (alongU - 4 * hereU) * quarter;
+      v[k] = hereV + (alongV - 4 * hereV) * quarter;
+    }
+  }
+}
+
+/**
+ * Which cells have all four neighbours in the fluid.
+ *
+ * Built with the scratch, once per grid size. A note in ROADMAP.md records the
+ * same idea measuring *slower* in the pressure solve, where it was a branch
+ * added to a loop the engine was already inlining the check out of; here the
+ * branch replaces four function calls rather than four array reads, which is a
+ * different trade and comes out the other way.
+ */
+let deep = new Uint8Array(0);
+
+/** Marks {@link deep} for a fluid's own wall. */
+function markDeep(flow: Flow): void {
+  const { grid, inside } = flow;
+
+  deep = new Uint8Array(grid * grid);
+
+  for (let j = 1; j < grid - 1; j += 1) {
+    for (let i = 1; i < grid - 1; i += 1) {
+      const k = i + j * grid;
+
+      deep[k] =
+        inside[k] && inside[k - 1] && inside[k + 1] && inside[k - grid] && inside[k + grid] ? 1 : 0;
+    }
+  }
+}
+
+/** Where the field is read from while it is being blended. See {@link relaxFlow}. */
+let wasU = new Float32Array(0);
+let wasV = new Float32Array(0);
+
+/**
  * Puts the small swirls back. See `CONFINE` in `lib/smoke.ts` for the whole
  * story: semi-Lagrangian advection is stable because it averages, an average
  * takes the smallest swirls out first, and this measures the curl and pushes
@@ -294,13 +629,20 @@ export function confineFlow(flow: Flow, step: number, strength: number): void {
         continue;
       }
 
-      curl[k] =
+      const turning =
         (neighbour(v, inside, grid, v[k]!, i + 1, j) -
           neighbour(v, inside, grid, v[k]!, i - 1, j) -
           neighbour(u, inside, grid, u[k]!, i, j + 1) +
           neighbour(u, inside, grid, u[k]!, i, j - 1)) /
         (2 * width);
-      size[k] = Math.abs(curl[k]);
+
+      // Clamped, which is what makes the confinement safe at every setting of
+      // the Thickness slider and what keeps it off the wall's own step. See
+      // CURL_CEILING.
+      const held = Math.min(CURL_CEILING, Math.max(-CURL_CEILING, turning));
+
+      curl[k] = held;
+      size[k] = Math.abs(held);
     }
   }
 
@@ -481,10 +823,10 @@ export function projectFlow(flow: Flow): void {
 
       divergence[k] =
         -(
-          neighbour(u, inside, grid, u[k]!, i + 1, j) -
-          neighbour(u, inside, grid, u[k]!, i - 1, j) +
-          neighbour(v, inside, grid, v[k]!, i, j + 1) -
-          neighbour(v, inside, grid, v[k]!, i, j - 1)
+          shut(u, inside, grid, u[k]!, i + 1, j) -
+          shut(u, inside, grid, u[k]!, i - 1, j) +
+          shut(v, inside, grid, v[k]!, i, j + 1) -
+          shut(v, inside, grid, v[k]!, i, j - 1)
         ) /
         (2 * width);
     }
@@ -791,6 +1133,47 @@ function bilinear(field: Float32Array, grid: number, x: number, y: number): numb
     (1 - fx) * ((1 - fy) * field[i0 + j0 * grid]! + fy * field[i0 + j1 * grid]!) +
     fx * ((1 - fy) * field[i1 + j0 * grid]! + fy * field[i1 + j1 * grid]!)
   );
+}
+
+/**
+ * A neighbour across the wall, for the component that runs into it.
+ *
+ * The difference between a wall and a hole, and it was a hole. Everywhere else
+ * the wall hands back whatever the asking cell holds — see {@link neighbour} —
+ * which is the right answer for a pressure and for anything carried, and the
+ * wrong one for the velocity the divergence is measured from: a cell against
+ * the wall whose neighbour agrees with it has *no* divergence, so the solve is
+ * told nothing is flowing out and lets the fluid straight through the glass.
+ *
+ * The wall hands back the opposite instead, which is a mirror: the normal
+ * component of the flow through the boundary is nought by construction, the
+ * tangential component is untouched, and what the pressure solve sees is a
+ * solid, free-slip wall.
+ *
+ * Measured, this is not a nicety. A cell of fluid at Thickness 0 with no dye
+ * in it and the confinement switched off — nothing pushing on it at all — fell
+ * to a thousandth of its opening swirl in three seconds and then **grew back
+ * to the speed limit by ten**, out of nothing, because the staircase the round
+ * wall makes on a square grid was feeding it. In a square box, with the same
+ * code and no wall to speak of, the same field decayed to 10^-25. The round
+ * cell was the whole of the fault, and the substances above it inherited it:
+ * it is where the thin end of the Thickness slider went to NaN.
+ */
+function shut(
+  field: Float32Array,
+  inside: Uint8Array,
+  grid: number,
+  here: number,
+  i: number,
+  j: number,
+): number {
+  if (i < 0 || i >= grid || j < 0 || j >= grid) {
+    return -here;
+  }
+
+  const k = i + j * grid;
+
+  return inside[k] ? field[k]! : -here;
 }
 
 /** A neighbour, with the wall standing in for anything beyond it. */

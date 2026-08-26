@@ -105,6 +105,30 @@ describe('updateGlitter', () => {
     expect(drop(thin, 0)).toBeGreaterThan(drop(thick, 1) * 2);
   });
 
+  // A cell nobody is touching, with no tilt to sweep the light across it and
+  // no fluid handed in, still has to twinkle: each flake rocks over on its own
+  // and so comes through alignment on its own schedule. Without it a still
+  // cell was a *photograph* of glitter — the same specks alight in the same
+  // places for as long as anybody looked.
+  it('rocks the flakes over even with nothing moving them', () => {
+    const flakes = createGlitter(9, 0.3);
+    const leans = flakes.map((flake) => flake.lean);
+
+    for (let frame = 0; frame < 120; frame += 1) {
+      updateGlitter(flakes, { ...still, thickness: 1, swirl: 0 });
+    }
+
+    const rocked = flakes.filter(
+      (flake, index) => Math.abs(flake.lean - leans[index]!) > 0.05,
+    ).length;
+
+    expect(rocked).toBeGreaterThan(flakes.length * 0.9);
+    // Each at its own rate, or the whole cell flashes in time with itself.
+    expect(new Set(flakes.map((flake) => flake.rock.toFixed(4))).size).toBeGreaterThan(
+      flakes.length * 0.5,
+    );
+  });
+
   it('keeps every flake inside the wall', () => {
     const flakes = createGlitter(8, 0.3);
 

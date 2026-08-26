@@ -43,6 +43,23 @@ describe('createFilm', () => {
 });
 
 describe('updateFilm', () => {
+  // A sealed cell does not drain. It used to: the trace loses a little of what
+  // it carries wherever the flow crowds, and measured on a cell left to
+  // itself the film held **a fifth of its oil after a minute** — which is not
+  // an empty cell but a slick shrinking to a few small rings on a black
+  // ground, and is what the screenshots of this substance kept showing.
+  it('keeps every drop of the oil it was poured, for minutes', () => {
+    const film = createFilm(2, 0.55);
+    const poured = oilIn(film);
+
+    for (let frame = 0; frame < 30 * 60; frame += 1) {
+      updateFilm(film, { dt: 1 / 30, thickness: 0.35, swirl: frame > 900 ? 1.5 : 0, angle: 0 });
+    }
+
+    expect(oilIn(film)).toBeGreaterThan(poured * 0.98);
+    expect(oilIn(film)).toBeLessThan(poured * 1.02);
+  }, 60000);
+
   it('keeps the bands moving on their own', () => {
     const film = createFilm(3);
     const before = Array.from(film.film);
@@ -91,10 +108,20 @@ describe('updateFilm', () => {
 describe('filmColour', () => {
   it('goes dark as the film vanishes, the way a bubble does before it pops', () => {
     const [r, g, b] = filmColour(0);
+    let brightest = 0;
+
+    for (let at = 0; at <= 1; at += 0.01) {
+      const [red, green, blue] = filmColour(at);
+
+      brightest = Math.max(brightest, red + green + blue);
+    }
 
     // The half-turn phase flip at the top surface cancels every wavelength as
-    // the thickness goes to nothing.
-    expect(r + g + b).toBeLessThan(160 * 3 * 0.45);
+    // the thickness goes to nothing, so the vanishing film is far darker than
+    // anywhere the interference is adding. Not black: what is under the film
+    // is water and gives a little back whatever the film does. See SHEEN.
+    expect(r + g + b).toBeLessThan(brightest * 0.45);
+    expect(r + g + b).toBeGreaterThan(0);
   });
 
   it('wears different colours at different thicknesses', () => {

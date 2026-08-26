@@ -157,6 +157,21 @@ export interface Drops {
  */
 export const GRID = 128;
 
+/**
+ * How many pixels the cell is painted at, per cell of the bead field.
+ *
+ * The beads are a smooth field and do not want a finer grid; the **pools** are
+ * not a field at all — where their surface is, is arithmetic, worked out at
+ * the pixel from a chord and a meniscus — so painting them one pixel per cell
+ * threw away resolution the cell already had. And a pool's surface is the one
+ * edge in this whole instrument that the eye measures: it is *straight*, and a
+ * straight line a cell wide at a time is a staircase, plain in a screenshot at
+ * anything past the default zoom while the same quantisation in the edge of a
+ * bead goes unnoticed. Painted two pixels a cell, with the pools evaluated at
+ * each of them, the horizon is a line again.
+ */
+const FINE = 2;
+
 /** Where a surface is, as a sum of the fields. */
 const SURFACE = 0.5;
 
@@ -337,24 +352,44 @@ const LEVEL = 1.5;
  * bead colour directly — a colour that falls out of the arithmetic goes on
  * being right when a bead crosses the pool, and one that was chosen does not.
  *
- * Picked by looking at the products: butter and rose make coral, sky and pink
- * make orchid, mint and cornflower make a steel blue. The light one of each
- * pair is pale on purpose — it is most of the cell, and a cell that is three
- * quarters one saturated colour is a wash with some beads on it rather than a
- * liquid you can see through.
+ * Picked by looking at the products. The light one of each pair is **nearly
+ * white**, and that is a correction rather than a preference: it used to be a
+ * butter or a sky — a light colour, but a colour — and it is most of the cell,
+ * so the picture came out as two mid-tones against each other. Two mid-tones
+ * is the one thing a kaleidoscope cannot carry: the mirrors take a few per
+ * cent of the light at every bounce and lean it green as they go, so a figure
+ * with no light in it goes to olive and brick at the rim. Pale, the same
+ * arithmetic gives a clean colour on a white ground and the beads read as
+ * liquid seen through liquid, which is what they are.
  */
 const PAIRS: readonly (readonly [[number, number, number], [number, number, number]])[] = [
+  // Cream and rose: a crimson bead on a warm white.
   [
-    [250, 226, 150],
-    [230, 92, 126],
+    [252, 242, 222],
+    [226, 74, 116],
   ],
+  // Ice and cobalt: an ink blue on a cold white, which is the pair the desk
+  // toys are most often filled with.
   [
-    [176, 224, 244],
-    [232, 112, 176],
+    [226, 242, 250],
+    [58, 116, 214],
   ],
+  // Shell and amber: a marigold bead, and the one pair where the light liquid
+  // is warmer than the heavy one is dark.
   [
-    [196, 234, 200],
-    [104, 146, 236],
+    [254, 240, 214],
+    [240, 146, 48],
+  ],
+  // Frost and violet, which through each other make an orchid.
+  [
+    [238, 234, 250],
+    [128, 70, 200],
+  ],
+  // Mist and viridian: the green that a pool of it makes is the deepest colour
+  // in the set, and the beads read almost black-green against the wall.
+  [
+    [232, 246, 238],
+    [42, 152, 128],
   ],
 ];
 
@@ -853,12 +888,52 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
   const high = SURFACE + band;
   const edge = CHAMBER_RADIUS - width;
 
-  for (let j = 0; j < GRID; j += 1) {
-    const y = -CHAMBER_RADIUS + (j + 0.5) * width;
+  const across = GRID * FINE;
+  const fine = width / FINE;
 
-    for (let i = 0; i < GRID; i += 1) {
-      const x = -CHAMBER_RADIUS + (i + 0.5) * width;
-      const at = (i + j * GRID) * 4;
+  // Where each column sits in the bead field. It is the same for every row, so
+  // it is worked out once rather than sixty thousand times.
+  if (columns.length !== across) {
+    columns = new Float32Array(across);
+    lefts = new Int32Array(across);
+    rights = new Int32Array(across);
+    eased = new Float32Array(across);
+
+    for (let i = 0; i < across; i += 1) {
+      const at = i / FINE - 0.5;
+      const cell = Math.floor(at);
+
+      columns[i] = -CHAMBER_RADIUS + (i + 0.5) * fine;
+      lefts[i] = Math.min(GRID - 1, Math.max(0, cell));
+      rights[i] = Math.min(GRID - 1, Math.max(0, cell + 1));
+      eased[i] = smooth(at - cell);
+    }
+  }
+
+  for (let j = 0; j < across; j += 1) {
+    const y = -CHAMBER_RADIUS + (j + 0.5) * fine;
+    // Where this pixel sits in the bead field, in cells, at the cell centres.
+    const downTo = j / FINE - 0.5;
+    const j0 = Math.floor(downTo);
+    const jUp = Math.min(GRID - 1, Math.max(0, j0));
+    const jDown = Math.min(GRID - 1, Math.max(0, j0 + 1));
+    const fy = smooth(downTo - j0);
+    const rowUp = jUp * GRID;
+    const rowDown = jDown * GRID;
+
+    // Where this row crosses the wall, so the fifth of the square that is
+    // outside the round cell is one fill rather than a pass of the arithmetic.
+    const half = CHAMBER_RADIUS * CHAMBER_RADIUS - y * y;
+    const reach = half > 0 ? Math.sqrt(half) : 0;
+    const from = Math.max(0, Math.ceil((CHAMBER_RADIUS - reach) / fine - 0.5));
+    const to = Math.min(across - 1, Math.floor((CHAMBER_RADIUS + reach) / fine - 0.5));
+
+    pixels.fill(0, j * across * 4, (j * across + Math.max(0, from)) * 4);
+    pixels.fill(0, (j * across + Math.max(0, to + 1)) * 4, (j + 1) * across * 4);
+
+    for (let i = from; i <= to; i += 1) {
+      const x = columns[i]!;
+      const at = (i + j * across) * 4;
       const out = x * x + y * y;
 
       if (out >= CHAMBER_RADIUS * CHAMBER_RADIUS) {
@@ -866,14 +941,24 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
         continue;
       }
 
+      const away = Math.sqrt(out);
       const along = x * drops.downX + y * drops.downY;
       // The meniscus, as a share of how near the wall this is. Both surfaces
       // are pushed the same way by it — away from their own liquid — which for
       // one of them is up and for the other is down.
-      const near = Math.max(0, 1 - (CHAMBER_RADIUS - Math.sqrt(out)) / WETS);
+      const near = Math.max(0, 1 - (CHAMBER_RADIUS - away) / WETS);
       const wet = CLIMB * near * near;
-      const total =
-        Math.max(pool(ceiling + wet - along), pool(along - bed + wet)) + field[i + j * GRID]!;
+      const iLeft = lefts[i]!;
+      const iRight = rights[i]!;
+      const fx = eased[i]!;
+      // The beads, read off their own grid with eased weights so the join
+      // between two cells has no kink in it; the pools, worked out here at the
+      // pixel, because a straight surface is the one thing in this cell whose
+      // edge the eye measures. See FINE.
+      const beads =
+        (1 - fy) * ((1 - fx) * field[rowUp + iLeft]! + fx * field[rowUp + iRight]!) +
+        fy * ((1 - fx) * field[rowDown + iLeft]! + fx * field[rowDown + iRight]!);
+      const total = Math.max(pool(ceiling + wet - along), pool(along - bed + wet)) + beads;
       const much = total <= low ? 0 : total >= high ? 1 : smooth((total - low) / (high - low));
       // How much heavy liquid the light has to get through here, and it is the
       // field that says: a bead is a bead-shaped body and not a disc of colour,
@@ -886,8 +971,7 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
       pixels[at + 2] = shades[shade + 2]!;
       // Softened over the last cell of the wall, so the disc has an edge and
       // not a staircase. Everything past it is not in the tube at all.
-      pixels[at + 3] =
-        out <= edge * edge ? 255 : Math.round((1 - (Math.sqrt(out) - edge) / width) * 255);
+      pixels[at + 3] = away <= edge ? 255 : Math.round((1 - (away - edge) / width) * 255);
     }
   }
 
@@ -951,6 +1035,12 @@ function pool(past: number): number {
 /** Where the fields are summed, before any of it is a colour. */
 const field = new Float32Array(GRID * GRID);
 
+/** Where each painted column sits, and which two cells of the field it reads. */
+let columns = new Float32Array(0);
+let lefts = new Int32Array(0);
+let rights = new Int32Array(0);
+let eased = new Float32Array(0);
+
 /** Smoothstep, for an edge that eases in and out rather than ramping. */
 function smooth(at: number): number {
   return at * at * (3 - 2 * at);
@@ -973,8 +1063,8 @@ function dropSurface() {
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = GRID;
-  canvas.height = GRID;
+  canvas.width = GRID * FINE;
+  canvas.height = GRID * FINE;
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -982,7 +1072,7 @@ function dropSurface() {
     return null;
   }
 
-  const image = ctx.createImageData(GRID, GRID);
+  const image = ctx.createImageData(GRID * FINE, GRID * FINE);
 
   if (!image.data.length) {
     return null;

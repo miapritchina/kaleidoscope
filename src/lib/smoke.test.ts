@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHAMBER_RADIUS } from './chamber';
-import { createSmoke, DYES, GRID, paintSmoke, updateSmoke, type Smoke } from './smoke';
+import { createSmoke, DYES, GRID, HOLD, paintSmoke, updateSmoke, type Smoke } from './smoke';
 
 /** Where a grid cell's middle is, in cell units. */
 const positionOf = (index: number) => -CHAMBER_RADIUS + ((index + 0.5) * 2 * CHAMBER_RADIUS) / GRID;
@@ -108,21 +108,34 @@ describe('updateSmoke', () => {
 
     const left = ink(smoke).total;
 
-    // Semi-Lagrangian advection is not conservative, so some is lost at the
-    // wall and some to the sharpening; what matters is that the cell does not
-    // quietly drain, which is what a fluid with sources and sinks in it does.
-    expect(left).toBeGreaterThan(poured * 0.5);
+    // The cell is sealed and `conserveScalar` hands back what the trace loses,
+    // so the dye that was poured in is still in there — not most of it, all of
+    // it. It used to be 82% after ten seconds and 18% after two minutes, which
+    // is a leak documented in ROADMAP.md and left alone for a long time.
+    expect(left).toBeGreaterThan(poured * 0.95);
+
+    let least = Infinity;
+    let most = -Infinity;
+    let outside = 0;
 
     for (let d = 0; d < DYES; d += 1) {
       for (let k = 0; k < GRID * GRID; k += 1) {
-        expect(smoke.dye[d]![k]).toBeGreaterThanOrEqual(0);
-        expect(smoke.dye[d]![k]).toBeLessThanOrEqual(1);
+        const held = smoke.dye[d]![k]!;
+
+        least = Math.min(least, held);
+        most = Math.max(most, held);
 
         if (!smoke.inside[k]) {
-          expect(smoke.dye[d]![k]).toBe(0);
+          outside = Math.max(outside, Math.abs(held));
         }
       }
     }
+
+    // Read off rather than asserted per cell: twenty-seven thousand
+    // expectations is a slow test and says nothing three do not.
+    expect(least).toBeGreaterThanOrEqual(0);
+    expect(most).toBeLessThanOrEqual(HOLD);
+    expect(outside).toBe(0);
   });
 
   // The cell has to keep moving with nobody turning it, or it is a picture

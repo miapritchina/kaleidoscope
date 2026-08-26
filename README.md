@@ -640,6 +640,65 @@ the same question six times over and only a different noun each time.
 They are a picker inside one tab rather than six tabs of their own, because eight
 instruments across the top of a phone is a tab bar and not a choice.
 
+### The fluid four of them ride
+
+`lib/flow.ts` is the body of liquid itself — velocity on a grid, the wall, the viscosity, the
+pressure solve, and the stirring, the tube's and the finger's. Smoke, ink and the oil film
+are things carried in it; the glitter's flakes hang in one of their own. What is _in_ the
+fluid stays each substance's business.
+
+Three things about it were wrong in ways that were only visible once someone measured them,
+and all three are the sort of fault that hides in plain sight because a fluid is _supposed_
+to be complicated.
+
+**The wall was a hole.** The divergence a pressure solve removes is measured against the
+neighbouring cells, and beyond the round wall there is no neighbour — so it used what the
+asking cell already held, which is the right answer for a pressure and the wrong one for a
+velocity: a cell against the glass whose neighbour agrees with it has no divergence, so the
+solve was told nothing was flowing out and let the fluid straight through. What that did is
+not subtle. **A cell with nothing pushing on it at all** — no dye, no turning, the
+confinement off — fell to a thousandth of its opening swirl in three seconds and then _grew
+back to the speed limit by ten_, fed by the staircase the round wall makes on a square grid.
+In a square box, same code, the same field decayed to 10^-25. The wall reflects the normal
+component now, which is what a wall is, and the round cell behaves exactly like the square
+one. That leak is where the thin end of the **Thickness** slider used to go to NaN.
+
+**It was a turntable, not a fluid.** The wall's grip was applied at full strength to _every_
+cell, pulling the whole field towards rigid rotation, and on top of that a drag pulled every
+cell towards standing still. Between them an eddy lost about a quarter of itself **per
+step**: a finger's wake was gone in a tenth of a second, and nothing anyone did to the cell
+survived long enough to watch. Now the wall grips the fluid **against it** and eases off over
+a boundary layer; the cell as a whole is brought round to the tube's rate as _one number_,
+its own angular rate, so a swirl, an eddy or a wake — anything that is a departure from
+turning as a body — is not touched by it; and the dissipation is **viscosity in the shape
+viscosity has**, each cell drawn towards the average of its four neighbours, which kills the
+smallest swirls first and leaves the largest alone.
+
+That last is what the Thickness slider now _is_. Measured, as the share of a stirred eddy
+still moving after a given time:
+
+| Thickness         | 1 s      | 3 s      | 6 s     | 12 s      | 30 s |
+| ----------------- | -------- | -------- | ------- | --------- | ---- |
+| thin, before      | 37%      | 6%       | 0.4%    | 0%        | 0%   |
+| thin, now         | 83%      | 61%      | 42%     | 24%       | 6%   |
+| default, before   | 5%       | 0%       | 0%      | 0%        | 0%   |
+| default, now      | 72%      | 42%      | 22%     | 7%        | 0.2% |
+| gel, before / now | 0% / 56% | 0% / 22% | 0% / 6% | 0% / 0.5% | 0%   |
+
+And because the middle of the cell is only brought round as a body while the rim is dragged
+directly, a turn now **shears** what is in the cell. With the tube held at 3 rad/s the rim
+settles at 1.9 (thin), 2.6 (default) or 3.0 (gel) and the middle at 1.0, 1.3 and 1.5 — so
+ribbons wind into spirals as the tube turns instead of the whole picture revolving.
+
+**The confinement had no ceiling.** Vorticity confinement adds a push proportional to the
+curl, the curl is proportional to the speed, so it is an exponential with the viscosity for
+its only brake — a race it wins outright at the thin end of the slider. The curl it reads is
+clamped now, well above anything a healthy cell shows, which keeps the correction and takes
+the runaway; and it also takes the wall's own curl spike out of the sum, which was the
+strongest push in the cell and pointed by the grid rather than by any swirl. Under all of it
+there is a speed cap that nothing real ever reaches, so no combination of a slider, a frame
+time and a swipe can put a NaN on the screen.
+
 ### Lava, which is metaballs and a heat cycle
 
 `lib/lava.ts`. Two things make it, and neither of them is a picture of a blob.
@@ -703,6 +762,17 @@ writing down because each of them looked reasonable:
   teal in it was uniformly the colour of a puddle within a minute. All four are warm now, and
   neighbours on the wheel average to neighbours on the wheel.
 
+**The kernel is the smoothing, and it was a stop too narrow.** The field a drop lays down is
+what turns a few dozen particles into a body with a surface, so how wide it is decides how
+lumpy that surface comes out — and at the width it was left at, the edge of a body carried a
+fine scalloping, a ripple at the spacing of the particles beneath it. Invisible at the default
+zoom, plain at the top of the slider. Widened, with the surface threshold raised in proportion
+to the square of the reach so the wax covers exactly the ground it covered, the contour is
+smooth at any size — the cure for a lumpy contour is a wider kernel and not a finer grid. And
+with a smooth surface the light has nothing to catch on, so the shading is back up from where
+an earlier correction had left it: at the numbers before this, a screenshot at any zoom showed
+flat pink shapes with a coloured edge, which is a sticker and not a body of wax.
+
 ### Drops, which is a timer rather than a cycle
 
 `lib/drops.ts`, and it is the [liquid motion
@@ -738,8 +808,14 @@ is always some of the light liquid in front of whatever you are looking at: the 
 their own colour, they are their colour _seen through_ the other one. That is the whole of
 the "floating colour mix illusion" the toys are sold on, and it is why this is composited
 with `multiply` — nothing anywhere chooses what a bead looks like, it falls out of two
-liquids being transparent. Butter and rose make coral; sky and pink make orchid; mint and
-cornflower make a steel blue. The same arithmetic shades a bead: Beer and Lambert say each
+liquids being transparent. Cream and rose make a crimson; ice and cobalt an ink blue; frost
+and violet an orchid. The light one of each pair is **nearly white**, and that is a
+correction and not a preference: it used to be a butter or a sky, a light colour but a
+colour, and it is most of the cell — so the figure came out as two mid-tones against each
+other, which is the one thing a kaleidoscope cannot carry. The mirrors take a few per cent of
+the light at every bounce and lean it green as they go, so a picture with no light in it goes
+to olive and brick at the rim, which is exactly what a screenshot of the old pairs showed.
+The same arithmetic shades a bead: Beer and Lambert say each
 unit of liquid passes a fixed _share_ of what reaches it, so what comes through a depth `d`
 is the tint raised to `d` rather than scaled by it — and since the metaball field _is_ how
 much liquid is in the way, a bead comes out dark in the middle and light at its rim without
@@ -749,6 +825,14 @@ being told to be round.
 lay down a field either side of their own surfaces and the beads lay down fields of their
 own, so a bead about to let go necks off the pool above it and a bead landing is drawn down
 into the pool below it. Neither of those is animated anywhere.
+
+**And the picture is painted two pixels to a cell of that field**, with the pools worked out
+at each of them rather than read off the grid. A pool's surface is the one edge in this whole
+instrument that the eye _measures_ — it is straight, and a straight line laid down a cell at a
+time is a staircase, plain in a screenshot at anything past the default zoom while the same
+quantisation in the edge of a bead goes unnoticed. Where the surface is was already arithmetic
+rather than a field, so painting it one pixel per cell was throwing away resolution the cell
+already had.
 
 **It is the one substance that does not ride `lib/flow.ts`**, and that is on purpose: a
 bubbler's liquid is nearly still. What moves is the beads, under weight and drag, and where
@@ -798,9 +882,32 @@ plume. The cell is given a few swirls to start with, because round clouds fallin
 down stay round for a long time and it needs a reason to be asymmetric before it can fold
 over on itself.
 
-Three dyes, and **subtractive** — each takes its own primary out of the light, the way real
-dye in a lit cell does, so the drawing composites with `multiply` and two dyes folded
-together read as the mixture rather than as the brighter of the pair.
+Three dyes, and **subtractive** — the drawing composites with `multiply`, so two dyes folded
+together read as the mixture rather than as the brighter of the pair. What each of them takes
+out of the light is the part that had to be redone. It used to be one primary each: dye
+number _d_ was written straight into channel _d_, which is a printer's cyan, magenta and
+yellow at full chroma, and the cell came out looking like a test page. Real dye does not take
+out a primary, it takes out a **band** — a rose ink leaves plenty of blue and a little green
+— which is why two of them folded together make a colour a painter would recognise instead of
+one of six corners of the cube.
+
+So each dye now carries a transmittance per channel and the light is multiplied through all
+three: Beer and Lambert, exactly as the liquid timer's beads are shaded, so what comes through
+a depth _d_ is the tint raised to _d_ and a ribbon is dark where it is thick and shows its own
+hue where it is drawn out thin. The three are a triad an ink-maker would sell — a peacock
+blue-green, a quinacridone rose and a turmeric gold — far enough apart to reach the whole
+wheel between them and none of them on a primary, so no pair can mix to the flat grey a pair
+of opposites gives.
+
+**And the cell keeps its dye.** Tracing backwards is a gather, so wherever the flow crowds two
+cells' worth into one it keeps the larger and drops the difference — measured, a cell of smoke
+held **82% of its dye after ten seconds, 33% after a minute and 18% after two**. It is
+documented in ROADMAP.md as a thing nobody could see directly, because a cell that is emptying
+and a cell that is spreading out look the same from one minute to the next, and it was left
+alone for as long as it was because the look had been tuned around the fading. The cell is
+sealed, the total is a thing that is known, and `conserveScalar` hands back what the step lost:
+**100% at ten seconds, at a minute and at two**, at every setting of the Thickness slider. The
+dye is weaker to match, because the old strength was partly standing in for the leak.
 
 **Getting smoke rather than fog took two known techniques and a wrong turn between them.**
 Tracing backwards and sampling bilinearly is stable precisely because it _averages_, and what
@@ -947,11 +1054,72 @@ A flake is a few microns of foil and weighs next to nothing for its area, so the
 carries it almost perfectly: it rides the swirl of a turning tube rather than swimming
 through it, and sags only slowly when nothing is moving.
 
+**It read as a night sky for a long time, and four things were wrong with it at once.** They
+are worth listing because each of them individually looks like a detail and together they
+were the whole substance.
+
+- **There were far too many of them, and each was too small.** Eighteen hundred specks three
+  to seven device pixels across is not a suspension of flakes, it is a _texture_ — and a
+  texture folded six times by the mirrors is static, because the figure a kaleidoscope makes
+  is only legible when the eye can pick out the thing being repeated. Four hundred flakes,
+  each large enough to be an object, repeat into a figure.
+- **A flake was a soft round dot**, which is dust. Craft glitter is die-cut, and the corner is
+  the whole of what says so: a field of round specks reads as grain in a photograph however
+  bright it is made. They are cut hexagons now, turned to their own facing and foreshortened
+  as they lean, in six foils rather than three.
+- **The flash was a bulb.** A soft glow brightening and dimming says "sparkle" to nobody. What
+  the eye reads as a glint is the _star_, and the star is not in the world — it is what a lens
+  or an eyelash does to a small bright thing, which is exactly the case a lit flake is. The
+  flash has rays now.
+- **Nothing moved.** With no tilt to sweep the light and nothing in a cell of glitter that
+  pushes on its fluid, the same few hundred specks stayed alight in the same places for as
+  long as anybody looked — a photograph of glitter. Two things fix it: each flake **rocks over
+  at its own slow rate**, so it comes through alignment on its own schedule, and the fluid
+  gets the same wandering curl-noise breeze the smoke has, so the flakes drift through each
+  other for as long as the cell is open.
+
 The dry chamber's ground has always been white, on the reasoning that the objects are the
 subject and white is what a photographer would stand them on. Lava and smoke want the same
 thing for the same reason. Glitter does not, and its cell is a dark liquid — because the
 whole of what glitter does is be brighter than what is behind it, and against white it
-cannot be.
+cannot be. Dark, but not _flat_: a lit cylinder of liquid is brightest where the light comes
+straight through and darkest at the glass, and one gradient across the disc is the difference
+between specks on a sheet of paper and flakes suspended inside something.
+
+### An oil film, which is interference and not pigment
+
+`lib/film.ts`. The one substance whose colour is not a colour: oil on water is a few hundred
+nanometres thick, light reflecting off the top of the film meets light reflecting off the
+bottom after a delay set by the thickness, and which wavelengths survive is purely a function
+of how thick the film is _right there_. So the bands are contour lines of thickness, and they
+slide as the film flows. A thickness field rides the shared fluid, sags under its own weight
+the way the dye does, and is coloured by the interference and nothing else.
+
+**Evaluating that at three wavelengths is what made it look like a screensaver.** One per
+channel, on the reasoning that the eye has three kinds of cone standing at about those
+places — but a cone answers to a wide _band_, and what a band does to a fringe pattern is
+average it. Sampled at three points instead, every fringe survives at full contrast however
+tightly they are packed, so the fifth order comes out as saturated as the first: hard rings
+of pure red, green and blue, which is not a colour any oil slick has ever shown.
+
+Done properly it is an integral — the film's reflectance across the whole visible spectrum,
+weighed by the eye's three colour-matching functions (the analytic fit of Wyman, Sloan and
+Shirley, JCGT 2013) — and that integral does for free the thing that makes a slick look like
+a slick. Thin films have fringes far apart in wavelength, so the first orders survive the
+averaging as the vivid gold, magenta and blue everybody knows; a thicker film's fringes crowd
+together, the average washes them out, and by the fourth or fifth order the colour has faded
+to a pale pearl. The full thickness is about three orders rather than six now, for the same
+reason: past the third the eye cannot tell one from the next, and all the extra buys is a
+crowd of tight rings.
+
+Two more things had to be right. **The slick keeps its oil** — it drained exactly as the
+smoke's dye did, and worse: a cell left to itself held **a fifth of what it was poured after a
+minute**, which is not an empty cell but a slick shrinking to a few small rings on a black
+ground, and is what the screenshots of this substance kept showing. And **the film is painted
+three pixels to a cell** rather than one, off an eased reconstruction of the thickness field:
+interference colour is a violently non-linear function of thickness and the bands it draws are
+all edge, so at one pixel a cell the edge of every band was the grid's own staircase at any
+zoom past about half.
 
 ## Photo and camera
 

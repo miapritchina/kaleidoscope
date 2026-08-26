@@ -177,9 +177,13 @@ export function createSubstanceChamber(
         if (painted) {
           place(ctx, view, pan);
           ctx.imageSmoothingEnabled = true;
-          // Laid on over the dark ground: these colours are reflections, and a
-          // reflection is only as visible as the ground is dark. Where the film
-          // runs out its alpha does too, and the fluid shows through.
+          // The fluid the slick is floating on, lit — the same wash the flakes
+          // hang in. Where the film runs out its alpha runs out with it, and
+          // what shows through has to be *water*: against a flat dark fill
+          // every shore of every patch read as a hole cut in the picture.
+          depth(ctx, across);
+          // Laid on over that: these colours are reflections, and a reflection
+          // is only as visible as the ground is dark.
           ctx.drawImage(painted, -across, -across, across * 2, across * 2);
           ctx.restore();
         }
@@ -192,6 +196,11 @@ export function createSubstanceChamber(
           ? createFlakeSprites({ createCanvas: inputs.createCanvas })
           : sharedFlakes();
 
+        // The liquid the flakes hang in, lit. A flat fill behind them is a
+        // sheet of paper with specks on it; a cell with light in the middle of
+        // it and darkness at the wall is a cylinder of liquid with specks
+        // *in* it, and the difference is one gradient.
+        depth(ctx, across);
         drawGlitter(ctx, scene.flakes, {
           scale: view.scale,
           rotation: view.rotation,
@@ -211,6 +220,26 @@ export function createSubstanceChamber(
       return { impacts: [], wash: Math.min(1, Math.abs(scene.flow - turning) / 2) };
     },
   };
+
+  /**
+   * The light in the body of a dark cell, as a wash over the ground.
+   *
+   * A cell lit from behind is brightest where the light comes straight through
+   * and darkest at the wall, where it has the most liquid to cross and the
+   * glass to get past. It costs one gradient and it is what turns a flat
+   * backdrop into something the flakes are suspended inside.
+   */
+  function depth(ctx: CanvasRenderingContext2D, across: number): void {
+    const wash = ctx.createRadialGradient(0, 0, 0, 0, 0, across);
+
+    wash.addColorStop(0, 'rgba(126,160,214,0.30)');
+    wash.addColorStop(0.55, 'rgba(96,126,178,0.14)');
+    wash.addColorStop(1, 'rgba(6,10,20,0.35)');
+    ctx.save();
+    ctx.fillStyle = wash;
+    ctx.fillRect(-across, -across, across * 2, across * 2);
+    ctx.restore();
+  }
 
   /** Into the cell's own frame: dragged, then turned. */
   function place(

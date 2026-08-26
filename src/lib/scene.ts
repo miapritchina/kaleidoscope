@@ -12,8 +12,9 @@ import { createDrops, updateDrops, type Drops } from './drops';
 import { createFilm, updateFilm, type Film } from './film';
 import { createInk, updateInk, type Ink } from './ink';
 import { createFlow, stepFlow, stirFlow, type Flow } from './flow';
-import { createGlitter, updateGlitter, type Flake } from './glitter';
+import { createGlitter, GLITTER_BREEZE, updateGlitter, type Flake } from './glitter';
 import { createLava, updateLava, type Lava } from './lava';
+import { createNoise, type Noise } from './noise';
 import { hashSeed, mulberry32, randomBetween, randomInt, randomItem } from './random';
 import { ROUND, shapeOf, type Shape } from './shape';
 import { measureSource, type SkinCut, type SkinPatches } from './skin';
@@ -113,6 +114,15 @@ export interface Scene {
    * glitter's flakes hang in it and tumble with it. See `lib/flow.ts`.
    */
   fluid: Flow | null;
+  /**
+   * The draught that stirs {@link Scene.fluid}, for a substance that does not
+   * stir it itself.
+   *
+   * Smoke and the paint and the film all carry their own — the breeze is one
+   * of the forces they run — so this is only for the fluid held here on a
+   * substance's behalf. See `GLITTER_BREEZE` in `lib/glitter.ts`.
+   */
+  draught: Noise | null;
   /** Seconds elapsed since the scene was created. */
   elapsed: number;
 }
@@ -365,6 +375,10 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
     // The glitter's fluid is coarser than the smoke's own: nothing samples it
     // but the flakes, and velocity is smooth in a way dye is not.
     fluid: holds === 'substance' && substance === 'glitter' ? createFlow(FLUID_GRID) : null,
+    draught:
+      holds === 'substance' && substance === 'glitter'
+        ? createNoise(hashSeed(`${seed}:draught`))
+        : null,
     elapsed: 0,
   };
 
@@ -531,7 +545,16 @@ export function updateScene(
     // The fluid first, so the flakes ride this frame's field and not the
     // last one's.
     if (scene.fluid) {
-      stepFlow(scene.fluid, { dt: step, thickness, swirl });
+      stepFlow(scene.fluid, {
+        dt: step,
+        thickness,
+        swirl,
+        // Nothing in a cell of glitter pushes on its fluid, so the fluid is
+        // given a breeze of its own or it stops. See GLITTER_BREEZE.
+        ...(scene.draught
+          ? { breeze: { ...GLITTER_BREEZE, draught: scene.draught, elapsed: scene.elapsed } }
+          : {}),
+      });
     }
 
     updateGlitter(scene.flakes, {
