@@ -205,9 +205,9 @@ export function createSubstanceChamber(
       }
 
       if (scene.flakes) {
-        flakes ??= createFlakeSprites(
-          inputs.createCanvas ? { createCanvas: inputs.createCanvas } : {},
-        );
+        flakes ??= inputs.createCanvas
+          ? createFlakeSprites({ createCanvas: inputs.createCanvas })
+          : sharedFlakes();
 
         const tilt = inputs.tilt();
 
@@ -243,4 +243,19 @@ export function createSubstanceChamber(
     ctx.translate(pan.x * view.scale, pan.y * view.scale);
     ctx.rotate(view.rotation);
   }
+}
+
+/**
+ * The flake shapes, made once for the whole program.
+ *
+ * Specks of foil in a handful of tints, which depend on nothing a cell can
+ * change — so every cell of glitter there has ever been wants the same ones.
+ * A test with no canvas backend passes its own factory and gets its own set.
+ */
+let shared: FlakeSprites | null = null;
+
+function sharedFlakes(): FlakeSprites {
+  shared ??= createFlakeSprites();
+
+  return shared;
 }

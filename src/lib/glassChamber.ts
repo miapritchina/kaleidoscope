@@ -71,44 +71,15 @@ export function createGlassChamber(
   inputs: GlassChamberInputs = { skins: () => [], scale: () => 1 },
 ): Chamber {
   const scene = createScene(cut.seed, cut.count, { ...cut, holds: 'glass' });
-  const sprites: ChipSprites = createChipSprites(
-    inputs.createCanvas ? { createCanvas: inputs.createCanvas } : {},
-  );
-
-  // One score per picture, kept until the picture itself changes. Keyed by the
-  // element so several sets can be scored at once and each is only worked once,
-  // however the chosen mix is toggled about.
-  const scores = new Map<CanvasImageSource, { patches: SkinPatches | null; stamp: string }>();
+  const sprites: ChipSprites = inputs.createCanvas
+    ? createChipSprites({ createCanvas: inputs.createCanvas })
+    : sharedSprites();
   // What the pieces were last cut against, so a chamber that is already right
   // is left alone.
   let cutAgainst: readonly Glass[] = [];
 
   const heard = { velocities: new Float32Array(0) };
   const impacts: Impact[] = [];
-
-  /**
-   * Where in the skin each piece is cut from, scored once per picture.
-   *
-   * A camera frame changes every frame and is not rescored for each one:
-   * reading a canvas back is a pipeline stall, and a live feed is interesting
-   * all over anyway — the scoring is there for a still of a subject on a plain
-   * backdrop, which is what a picked photo usually is.
-   */
-  function scoreOf(skin: CanvasImageSource): SkinPatches | null {
-    const size = measureSource(skin);
-    const stamp = `${String(size.width)}x${String(size.height)}`;
-    const cached = scores.get(skin);
-
-    if (cached?.stamp === stamp) {
-      return cached.patches;
-    }
-
-    const patches = createSkinPatches(skin, { patch: SKIN_PATCH });
-
-    scores.set(skin, { patches, stamp });
-
-    return patches;
-  }
 
   /** Every chosen set that has pixels yet, scored once each and kept. */
   function loaded(): Glass[] {
@@ -172,6 +143,56 @@ export function createGlassChamber(
       return { impacts, wash: 0 };
     },
   };
+}
+
+/**
+ * Where in each picture the pieces are cut from, scored once and kept.
+ *
+ * Outside any one chamber on purpose. Scoring a picture reads its pixels back,
+ * masks the backdrop out and traces every object in it, which is far too much
+ * to do again because a pinch settled and the glass was recut — and the answer
+ * could not have changed, since it depends on the picture and nothing else. A
+ * weak map, so a photograph that has been replaced is collected along with its
+ * score.
+ *
+ * A camera frame is a different picture every frame and is not rescored for
+ * each one: reading a canvas back is a pipeline stall, and a live feed is
+ * interesting all over anyway — the scoring is there for a still of a subject
+ * on a plain backdrop, which is what a picked photo usually is.
+ */
+const scores = new WeakMap<CanvasImageSource, { patches: SkinPatches | null; stamp: string }>();
+
+function scoreOf(skin: CanvasImageSource): SkinPatches | null {
+  const size = measureSource(skin);
+  const stamp = `${String(size.width)}x${String(size.height)}`;
+  const cached = scores.get(skin);
+
+  if (cached?.stamp === stamp) {
+    return cached.patches;
+  }
+
+  const patches = createSkinPatches(skin, { patch: SKIN_PATCH });
+
+  scores.set(skin, { patches, stamp });
+
+  return patches;
+}
+
+/**
+ * The piece shapes and their lighting, made once for the whole program.
+ *
+ * They depend on nothing — not the seed, not the cut, not the pictures — so
+ * every chamber of glass there has ever been wants exactly the same ones, and
+ * rebuilding them because the size slider moved is work for no difference at
+ * all. A test that has no canvas backend passes its own factory instead and
+ * gets its own set.
+ */
+let shared: ChipSprites | null = null;
+
+function sharedSprites(): ChipSprites {
+  shared ??= createChipSprites();
+
+  return shared;
 }
 
 /** Whether two lists of loaded glass are the same sets in the same order. */
