@@ -10,6 +10,7 @@ import {
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
 import { createDrops, updateDrops, type Drops } from './drops';
 import { createFilm, updateFilm, type Film } from './film';
+import { createInk, updateInk, type Ink } from './ink';
 import { createFlow, stepFlow, stirFlow, type Flow } from './flow';
 import { createGlitter, updateGlitter, type Flake } from './glitter';
 import { createLava, updateLava, type Lava } from './lava';
@@ -135,6 +136,8 @@ export interface Scene {
   smoke: Smoke | null;
   /** A fluid and the oil film floating on it. See `lib/film.ts`. */
   film: Film | null;
+  /** A fluid and the watercolour let into it. See `lib/ink.ts`. */
+  ink: Ink | null;
   /** Flakes of foil hanging in clear fluid. See `lib/glitter.ts`. */
   flakes: Flake[] | null;
   /**
@@ -421,6 +424,10 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
       holds === 'substance' && substance === 'film'
         ? createFilm(hashSeed(`${seed}:film`), amount)
         : null,
+    ink:
+      holds === 'substance' && substance === 'ink'
+        ? createInk(hashSeed(`${seed}:ink`), amount)
+        : null,
     flakes:
       holds === 'substance' && substance === 'glitter'
         ? createGlitter(hashSeed(`${seed}:glitter`), amount, chipScale)
@@ -586,6 +593,10 @@ export function updateScene(
       stirFlow(scene.film, { ...stir, reach: STIR_REACH });
     }
 
+    if (scene.ink) {
+      stirFlow(scene.ink, { ...stir, reach: STIR_REACH });
+    }
+
     if (scene.fluid) {
       stirFlow(scene.fluid, { ...stir, reach: STIR_REACH });
     }
@@ -609,6 +620,10 @@ export function updateScene(
 
   if (scene.film) {
     updateFilm(scene.film, { dt: step, thickness, swirl, angle });
+  }
+
+  if (scene.ink) {
+    updateInk(scene.ink, { dt: step, thickness, swirl, angle });
   }
 
   if (scene.flakes) {

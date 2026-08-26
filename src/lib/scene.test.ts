@@ -205,6 +205,7 @@ describe('a cell of substance', () => {
       lava: (scene) => scene.lava,
       drops: (scene) => scene.drops,
       smoke: (scene) => scene.smoke,
+      ink: (scene) => scene.ink,
       glitter: (scene) => scene.flakes,
       film: (scene) => scene.film,
     };
@@ -227,6 +228,7 @@ describe('a cell of substance', () => {
     expect(scene.lava).toBeNull();
     expect(scene.drops).toBeNull();
     expect(scene.smoke).toBeNull();
+    expect(scene.ink).toBeNull();
     expect(scene.flakes).toBeNull();
     expect(scene.film).toBeNull();
     expect(scene.shards.length).toBeGreaterThan(0);

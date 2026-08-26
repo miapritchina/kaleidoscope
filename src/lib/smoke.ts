@@ -1,11 +1,12 @@
 import { CHAMBER_RADIUS } from './chamber';
 import {
   advectField,
+  breatheFlow,
   carryFlow,
+  carryScalar,
   confineFlow,
   createFlow,
   driveFlow,
-  neighbour,
   positionOf as flowPositionOf,
   projectFlow,
   type Flow,
@@ -139,16 +140,9 @@ const CORRECT = 0.9;
 const FIRE = 1.1;
 
 /**
- * The breeze: a whisper of divergence-free force from a wandering noise
- * potential, so a cell nobody is turning never quite comes to rest.
- *
- * Curl noise (Bridson, Hourihan and Nordenstam, SIGGRAPH 2007): take a
- * smooth potential, and push along its curl. The curl of anything smooth is
- * divergence-free by construction, so the push cannot fight the pressure
- * solve — it only ever stirs, never inflates. The potential is sampled on a
- * coarse lattice and interpolated, because a breeze is a large slow thing
- * and evaluating noise per fluid cell would spend milliseconds on what a
- * sixteen-by-sixteen grid already describes.
+ * The breeze, so a cell nobody is turning never quite comes to rest. Curl
+ * noise, and how it works is in `breatheFlow` in `lib/flow.ts`; this is only
+ * how hard smoke's own is.
  */
 const BREEZE = 0.32;
 
@@ -157,9 +151,6 @@ const BREEZE_GRAIN = 2.6;
 
 /** How fast the breeze wanders, in noise cells per second of its own time. */
 const BREEZE_TEMPO = 0.22;
-
-/** Lattice points across the breeze's coarse grid. */
-const COARSE = 16;
 
 export interface Smoke extends Flow {
   /** How much of each dye is in each cell, 0 to 1. */
@@ -321,7 +312,14 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
   // field the way they always did.
   smoke.elapsed += step;
   fall(smoke, step, thickness, angle);
-  breeze(smoke, step);
+  breatheFlow(smoke, {
+    draught: smoke.draught,
+    elapsed: smoke.elapsed,
+    step,
+    strength: BREEZE,
+    grain: BREEZE_GRAIN,
+    tempo: BREEZE_TEMPO,
+  });
   driveFlow(smoke, { step, thickness, swirl });
   confineFlow(smoke, step, CONFINE);
   projectFlow(smoke);
@@ -341,7 +339,7 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
     const from = smoke.dye[d]!;
     const into = smoke.dye0[d]!;
 
-    carryDye(smoke, from, into, step);
+    carryScalar(smoke, from, into, { step, correct: CORRECT });
     smoke.dye[d] = into;
     smoke.dye0[d] = from;
   }
@@ -381,103 +379,6 @@ function fall(smoke: Smoke, step: number, thickness: number, angle: number): voi
     }
   }
 }
-
-/** Scratch for the breeze's coarse potential. One ring of padding all round. */
-const potential = new Float32Array((COARSE + 2) * (COARSE + 2));
-
-/** The idle stirring. See {@link BREEZE}. */
-function breeze(smoke: Smoke, step: number): void {
-  const { u, v, inside } = smoke;
-  const t = smoke.elapsed * BREEZE_TEMPO;
-
-  for (let cj = 0; cj < COARSE + 2; cj += 1) {
-    for (let ci = 0; ci < COARSE + 2; ci += 1) {
-      potential[ci + cj * (COARSE + 2)] = smoke.draught(
-        ((ci - 0.5) / COARSE) * BREEZE_GRAIN,
-        ((cj - 0.5) / COARSE) * BREEZE_GRAIN,
-        t,
-      );
-    }
-  }
-
-  const push = BREEZE * step;
-  // Coarse cells per fluid cell.
-  const scale = COARSE / GRID;
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        continue;
-      }
-
-      // The curl of the potential, read off the coarse lattice around this
-      // cell: along y for the x push, along x (negated) for the y push.
-      const cx = i * scale + 0.5;
-      const cy = j * scale + 0.5;
-      const ci = Math.min(COARSE, Math.max(1, Math.round(cx)));
-      const cj = Math.min(COARSE, Math.max(1, Math.round(cy)));
-      const at = ci + cj * (COARSE + 2);
-
-      u[k] = u[k]! + (potential[at + COARSE + 2]! - potential[at - COARSE - 2]!) * push;
-      v[k] = v[k]! - (potential[at + 1]! - potential[at - 1]!) * push;
-    }
-  }
-}
-
-/**
- * Carries the dye along the fluid, and takes the trace's own blurring back off.
- *
- * Three passes. Back down the flow, which is the plain trace and is where the
- * blur comes from; forward again from there, which lands somewhere near where
- * the dye started and misses by however much the first pass smeared; and then
- * the first result with half that miss corrected out of it.
- *
- * The clamp at the end is what makes it safe. A correction can overshoot, and
- * an overshoot in a dye field is a value that was never in it — which is a new
- * extreme, and new extremes on a grid are what turn into grid-shaped noise. So
- * the corrected value is held inside the range the plain trace already found
- * nearby: it may sharpen what is there, and it may not invent.
- */
-function carryDye(smoke: Smoke, from: Float32Array, into: Float32Array, step: number): void {
-  const { inside } = smoke;
-
-  advectField(smoke, from, back, step);
-  advectField(smoke, back, forward, -step);
-
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        into[k] = 0;
-        continue;
-      }
-
-      const traced = back[k]!;
-      const corrected = traced + ((from[k]! - forward[k]!) * CORRECT) / 2;
-      let least = traced;
-      let most = traced;
-
-      for (const near of [
-        neighbour(back, inside, GRID, traced, i + 1, j),
-        neighbour(back, inside, GRID, traced, i - 1, j),
-        neighbour(back, inside, GRID, traced, i, j + 1),
-        neighbour(back, inside, GRID, traced, i, j - 1),
-      ]) {
-        least = Math.min(least, near);
-        most = Math.max(most, near);
-      }
-
-      into[k] = Math.min(1, Math.max(0, Math.min(most, Math.max(least, corrected))));
-    }
-  }
-}
-
-/** Where the two halves of the correction are worked out. */
-const back = new Float32Array(GRID * GRID);
-const forward = new Float32Array(GRID * GRID);
 
 /**
  * Paints the ink onto a small canvas, one pixel per cell.

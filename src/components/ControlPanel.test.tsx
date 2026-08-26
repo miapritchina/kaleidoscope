@@ -167,6 +167,7 @@ describe('ControlPanel', () => {
         'Lava',
         'Drops',
         'Smoke',
+        'Ink',
         'Glitter',
         'Oil film',
       ]);

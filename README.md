@@ -318,19 +318,19 @@ src/
 
 ## Settings
 
-| Setting          | Range                       | Effect                                               |
-| ---------------- | --------------------------- | ---------------------------------------------------- |
-| Source           | glass, liquid, view         | Which instrument this is                             |
-| Pieces           | 30–150                      | How many are in the chamber                          |
-| Variety          | one size–widest             | How much the piece sizes differ from each other      |
-| Substance        | lava, drops, smoke, glitter | What a cell of liquid holds instead of glass         |
-| Amount           | a trace–a cell full         | How much of that substance there is                  |
-| Thickness        | thin–gel                    | How hard the fluid resists what is moving through it |
-| Mirror size      | 0.5x–3x                     | How wide the mirror triangle is                      |
-| Mirror angle     | 0–120°                      | Which way up the tube is being held                  |
-| Real gravity     | on/off                      | Let the phone's position say which way is down       |
-| Show the mirrors | on/off                      | Draws the triangle, and points at gravity            |
-| Seed             | any text                    | Seeds the chamber; same seed, same arrangement       |
+| Setting          | Range               | Effect                                               |
+| ---------------- | ------------------- | ---------------------------------------------------- |
+| Source           | glass, liquid, view | Which instrument this is                             |
+| Pieces           | 30–150              | How many are in the chamber                          |
+| Variety          | one size–widest     | How much the piece sizes differ from each other      |
+| Substance        | lava … oil film     | What a cell of liquid holds instead of glass         |
+| Amount           | a trace–a cell full | How much of that substance there is                  |
+| Thickness        | thin–gel            | How hard the fluid resists what is moving through it |
+| Mirror size      | 0.5x–3x             | How wide the mirror triangle is                      |
+| Mirror angle     | 0–120°              | Which way up the tube is being held                  |
+| Real gravity     | on/off              | Let the phone's position say which way is down       |
+| Show the mirrors | on/off              | Draws the triangle, and points at gravity            |
+| Seed             | any text            | Seeds the chamber; same seed, same arrangement       |
 
 **The gestures are for the contents and the panel is for the instrument.** Swiping turns the
 tube, pinching sizes what is in it and two fingers move it about; the one thing the hand
@@ -566,22 +566,23 @@ and the ones that do not are a different instrument entirely — so the **Liquid
 **substance instead of glass**. There are no shards in it, no piece count, no pile to settle.
 Whatever is in there is the whole content, and the mirrors repeat it.
 
-Five of them, chosen inside the tab:
+Six of them, chosen inside the tab:
 
 |              | what it is                                                    | what you watch                                       |
 | ------------ | ------------------------------------------------------------- | ---------------------------------------------------- |
 | **Lava**     | blobs of a second liquid that will not mix with the first     | them climbing, merging and coming apart              |
 | **Drops**    | a heavier liquid draining through a lighter one, bead by bead | it running down, and turning it over to run it again |
 | **Smoke**    | a fluid, and the colour carried on it                         | it folding over on itself                            |
+| **Ink**      | watercolour let into water                                    | a mixture coming apart into its pigments             |
 | **Glitter**  | flakes of foil hanging in clear fluid                         | them flashing as the light sweeps across             |
 | **Oil film** | a few hundred nanometres of oil riding the fluid              | the interference bands sliding as it flows           |
 
-All five take the same two controls, because between them they are the whole of what a cell
+All six take the same two controls, because between them they are the whole of what a cell
 does to what is in it: **Amount**, which is how much of the stuff is in there, and
 **Thickness**, which is how hard the fluid resists whatever is moving through it. Both are
-the same question five times over and only a different noun each time.
+the same question six times over and only a different noun each time.
 
-They are a picker inside one tab rather than five tabs of their own, because seven
+They are a picker inside one tab rather than six tabs of their own, because eight
 instruments across the top of a phone is a tab bar and not a choice.
 
 ### Lava, which is metaballs and a heat cycle
@@ -768,6 +769,110 @@ The wrong turn between them was an unsharp mask — take a little of the local a
 of every cell — which is the obvious way to sharpen and is a trap. Amplifying the difference
 from the neighbours amplifies the _shortest_ wavelength hardest, and the shortest wavelength
 a grid has is a checkerboard.
+
+### Ink, which is real paint and comes apart
+
+`lib/ink.ts`, and the optics and the paint box are in `lib/pigment.ts`. It rides the same
+fluid smoke does. What makes it a different instrument is that what rides it is **paint**,
+and paint is not a colour: it is a solid, ground from a rock or a dyestuff, held in water.
+Everything here follows from that.
+
+The model is lifted from **paintwheel**, a wet-watercolour simulator, which is built on
+Curtis, Anderson, Seims, Fleischer and Salesin, _Computer-Generated Watercolor_ (SIGGRAPH
+1997). Everything that model does with _paper_ — deposition, lifting, staining, drying,
+backruns, the tooth granulation settles into — is gone, because there is no paper in an
+object cell. There is a round glass wall and water, and paint that stays in suspension for
+as long as anyone is watching. That is the one case a watercolour model never has to work
+for, and the only case this one does.
+
+Four things came across, and every one of them is a thing paint does that a coloured fluid
+does not.
+
+**They mix as paint, not as light.** Smoke's three dyes each take one primary out of the
+light; that is cheap, correct for dye, and it cannot make green out of blue and yellow —
+take red out with one and blue out with the other and what is left is a grey. Paint is
+solved differently: each pigment both absorbs light (**K**) and throws it back (**S**) at
+its own rate per wavelength, the mixture's K and S add, and the whole layer is solved over
+the white behind it as one. Real paints, by Colour Index number, with K and S inverted from
+each one's measured mass tone and undertone. So ultramarine and a green-gold yellow give a
+green, that green over quinacridone gives the grey a painter would mix, and no pair of them
+ever gives the flat mud that averaging colours gives.
+
+Solving that needs an exponential per channel per pixel, which is a millisecond and a half a
+frame — as much as the whole fluid step. But the answer only depends on how much of each of
+the three paints a pixel holds, so it is solved once onto a lattice of 21×21×21 mixtures
+when the cell is filled and read back with a straight interpolation. The lattice is spaced by
+the _square root_ of concentration, because that is where the colour changes fastest.
+
+**They come apart.** This is the thing to watch. Quinacridone is milled to a fraction of a
+micron and magnetite black is a coarse grit, better than five to one apart in how fast they
+fall through water — so a mixture does not stay a mixture. A cloud goes in one colour and
+half a minute later it is the two or three paints it was mixed from, sorted by weight down
+its length. Measured, from a cloud holding all three in the same place: the heavy one's
+middle of mass sits a tenth of the cell below the light one's after twenty-five seconds.
+
+That is why the cell is poured as clouds **of mixed paint** rather than one cloud per paint,
+which was the first go and was pointless: three paints dropped in separately are three
+colours drifting past each other. They never mix, so they can never come apart, and the
+difference between their weights has nothing to act on.
+
+**They clump.** Coarse pigment flocculates — it gathers rather than staying evenly spread,
+and the clumps are the mottle a granulating wash is loved for. Ultramarine does it violently
+and phthalo not at all, and it is per paint and measured: on an even wash the coarse paint of
+a palette varies from pixel to pixel by about **17 values out of 255** against the fine one's
+**2**. The clumping is a field of its own, carried by the water like everything else, with a
+little fresh clumping folded in every step — because flocs gather and break up again rather
+than being a pattern the cell was printed with. Fold it in too fast and the mottle stops
+travelling with the paint and sits still in the cell instead, which is paper grain and not
+flocculation.
+
+**They have edges.** Where a wash has a boundary, pigment gathers along it and dries as a
+dark line, and that line is what everybody recognises a watercolour by. Nothing dries in a
+sealed cell, so it is drawn rather than deposited: darken by how fast the amount of paint is
+changing, at two cells' radius so the clumping does not itself read as an edge. It costs four
+reads a pixel and it is what makes a ribbon read as a shape with an edge instead of as a
+smear.
+
+Two more things had to be got right, and both were got wrong first.
+
+**Depth.** Kubelka-Munk over a deep enough layer is black whatever is in it — every paint in
+the box and every mixture of them alike. Set where a first go put it, the cell was a slow
+churn of near-black shapes: correct, and no use at all. The range where a paint shows what it
+is turns out to be under about four times a thin wash. And the depth has to be reached by
+every paint _together_, which means pouring the strong ones thinner: tinting strength across
+a paint box runs nearly ten to one, so equal parts of a Prussian and a potter's pink is a
+cell of Prussian — the one black, the other not there at all.
+
+**A sealed cell cannot lose paint, and this one was losing all of it.** Tracing backwards is
+a _gather_: a cell reads what was upstream and it cannot read more than was upstream, so
+wherever the flow crowds two cells' worth into one it keeps the larger and drops the
+difference. Settling is nothing but crowding. Left to itself, an early cell of paint held
+**nothing at all** after two minutes — not settled at the bottom, gone. It went unnoticed for
+as long as it did because a cell that is emptying and a cell that is spreading out look the
+same from one minute to the next.
+
+Two answers together. The settling is **moved rather than traced**: each cell hands a share
+of what it holds to its neighbour downhill and that neighbour keeps it, which is arithmetic
+that adds up by construction, and a cell whose downhill neighbour is outside the wall hands
+on nothing — so sediment rests against the glass instead of passing through it. And what the
+_fluid's_ own crowding still loses is handed back in proportion at the end of every step,
+because the cell is sealed and the total is a thing that is known. The honest repair for that
+second one is a solver that does not compress — a staggered grid, where the pressure and the
+velocity are read at the same points — which is a rewrite to fix something nobody can see
+directly. This is the same statement for one multiply a cell.
+
+**One thing smoke has that this deliberately does not: vorticity confinement.** Smoke needs
+it — a fluid that only ever averages loses its smallest swirls first, and without them smoke
+is coloured blur. A wash does not: its structure is the shape of the ribbon and the rim along
+its edge, and the correction keeps both. What confinement does to a wash instead is the thing
+it has always threatened to do, and that a blurred curl only postpones: it pushes each cell
+towards where the turning is strongest nearby, and along a broad soft edge that direction is
+decided by the grid. Every plume grew a row of horizontal teeth down its side — plain in a
+screenshot at any strength that did anything at all, and gone entirely at none. It is a good
+example of why the pictures get looked at and not only the tests: nothing numeric complained.
+
+Measured against the smoke it shares a fluid with: **7% more per step**, and 0.66 ms to
+paint against the dye's tenth of that, most of which is the colour table's interpolation.
 
 ### Glitter, which is flashes and also matter
 

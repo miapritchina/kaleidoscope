@@ -6,6 +6,7 @@ import { GROUND, rgbToCss } from './color';
 import { paintDrops } from './drops';
 import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
 import { paintFilm } from './film';
+import { paintInk } from './ink';
 import { paintLava } from './lava';
 import {
   applyCutShape,
@@ -664,6 +665,26 @@ export class KaleidoscopeRenderer {
         ctx.imageSmoothingEnabled = true;
         // Taken out of the light rather than added to it, which is what a dye
         // does: it does not paint the cell, it decides what gets through it.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+
+      return;
+    }
+
+    if (scene.ink) {
+      const painted = paintInk(scene.ink);
+
+      if (painted) {
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.imageSmoothingEnabled = true;
+        // Multiplied, which is both what paint does to the light coming
+        // through it and what makes the chamber's white ground the paper the
+        // Kubelka-Munk layer was solved over.
         ctx.drawImage(painted, -across, -across, across * 2, across * 2);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over';

@@ -868,6 +868,61 @@ measured **0.862 ms against 0.899** — four per cent, for a field to build and
 keep and three more branches in the hottest loops in the chamber. The engine was
 already inlining the check. It was taken out again.
 
+### ~~Watercolour, from paintwheel~~ — done, as the Ink substance
+
+`lib/ink.ts` and `lib/pigment.ts`. Three real paints out of a paint box,
+mixing by Kubelka-Munk over the whole mixture rather than one primary each,
+falling through the water at their own rates so a mixture comes apart into the
+pigments it was mixed from, flocculating where they are coarse and drawing a
+dark rim where a wash has an edge. Lifted from **paintwheel** and stripped of
+everything to do with paper, because an object cell has none. The whole story
+is in the README.
+
+Costs 7% more per step than the smoke it shares a fluid with, and 0.66 ms to
+paint against the dye's tenth of that.
+
+It runs **without vorticity confinement**, which is the one thing smoke has
+that it does not, and a screenshot decided it rather than an argument: pointed
+at a broad soft edge the confinement follows the grid, and every plume grew a
+row of horizontal teeth down its side. Nothing numeric complained. Smoke's own
+scalloping is the same artefact at a strength somebody decided was worth
+paying.
+
+### Two things the fluid does that nobody had measured
+
+Both were found while building the Ink cell, both are in `lib/flow.ts` and
+`lib/smoke.ts` rather than in the new code, and neither is fixed for smoke —
+they are recorded here so the next person does not have to find them again.
+
+**A cell left alone empties itself.** Tracing backwards is a gather: a cell
+reads what was upstream and cannot read more than was upstream, so wherever the
+flow crowds two cells' worth into one it keeps the larger and drops the
+difference. Measured on a cell of smoke with nobody turning it, at the default
+thickness: **50% of the dye gone in ten seconds, 84% in a minute, 96% in two.**
+It is documented as folding over on itself for as long as anyone watches, and
+instead it evaporates. Nobody had caught it because a cell that is emptying and
+a cell that is spreading out look the same from one minute to the next, and
+`STRENGTH` at 1.9 hides the first half of it.
+
+The honest repair is a solver that does not compress — a staggered grid, where
+the pressure and the velocity are read at the same points, so the shortest
+wavelength does not go unseen. That is a rewrite of `projectFlow`. The cheap
+one, which is what the Ink cell does, is `conserveScalar`: the cell is sealed
+and the total is a thing that is known, so hand back what the step lost, in
+proportion, for one multiply a cell. It moves nothing and only refuses to let
+the total wander. Applying it to the smoke would change a look that has been
+tuned around the fading, so it has not been.
+
+**The fluid diverges at Thickness 0.** Vorticity confinement adds a push
+proportional to the curl, which is proportional to how fast the fluid is already
+going; the wall's grip and the viscosity take out a share of the same. It is a
+race, and a fixed confinement strength wins it once the drag is thin enough. At
+the bottom of the Thickness slider a cell of smoke reaches **10^30 cell widths a
+second in twenty seconds and holds nothing but NaN by thirty**. The Ink cell
+carries no confinement at all and floors its own thickness at 0.12 besides, so
+it is a number at every setting of the slider — measured, and tested. Smoke
+does neither.
+
 ### Polarised mode
 
 Polarising film plus cellophane is how real kaleidoscopes get those electric

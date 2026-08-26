@@ -1,4 +1,5 @@
 import { CHAMBER_RADIUS } from './chamber';
+import { type Noise } from './noise';
 
 /**
  * The body of fluid in a liquid cell, as a velocity field on a grid.
@@ -381,12 +382,34 @@ export function carryFlow(flow: Flow, step: number): void {
  * the field a little way out of every vortex. Stepping halfway back, reading
  * the velocity *there*, and tracing with that instead costs one extra
  * bilinear read per cell and takes most of that rotational drift out.
+ *
+ * `driftX`/`driftY` are a velocity of the carried thing's *own*, added to the
+ * fluid's everywhere. Dye has none — it is dissolved, so it is wherever the
+ * water is. A solid held in water does: it goes where the water goes and a
+ * little further down, at a rate that depends on how heavy and how coarse it
+ * is. Added to the velocity rather than applied afterwards, so the trace
+ * follows the path the thing actually took and everything the trace already
+ * does — the midpoint, the wall, the clamp — holds for it unchanged.
+ *
+ * `driftBy` scales that drift cell by cell, and it is not a refinement. A drift
+ * that is the *same everywhere* moves every cell's trace by the same fraction
+ * of a cell, every step, in the same direction — and a bilinear read of a sharp
+ * edge shifted by a constant sub-cell amount, sharpened again by the
+ * correction, staircases. It drew a row of horizontal teeth along the side of
+ * every plume, exactly the grid-shaped artefact the confinement and the unsharp
+ * mask each drew in their own way (see `lib/smoke.ts`). Varying the rate from
+ * cell to cell breaks the lock, and there is a real thing to vary it by: a
+ * settling velocity goes as the square of the particle, so where pigment has
+ * flocculated it falls faster.
  */
 export function advectField(
   flow: Flow,
   from: Float32Array,
   into: Float32Array,
   step: number,
+  driftX = 0,
+  driftY = 0,
+  driftBy: Float32Array | null = null,
 ): void {
   const { grid, u, v, inside } = flow;
   // Cell widths travelled, rather than cell units.
@@ -401,12 +424,15 @@ export function advectField(
         continue;
       }
 
+      const much = driftBy ? driftBy[k]! : 1;
+      const alongX = driftX * much;
+      const alongY = driftY * much;
       // Half a step back, on the velocity here...
-      const midX = Math.min(grid - 1.001, Math.max(0, i - u[k]! * rate * 0.5));
-      const midY = Math.min(grid - 1.001, Math.max(0, j - v[k]! * rate * 0.5));
+      const midX = Math.min(grid - 1.001, Math.max(0, i - (u[k]! + alongX) * rate * 0.5));
+      const midY = Math.min(grid - 1.001, Math.max(0, j - (v[k]! + alongY) * rate * 0.5));
       // ...then the whole step, on the velocity there.
-      const uMid = bilinear(u, grid, midX, midY);
-      const vMid = bilinear(v, grid, midX, midY);
+      const uMid = bilinear(u, grid, midX, midY) + alongX;
+      const vMid = bilinear(v, grid, midX, midY) + alongY;
       const backX = Math.min(grid - 1.001, Math.max(0, i - uMid * rate));
       const backY = Math.min(grid - 1.001, Math.max(0, j - vMid * rate));
       const i0 = Math.floor(backX);
@@ -507,6 +533,250 @@ export function projectFlow(flow: Flow): void {
     }
   }
 }
+
+/**
+ * Carries a scalar along the fluid, and takes the trace's own blurring back off.
+ *
+ * Moved here from `lib/smoke.ts`, where it was written for the dye, because it
+ * is the fluid's business rather than any one substance's: anything painted on
+ * a grid and carried by a flow wants the same treatment, and the second
+ * substance to want it — the paint in `lib/ink.ts` — wanted it identically.
+ *
+ * Three passes. Back down the flow, which is the plain trace and is where the
+ * blur comes from; forward again from there, which lands somewhere near where
+ * it started and misses by however much the first pass smeared; and then the
+ * first result with half that miss corrected out of it. MacCormack.
+ *
+ * The clamp at the end is what makes it safe. A correction can overshoot, and
+ * an overshoot is a value that was never in the field — which is a new extreme,
+ * and new extremes on a grid are what turn into grid-shaped noise. So the
+ * corrected value is held inside the range the plain trace already found
+ * nearby: it may sharpen what is there, and it may not invent.
+ *
+ * `low`/`high` bound the field: dye and paint live in `[0, 1]`, and a field
+ * that is a signed departure from even would say otherwise.
+ */
+export function carryScalar(
+  flow: Flow,
+  from: Float32Array,
+  into: Float32Array,
+  { step, correct, driftX = 0, driftY = 0, driftBy = null, low = 0, high = 1 }: CarryScalar,
+): void {
+  const { grid, inside } = flow;
+  const cells = grid * grid;
+
+  if (back.length !== cells) {
+    back = new Float32Array(cells);
+    forward = new Float32Array(cells);
+  }
+
+  advectField(flow, from, back, step, driftX, driftY, driftBy);
+  advectField(flow, back, forward, -step, driftX, driftY, driftBy);
+
+  for (let j = 0; j < grid; j += 1) {
+    for (let i = 0; i < grid; i += 1) {
+      const k = i + j * grid;
+
+      if (!inside[k]) {
+        into[k] = 0;
+        continue;
+      }
+
+      const traced = back[k]!;
+      const corrected = traced + ((from[k]! - forward[k]!) * correct) / 2;
+      let least = traced;
+      let most = traced;
+
+      for (const near of [
+        neighbour(back, inside, grid, traced, i + 1, j),
+        neighbour(back, inside, grid, traced, i - 1, j),
+        neighbour(back, inside, grid, traced, i, j + 1),
+        neighbour(back, inside, grid, traced, i, j - 1),
+      ]) {
+        least = Math.min(least, near);
+        most = Math.max(most, near);
+      }
+
+      into[k] = Math.min(high, Math.max(low, Math.min(most, Math.max(least, corrected))));
+    }
+  }
+}
+
+export interface CarryScalar {
+  /** Seconds this step advances. */
+  step: number;
+  /** How much of the trace's own error is corrected, 0 to 1. */
+  correct: number;
+  /** The carried thing's own velocity through the fluid, in cell units a second. */
+  driftX?: number;
+  driftY?: number;
+  /** That drift, scaled cell by cell. See {@link advectField}. */
+  driftBy?: Float32Array | null;
+  /** The range the field lives in. */
+  low?: number;
+  high?: number;
+}
+
+/** Where the two halves of the correction are worked out. See {@link carryScalar}. */
+let back = new Float32Array(0);
+let forward = new Float32Array(0);
+
+/**
+ * Puts back whatever the trace lost, in proportion.
+ *
+ * A liquid cell is sealed. There is no drain in it, nothing evaporates out of
+ * the top and the glass does not absorb, so however much of a thing was put in
+ * is how much is in there for as long as anyone watches. Tracing backwards does
+ * not know that. It reads what was upstream, and it cannot read *more* than was
+ * upstream — so wherever the flow crowds two cells' worth into one it keeps the
+ * larger and drops the difference. Anything falling through a fluid crowds
+ * constantly, because that is what falling through a fluid is, and anything
+ * settling against the wall crowds hardest of all.
+ *
+ * Measured on a cell of paint left to itself, with nobody turning it: it held
+ * **nothing at all** after two minutes. Not settled at the bottom — gone. The
+ * pigment fell, gathered against the wall, and was quietly deleted a fraction
+ * of a per cent at a time. It went unnoticed for as long as it did because a
+ * cell that is emptying and a cell that is spreading out look the same from one
+ * minute to the next.
+ *
+ * The honest repair is a fluid solver that does not compress — a staggered grid
+ * rather than this one, where the pressure and the velocity are read at the
+ * same points and the shortest wavelength therefore goes unseen. That is a
+ * rewrite of the solver to fix something nobody can see directly. This is the
+ * other half of the same statement and it is one multiply a cell: the total is
+ * what it was, so whatever the step lost is handed back to every cell in
+ * proportion to what it already holds, and taken off the same way where the
+ * correction's clamp has quietly added some. It moves nothing — the shape of
+ * the picture is the trace's, exactly as before — it only refuses to let the
+ * total wander.
+ *
+ * `most` is the ceiling a cell may hold. It has to be above whatever the field
+ * was filled to, or the one place the loss actually happens — the crowd at the
+ * bottom of the cell — is the one place that cannot take the colour back, and
+ * conserving turns into a slow bleach of everywhere else instead.
+ */
+export function conserveScalar(flow: Flow, was: Float32Array, now: Float32Array, most = 1): void {
+  const { grid, inside } = flow;
+  const cells = grid * grid;
+  let before = 0;
+  let after = 0;
+
+  for (let k = 0; k < cells; k += 1) {
+    if (!inside[k]) {
+      continue;
+    }
+
+    before += was[k]!;
+    after += now[k]!;
+  }
+
+  if (after <= 1e-6 || before <= 1e-6) {
+    return;
+  }
+
+  // Both ways. The trace loses under compression and the correction's clamp
+  // quietly gains under stretch — a field left alone drifted to nearly twice
+  // what was put in — and neither is a thing the cell did.
+  const back = Math.min(1 + REPLACE, Math.max(1 - REPLACE, before / after));
+
+  for (let k = 0; k < cells; k += 1) {
+    if (inside[k]) {
+      now[k] = Math.min(most, now[k]! * back);
+    }
+  }
+}
+
+/**
+ * The most of itself one step may hand back or take off. See
+ * {@link conserveScalar}.
+ *
+ * A ceiling rather than a rate. In ordinary drifting a step loses a fraction of
+ * a per cent and this never binds; where it binds is the first seconds of a
+ * cell, when dense clouds are falling fast and the crowding is at its worst.
+ * What it stops is the one case where the ratio is meaningless — a field with
+ * almost nothing left in it, where putting the whole total back would multiply
+ * whatever noise is there by hundreds.
+ */
+const REPLACE = 0.25;
+
+/**
+ * The idle stirring: a whisper of divergence-free force from a wandering
+ * noise potential, so a cell nobody is turning never quite comes to rest.
+ *
+ * Curl noise (Bridson, Hourihan and Nordenstam, SIGGRAPH 2007): take a smooth
+ * potential, and push along its curl. The curl of anything smooth is
+ * divergence-free by construction, so the push cannot fight the pressure solve
+ * — it only ever stirs, never inflates. The potential is sampled on a coarse
+ * lattice and interpolated, because a breeze is a large slow thing and
+ * evaluating noise per fluid cell would spend milliseconds on what a
+ * sixteen-by-sixteen grid already describes.
+ *
+ * Moved here from `lib/smoke.ts` when a second substance wanted one. Which
+ * substance wants which breeze is still the substance's own business — the
+ * strength, the grain and the tempo are all arguments.
+ */
+export function breatheFlow(
+  flow: Flow,
+  { draught, elapsed, step, strength, grain, tempo }: Breath,
+): void {
+  const { grid, u, v, inside } = flow;
+  const t = elapsed * tempo;
+
+  for (let cj = 0; cj < COARSE + 2; cj += 1) {
+    for (let ci = 0; ci < COARSE + 2; ci += 1) {
+      potential[ci + cj * (COARSE + 2)] = draught(
+        ((ci - 0.5) / COARSE) * grain,
+        ((cj - 0.5) / COARSE) * grain,
+        t,
+      );
+    }
+  }
+
+  const push = strength * step;
+  // Coarse cells per fluid cell.
+  const scale = COARSE / grid;
+
+  for (let j = 0; j < grid; j += 1) {
+    for (let i = 0; i < grid; i += 1) {
+      const k = i + j * grid;
+
+      if (!inside[k]) {
+        continue;
+      }
+
+      // The curl of the potential, read off the coarse lattice around this
+      // cell: along y for the x push, along x (negated) for the y push.
+      const ci = Math.min(COARSE, Math.max(1, Math.round(i * scale + 0.5)));
+      const cj = Math.min(COARSE, Math.max(1, Math.round(j * scale + 0.5)));
+      const at = ci + cj * (COARSE + 2);
+
+      u[k] = u[k]! + (potential[at + COARSE + 2]! - potential[at - COARSE - 2]!) * push;
+      v[k] = v[k]! - (potential[at + 1]! - potential[at - 1]!) * push;
+    }
+  }
+}
+
+export interface Breath {
+  /** The cell's own smooth field, to take the curl of. */
+  draught: Noise;
+  /** Seconds the cell has been alive, for the wandering. */
+  elapsed: number;
+  /** Seconds this step advances. */
+  step: number;
+  /** How hard it pushes, in cell units per second per second. */
+  strength: number;
+  /** Noise cells across the chamber: the breeze's spatial grain. */
+  grain: number;
+  /** How fast it wanders, in noise cells per second of its own time. */
+  tempo: number;
+}
+
+/** Lattice points across the breeze's coarse grid. */
+const COARSE = 16;
+
+/** Scratch for the breeze's coarse potential. One ring of padding all round. */
+const potential = new Float32Array((COARSE + 2) * (COARSE + 2));
 
 /** A plain bilinear read of one field, for the midpoint of the trace. */
 function bilinear(field: Float32Array, grid: number, x: number, y: number): number {

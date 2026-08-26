@@ -18,15 +18,20 @@ export function isSourceId(value: unknown): value is SourceId {
  * not have to hold loose pieces at all, and the ones that do not are a
  * different instrument entirely: a lava lamp's blobs climbing and sinking past
  * each other, a liquid timer draining bead by bead into the pool it is making,
- * smoke curling in a lit box, a cloud of glitter hanging in
- * clear fluid. The mirrors repeat whatever is in there, and what is in there is
+ * smoke curling in a lit box, watercolour let into water, a cloud of glitter
+ * hanging in clear fluid. The mirrors repeat whatever is in there, and what is in there is
  * the substance itself.
  *
- * The last is a film of oil: nanometres of it floating on the fluid, and the
+ * One of them is a film of oil: nanometres of it floating on the fluid, and the
  * colours are not pigment — they are interference, the same physics as a soap
  * bubble, read off the film's own thickness. See `lib/film.ts`.
+ *
+ * The last is watercolour let into water, and it is the one where the colours
+ * *are* pigment: three real paints out of a paint box, mixing by Kubelka-Munk
+ * rather than by averaging, each falling through the water at its own rate so a
+ * mixture comes apart as it drifts. See `lib/ink.ts`.
  */
-export const SUBSTANCES = ['lava', 'drops', 'smoke', 'glitter', 'film'] as const;
+export const SUBSTANCES = ['lava', 'drops', 'smoke', 'ink', 'glitter', 'film'] as const;
 
 export type SubstanceId = (typeof SUBSTANCES)[number];
 
