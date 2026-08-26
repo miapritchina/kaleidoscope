@@ -15,7 +15,13 @@ import { useSettings } from './hooks/useSettings';
 import { CUSTOM, objectSetUrl } from './lib/objectSets';
 import { sharePicture } from './lib/share';
 import { resolvePlayback } from './lib/playback';
-import { clampToLimit, isChamberSource, LIMITS, settingsToSearchParams } from './lib/settings';
+import {
+  clampToLimit,
+  isChamberSource,
+  isGlassSource,
+  LIMITS,
+  settingsToSearchParams,
+} from './lib/settings';
 
 export function App() {
   const { settings, set, randomize, reset } = useSettings();
@@ -78,7 +84,11 @@ export function App() {
       ? 'Choose or drop a photo to mirror it.'
       : settings.source === 'camera' && camera.status !== 'active'
         ? (camera.message ?? 'Starting the camera…')
-        : isChamberSource(settings.source) && skins.length === 0
+        : // A cell of liquid holds a substance and no glass at all, so it is
+          // never short of any: asking for a picture to cut pieces out of when
+          // there are no pieces is a leftover from before the Liquid tab was
+          // its own instrument.
+          isGlassSource(settings.source) && skins.length === 0
           ? customSelected
             ? 'Choose or drop a PNG of objects on a transparent background.'
             : 'Pick a glass to fill the chamber.'

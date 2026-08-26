@@ -480,6 +480,103 @@ that never overlap — when the whole point is that the fields add — filled th
 cell with one shape; and a palette drawn from opposite sides of the colour wheel
 averaged, through merge after merge, to the colour of a puddle.
 
+### ~~A liquid timer~~ — done
+
+`lib/drops.ts`, and it is the second thing the Liquid tab offers. The desk toy: a sealed
+tube of two liquids that will not mix, one a shade heavier than the other, and the heavy
+one draining through the light one bead by bead.
+
+**It was worth building because it is the opposite of the lava lamp.** Lava is a cycle —
+heat drives it and it never settles. This runs _down_: about two minutes at the middle of
+Thickness, and then it rests as a level pool. It is a timer, and what starts it is the hand.
+Which turns out to be the interaction nothing else in this app has: **the pool keeps its own
+idea of down** and re-levels towards gravity at a limited rate, so a slow turn is followed
+and nothing happens, and a deliberate half-turn outruns it and everything on the floor is
+overhead again. Tipping a real one gently on its side does not set it off either.
+
+A cell that comes to rest was the thing to decide about, and it is right. The dry chamber
+does the same — a pile of glass settles and sleeps — and only lava and smoke are perpetual.
+A timer that quietly re-inverted itself so as never to stop would be a lava lamp arrived at
+by accident.
+
+**It has a surface, which nothing else here does**, and that is most of why the figure looks
+unlike any other setting of this instrument. A pool at rest is flat and perpendicular to
+gravity, so it cuts the round cell along a chord, and six mirrors fold one straight line into
+a hexagram. The area of a disc beyond a chord at `u·R` is `R²(acos u − u√(1−u²))`, which has
+no inverse worth writing down, so it is bisected twice a frame; what is _stored_ is how much
+liquid is at each end, and both surfaces follow from that. So nothing can drift out of step
+with anything and the total is conserved exactly. A meniscus rounds the ends of each surface,
+which is real — the heavy liquid wets the glass — and is also the difference between a
+hexagon with corners you could cut yourself on and a rosette.
+
+**The colour is not chosen anywhere.** The tube is deep, so there is always some of the light
+liquid in front of whatever you are looking at: a bead is its colour _seen through_ the other
+one. That is the whole of the "floating colour mix illusion" these are sold on, so the cell
+is composited with `multiply` and the bead colour falls out. Beer and Lambert extend it into
+the bead: each unit of liquid passes a fixed _share_ of what reaches it, so what comes
+through a depth `d` is the tint raised to `d` — and the metaball field already _is_ how much
+liquid is in the way, so a bead comes out dark in the middle and light at the rim without
+being told to be round.
+
+**The metaballs are the lava's, pointed at a different problem.** The pools lay down a field
+either side of their own surfaces and the beads lay down their own, so a bead about to let go
+necks off the pool above it and a bead landing is drawn down into the pool below it. Neither
+is animated.
+
+Three things were got wrong first, and two of them are the same mistake at opposite ends:
+
+**A bead that appears is not a drip, and a bead that vanishes is not a landing.** A drip is
+liquid running down into a pendant drop until the drop breaks its own neck. The first version
+waited on a timer and then put a bead on the surface — so sampled at any instant the
+underside of the pool was flat, because the waiting was most of the cycle. The wait is spent
+gathering now and there is always one hanging. At the other end, deleting a bead that had
+arrived took a bite out of the picture on one frame; it is poured in over a third of a second
+instead and the surface rises to meet it. Measured the way the lava's stagger was — the
+picture from one frame to the next — the worst frame in a minute is now worth nine ordinary
+ones.
+
+**The bump a bead starts as is liquid, and it has to come out of the pool.** It did not, and
+the cell quietly made about a sixth more liquid than it was filled with. Nothing looked
+wrong. The test that adds up the two pools and everything in flight, every frame, is the only
+thing that saw it — and it caught the other half too: a pool that only ever gives away a
+_share_ of what is in it is never empty, so the cell could never finish. The last of it comes
+down as one dribble now.
+
+**And a fourth, which was not about the liquid at all: how deep the pools are is a question
+about the mirrors.** The cell is the disc the triangle is inscribed in, so the triangle's
+edges lie at half the radius and the fold never sees the outer half of the cell. A settled
+pool is a cap at the rim — filling a fifth of the cell it covers 11% of what is folded, all
+of it in the corners. So the cell ran down exactly as designed, came to rest on a clean flat
+pool, and the figure was a lattice of rosettes: the rosettes _were_ the pool, caught at the
+three points where it reached far enough in. Every number was right and the picture was of
+something else. At a shade under half the cell the surface lands within a twentieth of the
+middle and covers 40% of the triangle, which is where Amount's default sits now, and
+`drops.test.ts` measures that coverage rather than trusting the depth.
+
+**0.65 ms per rendered frame**, against the lava's 1.27, the oil film's 3.07 and the smoke's
+4.58 — the cheapest of the five, measured in one process on the same machine. It is the one
+substance that does not carry a fluid: what is in the cell is two pools and a handful of
+beads, and everything else about where the liquid is falls out of an area and a chord.
+
+**It is the one substance that does not ride `lib/flow.ts`, and that is on purpose.** The
+shared field was extracted because three substances had each reinvented the fluid; this one
+has not got a fluid to reinvent. What is in the cell is two pools and a handful of beads, and
+where the liquid is falls out of an area and a chord — no grid, no projection, and the total
+conserved to the last float. A bubbler's liquid is nearly still: what moves is the beads, and
+they move under weight and drag. Putting an Euler grid under it would buy eddies nobody in a
+sealed tube of two settling liquids is looking for, and cost more than the substance does.
+
+What it does take from the rebuild is the finger. A drag pushes the beads it reaches, the same
+rule the wax next door is pushed with — and it does one thing to a pool that nothing else in
+the app can do, because a surface is a single object however wide it is: sweep across one
+anywhere and the whole of it tips.
+
+Two things it is not, and both are the same fence the oil cell is behind. The beads do not
+displace the liquid they fall through — the light phase is drawn and not simulated — and the
+pools do not slosh as a fluid, they tilt as a rigid surface driven by how fast gravity is
+moving in the cell's frame, and by the finger. Which is a good deal of what the hand feels
+and none of what a free surface actually does. The item below is where that would come from.
+
 ### Actual fluid, on the solver we already built
 
 The unusual-physics one, and the reason it is realistic to want it: **Position

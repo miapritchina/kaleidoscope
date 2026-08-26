@@ -318,19 +318,19 @@ src/
 
 ## Settings
 
-| Setting          | Range               | Effect                                          |
-| ---------------- | ------------------- | ----------------------------------------------- |
-| Source           | glass, liquid, view | Which instrument this is                        |
-| Pieces           | 30–150              | How many are in the chamber                     |
-| Variety          | one size–widest     | How much the piece sizes differ from each other |
-| Glitter          | none–plenty         | How many flakes of foil are in with the glass   |
-| Thickness        | oil–gel             | How much of the glass's weight the fluid holds  |
-| Ink              | clear–plenty        | How much dye is loose in the liquid             |
-| Mirror size      | 0.5x–3x             | How wide the mirror triangle is                 |
-| Mirror angle     | 0–120°              | Which way up the tube is being held             |
-| Real gravity     | on/off              | Let the phone's position say which way is down  |
-| Show the mirrors | on/off              | Draws the triangle, and points at gravity       |
-| Seed             | any text            | Seeds the chamber; same seed, same arrangement  |
+| Setting          | Range                       | Effect                                               |
+| ---------------- | --------------------------- | ---------------------------------------------------- |
+| Source           | glass, liquid, view         | Which instrument this is                             |
+| Pieces           | 30–150                      | How many are in the chamber                          |
+| Variety          | one size–widest             | How much the piece sizes differ from each other      |
+| Substance        | lava, drops, smoke, glitter | What a cell of liquid holds instead of glass         |
+| Amount           | a trace–a cell full         | How much of that substance there is                  |
+| Thickness        | thin–gel                    | How hard the fluid resists what is moving through it |
+| Mirror size      | 0.5x–3x                     | How wide the mirror triangle is                      |
+| Mirror angle     | 0–120°                      | Which way up the tube is being held                  |
+| Real gravity     | on/off                      | Let the phone's position say which way is down       |
+| Show the mirrors | on/off                      | Draws the triangle, and points at gravity            |
+| Seed             | any text                    | Seeds the chamber; same seed, same arrangement       |
 
 **The gestures are for the contents and the panel is for the instrument.** Swiping turns the
 tube, pinching sizes what is in it and two fingers move it about; the one thing the hand
@@ -566,20 +566,22 @@ and the ones that do not are a different instrument entirely — so the **Liquid
 **substance instead of glass**. There are no shards in it, no piece count, no pile to settle.
 Whatever is in there is the whole content, and the mirrors repeat it.
 
-Three of them, chosen inside the tab:
+Five of them, chosen inside the tab:
 
-|             | what it is                                                | what you watch                           |
-| ----------- | --------------------------------------------------------- | ---------------------------------------- |
-| **Lava**    | blobs of a second liquid that will not mix with the first | them climbing, merging and coming apart  |
-| **Smoke**   | a fluid, and the colour carried on it                     | it folding over on itself                |
-| **Glitter** | flakes of foil hanging in clear fluid                     | them flashing as the light sweeps across |
+|              | what it is                                                    | what you watch                                       |
+| ------------ | ------------------------------------------------------------- | ---------------------------------------------------- |
+| **Lava**     | blobs of a second liquid that will not mix with the first     | them climbing, merging and coming apart              |
+| **Drops**    | a heavier liquid draining through a lighter one, bead by bead | it running down, and turning it over to run it again |
+| **Smoke**    | a fluid, and the colour carried on it                         | it folding over on itself                            |
+| **Glitter**  | flakes of foil hanging in clear fluid                         | them flashing as the light sweeps across             |
+| **Oil film** | a few hundred nanometres of oil riding the fluid              | the interference bands sliding as it flows           |
 
-All three take the same two controls, because between them they are the whole of what a cell
+All five take the same two controls, because between them they are the whole of what a cell
 does to what is in it: **Amount**, which is how much of the stuff is in there, and
 **Thickness**, which is how hard the fluid resists whatever is moving through it. Both are
-the same question three times over and only a different noun each time.
+the same question five times over and only a different noun each time.
 
-They are a picker inside one tab rather than three tabs of their own, because five
+They are a picker inside one tab rather than five tabs of their own, because seven
 instruments across the top of a phone is a tab bar and not a choice.
 
 ### Lava, which is metaballs and a heat cycle
@@ -644,6 +646,80 @@ writing down because each of them looked reasonable:
   colours from opposite sides of the wheel gives mud: a first go with rose, amber, violet and
   teal in it was uniformly the colour of a puddle within a minute. All four are warm now, and
   neighbours on the wheel average to neighbours on the wheel.
+
+### Drops, which is a timer rather than a cycle
+
+`lib/drops.ts`, and it is the [liquid motion
+timer](https://www.amazon.ca/Floating-Illusion-Liquid-Motion-27/dp/B01LZNKDNU) off a desk: a
+sealed tube of two liquids that will not mix, one a shade heavier than the other. Turn it
+over and the heavy one, now on top, has to get back down — and it cannot go as a slab,
+because the light one has to come up past it at the same time. So it goes as beads. They
+gather on the underside of the pool overhead, hang, stretch, let go, drift down, and are
+drawn into the pool growing on the floor.
+
+**It is the opposite of the lava lamp next to it, and that is the reason to have it.** Lava
+is a cycle: heat drives it and it never settles. This runs _down_. It is a timer — measured,
+a bit over two minutes at the middle of Thickness, a bit over one at the thin end and four in
+the gel — and what starts it is the hand.
+
+**Turning the instrument over runs it again.** The pool keeps its own idea of down and
+re-levels towards gravity at a limited rate, so a slow turn is followed and nothing happens,
+which is right: tipping a real one gently on its side runs it to the low side and leaves it
+there. A deliberate half-turn outruns it, and everything on the floor is overhead again. A
+shake reseeds the chamber, which for this cell is the same gesture with the same result.
+
+**A surface.** Nothing else in this instrument has one, and it is most of what makes this
+cell look unlike any other setting of it. A pool at rest is flat and perpendicular to
+gravity, so it cuts the round cell along a chord — and six mirrors fold one straight line
+into a hexagram. Where the pools are is arithmetic and not animation: the area of a disc
+beyond a chord at `u·R` is `R²(acos u − u√(1−u²))`, which has no inverse worth writing down,
+so it is bisected twice a frame. What is stored is how much liquid is at each end, and the
+surfaces follow from that. Nothing can drift out of step with anything, and the total is
+conserved exactly.
+
+**Two colours, and neither of them is the one you see most of.** The tube is deep, so there
+is always some of the light liquid in front of whatever you are looking at: the beads are not
+their own colour, they are their colour _seen through_ the other one. That is the whole of
+the "floating colour mix illusion" the toys are sold on, and it is why this is composited
+with `multiply` — nothing anywhere chooses what a bead looks like, it falls out of two
+liquids being transparent. Butter and rose make coral; sky and pink make orchid; mint and
+cornflower make a steel blue. The same arithmetic shades a bead: Beer and Lambert say each
+unit of liquid passes a fixed _share_ of what reaches it, so what comes through a depth `d`
+is the tint raised to `d` rather than scaled by it — and since the metaball field _is_ how
+much liquid is in the way, a bead comes out dark in the middle and light at its rim without
+being told to be round.
+
+**Metaballs**, borrowed wholesale from the lava and pointed at a different problem. The pools
+lay down a field either side of their own surfaces and the beads lay down fields of their
+own, so a bead about to let go necks off the pool above it and a bead landing is drawn down
+into the pool below it. Neither of those is animated anywhere.
+
+**It is the one substance that does not ride `lib/flow.ts`**, and that is on purpose: a
+bubbler's liquid is nearly still. What moves is the beads, under weight and drag, and where
+the liquid _is_ falls out of an area and a chord rather than out of a grid. It does take the
+finger — a drag pushes the beads it reaches, the same rule the wax is pushed with, and sweeping
+across a pool tips the whole of it, because a surface is a single object however wide it is.
+
+Three things were got wrong first, and the first two are the same mistake:
+
+- **A bead that appears is not a drip.** A drip is liquid running down into a pendant drop
+  until the drop is heavy enough to break its own neck. The first version waited on a timer
+  and then put a bead on the surface — and sampled at any given instant the underside of the
+  pool was flat, because the waiting was most of the cycle. The wait is spent gathering now,
+  so there is always one hanging there, and the neck is the metaballs doing what they do.
+- **A bead that vanishes is not a landing.** Same at the other end: deleting it took a bite
+  out of the picture on one frame. It is poured in over a third of a second instead, and the
+  surface rises to meet it.
+- **The bump a bead starts as is liquid, and it has to come out of the pool.** It did not,
+  and the cell quietly made about a sixth more liquid than it was filled with. Nothing looked
+  wrong; the test that adds up what is in the two pools and what is in flight, every frame,
+  is the only thing that saw it. The same test caught the other half of it, which is that a
+  pool that only ever gives away a _share_ of what is in it is never empty — so the last of
+  it comes down as one dribble, and the cell is allowed to finish.
+
+It is also the cheapest substance in the cell: **0.65 ms per rendered frame** against the
+lava's 1.27, the oil film's 3.07 and the smoke's 4.58, measured in one process on the same
+machine.
 
 ### Smoke, which is a fluid rather than things in one
 

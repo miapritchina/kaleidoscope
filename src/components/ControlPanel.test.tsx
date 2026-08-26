@@ -165,6 +165,7 @@ describe('ControlPanel', () => {
 
       expect(screen.getAllByRole('radio').map((one) => one.textContent)).toEqual([
         'Lava',
+        'Drops',
         'Smoke',
         'Glitter',
         'Oil film',

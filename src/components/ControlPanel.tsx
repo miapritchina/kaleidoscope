@@ -85,6 +85,7 @@ function tabFor(source: SourceId): SourceId {
  */
 const SUBSTANCE_KINDS: { id: SubstanceId; label: string; icon: IconName }[] = [
   { id: 'lava', label: 'Lava', icon: 'lava' },
+  { id: 'drops', label: 'Drops', icon: 'drops' },
   { id: 'smoke', label: 'Smoke', icon: 'smoke' },
   { id: 'glitter', label: 'Glitter', icon: 'glitter' },
   { id: 'film', label: 'Oil film', icon: 'film' },

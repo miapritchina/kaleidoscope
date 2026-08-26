@@ -8,6 +8,7 @@ import {
   type Medium,
 } from './chamber';
 import { CHIP_VARIANTS, tracePolygon, type ChipSprites } from './chips';
+import { createDrops, updateDrops, type Drops } from './drops';
 import { createFilm, updateFilm, type Film } from './film';
 import { createFlow, stepFlow, stirFlow, type Flow } from './flow';
 import { createGlitter, updateGlitter, type Flake } from './glitter';
@@ -128,6 +129,8 @@ export interface Scene {
   readonly substance: SubstanceId | null;
   /** Blobs of a second liquid, climbing and sinking. See `lib/lava.ts`. */
   lava: Lava | null;
+  /** A heavier liquid draining through a lighter one. See `lib/drops.ts`. */
+  drops: Drops | null;
   /** A fluid and the dye carried on it. See `lib/smoke.ts`. */
   smoke: Smoke | null;
   /** A fluid and the oil film floating on it. See `lib/film.ts`. */
@@ -406,6 +409,10 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
       holds === 'substance' && substance === 'lava'
         ? createLava(hashSeed(`${seed}:lava`), amount, chipScale)
         : null,
+    drops:
+      holds === 'substance' && substance === 'drops'
+        ? createDrops(hashSeed(`${seed}:drops`), amount, chipScale)
+        : null,
     smoke:
       holds === 'substance' && substance === 'smoke'
         ? createSmoke(hashSeed(`${seed}:smoke`), amount)
@@ -590,6 +597,10 @@ export function updateScene(
   // what is in it.
   if (scene.lava) {
     updateLava(scene.lava, { dt: step, thickness, swirl, angle, stir });
+  }
+
+  if (scene.drops) {
+    updateDrops(scene.drops, { dt: step, thickness, swirl, angle, stir });
   }
 
   if (scene.smoke) {

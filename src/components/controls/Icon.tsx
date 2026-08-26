@@ -15,6 +15,7 @@ export type IconName =
   | 'shards'
   | 'liquid'
   | 'lava'
+  | 'drops'
   | 'smoke'
   | 'photo'
   | 'camera'
@@ -34,6 +35,10 @@ const PATHS: Record<IconName, string> = {
   liquid: 'M12 3c3.4 4 5 6.7 5 9a5 5 0 0 1-10 0c0-2.3 1.6-5 5-9ZM12 9.6l2.2 2.6-2.2 2.6-2.2-2.6z',
   // Two blobs of wax, one climbing past the other.
   lava: 'M13.4 3.2c2.6 3 3.8 5.1 3.8 6.9a3.8 3.8 0 0 1-7.6 0c0-1.8 1.2-3.9 3.8-6.9ZM8.2 13.4c1.8 2.1 2.6 3.5 2.6 4.7a2.6 2.6 0 0 1-5.2 0c0-1.2.8-2.6 2.6-4.7Z',
+  // A bead letting go, a bead on its way down, and the pool they are on their
+  // way into — level, with the swell of the last one to land.
+  drops:
+    'M12 2.6c1.8 2.1 2.7 3.5 2.7 4.7a2.7 2.7 0 0 1-5.4 0c0-1.2.9-2.6 2.7-4.7M10.4 13.6a1.6 1.6 0 1 0 3.2 0 1.6 1.6 0 1 0-3.2 0M3.5 19.4h5c1-1.6 2.1-2.4 3.5-2.4s2.5.8 3.5 2.4h5',
   // Three drifts of it, rising and folding.
   smoke:
     'M4 18c2-2.2 4-.2 6-1.4s3.2-3 6-1.6M4 13c2-2.2 4-.2 6-1.4s3.2-3 6-1.6M7 8c1.5-1.7 3 .5 4.5-.6s2.4-2.3 4.5-1.2',

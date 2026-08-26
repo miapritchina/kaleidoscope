@@ -3,6 +3,7 @@ import { Compositor } from './compositor';
 import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
+import { paintDrops } from './drops';
 import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
 import { paintFilm } from './film';
 import { paintLava } from './lava';
@@ -602,7 +603,7 @@ export class KaleidoscopeRenderer {
   /**
    * Paints whichever substance the cell is filled with.
    *
-   * All three are drawn in the cell's own frame — turned with the tube and
+   * All four are drawn in the cell's own frame — turned with the tube and
    * moved with the drag — because all three are things in the chamber rather
    * than effects on the picture, and the mirrors are meant to fold them exactly
    * as they fold a piece of glass.
@@ -627,6 +628,26 @@ export class KaleidoscopeRenderer {
         // surface, and what is behind it does not come through.
         ctx.drawImage(painted, -across, -across, across * 2, across * 2);
         ctx.restore();
+      }
+
+      return;
+    }
+
+    if (scene.drops) {
+      const painted = paintDrops(scene.drops);
+
+      if (painted) {
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.imageSmoothingEnabled = true;
+        // Two transparent liquids, one behind the other: what the beads come
+        // out as is the pair multiplied rather than a colour chosen anywhere,
+        // which is the whole trick these toys are sold on.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
       }
 
       return;

@@ -384,6 +384,7 @@ export function Kaleidoscope({
 /** What a cell of liquid is holding, for a screen reader. */
 const SUBSTANCE_NAMES: Record<SubstanceId, string> = {
   lava: 'a lava lamp',
+  drops: 'a liquid timer, draining bead by bead',
   smoke: 'smoke',
   glitter: 'glitter',
   film: 'an oil film',
