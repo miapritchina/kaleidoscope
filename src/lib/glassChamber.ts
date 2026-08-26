@@ -47,6 +47,13 @@ export interface GlassChamberInputs {
    * what puts the growing under the fingers.
    */
   scale: () => number;
+  /**
+   * Where to make the offscreen surfaces the piece sprites are drawn on.
+   *
+   * Only for a test running without a canvas backend, which is what
+   * `lib/chips.ts` wants it for too.
+   */
+  createCanvas?: () => HTMLCanvasElement;
 }
 
 /**
@@ -64,7 +71,9 @@ export function createGlassChamber(
   inputs: GlassChamberInputs = { skins: () => [], scale: () => 1 },
 ): Chamber {
   const scene = createScene(cut.seed, cut.count, { ...cut, holds: 'glass' });
-  const sprites: ChipSprites = createChipSprites();
+  const sprites: ChipSprites = createChipSprites(
+    inputs.createCanvas ? { createCanvas: inputs.createCanvas } : {},
+  );
 
   // One score per picture, kept until the picture itself changes. Keyed by the
   // element so several sets can be scored at once and each is only worked once,

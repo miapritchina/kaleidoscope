@@ -177,8 +177,8 @@ export function Kaleidoscope({
     return () => {
       window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `wanted` is a
-    // fresh object every render; its fields are the dependencies.
+    // `wanted` is a fresh object every render; its fields are the dependencies.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     cut,
     wanted.source,

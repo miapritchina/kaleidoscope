@@ -62,6 +62,12 @@ export interface SubstanceChamberInputs {
    * flakes fire in waves as the phone moves and sit still when it does not.
    */
   tilt: () => number;
+  /**
+   * Where to make the offscreen surfaces the flake sprites are drawn on.
+   *
+   * Only for a test running without a canvas backend, as in `lib/glitter.ts`.
+   */
+  createCanvas?: () => HTMLCanvasElement;
 }
 
 /**
@@ -199,7 +205,9 @@ export function createSubstanceChamber(
       }
 
       if (scene.flakes) {
-        flakes ??= createFlakeSprites();
+        flakes ??= createFlakeSprites(
+          inputs.createCanvas ? { createCanvas: inputs.createCanvas } : {},
+        );
 
         const tilt = inputs.tilt();
 

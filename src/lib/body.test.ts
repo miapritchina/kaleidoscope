@@ -412,6 +412,37 @@ describe('the body and its chamber', () => {
     expect(views[0]!.rotation).toBeCloseTo(1, 12);
   });
 
+  /**
+   * The claim the whole instrument rests on, stated as arithmetic.
+   *
+   * Gravity keeps pointing at the floor whatever is turned. A direction `g` in
+   * the chamber's frame is drawn on screen at `g` less the two rotations the
+   * figure passes through — the chamber's bearing and the mirrors' framework —
+   * because a direction here is measured from straight down, and turning the
+   * frame it is measured in turns it backwards. So whatever is turned, the
+   * floor comes out at the tilt, and at nothing else.
+   */
+  it('leaves the floor where the room puts it, whatever is turned', () => {
+    for (const [turn, angle, tilt] of [
+      [0, 0, 0],
+      [6, 0, 0],
+      [0, 47, 0],
+      [-4, -73, 0],
+      [6, 47, 0.3],
+      [-2, 180, -1.1],
+    ] as const) {
+      const { body } = createBody();
+      const { chamber, steps } = stub();
+
+      body.resize(200, 200, 1);
+      body.step(chamber, { dt: 1 / 20, turn, drag: { x: 0, y: 0 }, tilt, angle });
+
+      const onScreen = steps[0]!.gravity - body.bearing - frameworkRadians(angle);
+
+      expect(onScreen, `turn ${String(turn)} angle ${String(angle)}`).toBeCloseTo(tilt, 12);
+    }
+  });
+
   // A tab left in the background comes back with a minute's worth of frame in
   // hand. Handed on at face value, a chamber would teleport its contents.
   it('clamps a long frame before any chamber sees it', () => {
