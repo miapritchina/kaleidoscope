@@ -577,6 +577,87 @@ pools do not slosh as a fluid, they tilt as a rigid surface driven by how fast g
 moving in the cell's frame, and by the finger. Which is a good deal of what the hand feels
 and none of what a free surface actually does. The item below is where that would come from.
 
+### ~~The wax was drawn at a third of the size it is shown at~~ — fixed
+
+The rebuilt wax (`lib/lava.ts`, the particle build) came out visibly blocky:
+edges stepping in squares rather than curving, worst at the far end of the zoom
+slider. The surface is a contour through a field sampled on a grid, and the
+grid was 128 across the chamber while the chamber is drawn across
+`2 * side / sqrt(3)` device pixels — three device pixels a cell at the default
+zoom on a phone, and nearly eight at the top of the slider. Bilinear filtering
+does not rescue that: the contour of a bilinearly reconstructed field kinks at
+every cell boundary, and at eight pixels a kink the kinks _are_ the staircase.
+
+The first build hid it. Its blobs were a handful of large metaballs, so the
+field's features were tens of cells across and the contour's error was a small
+fraction of one; the particle build's features are a few cells across, and the
+same grid puts the same error right on the edge you are looking at.
+
+Raising the grid to 256 fixes the picture and costs four times the cells, so the
+paint was rewritten to pay for it. Measured in one browser process, `paintLava`
+per call, at the two ends of the Amount slider (63 and 104 drops):
+
+|           | grid 128       | grid 256       |
+| --------- | -------------- | -------------- |
+| as it was | 0.78 / 0.80 ms | 3.01 / 3.15 ms |
+| rewritten | 0.32 / 0.30 ms | 1.20 / 1.27 ms |
+
+Four times the cells for about 1.5x the old cost. What paid for it: the field's
+weight split out of the interleaved colour array, so the four neighbours the
+normal is differenced from are a stride of one apart instead of four; the
+twenty-fourth power of the specular as five multiplications instead of a call to
+a general `pow`; `Math.sqrt` in place of a three-argument `Math.hypot`; and the
+shading loop bounded to the rows the wax is actually in.
+
+Two things were got wrong on the way, both worth keeping:
+
+**Clearing only the rows the wax reaches.** It followed from bounding the loop
+and it is wrong: two drops with a gap of empty rows between them leave that gap
+uncleared, the shading still runs over it, and last frame's wax comes back as
+rectangular blocks hanging in the cell. The arrays are cleared in full — a
+memset of a megabyte is not what this function costs — and only the _loop_ is
+bounded.
+
+**Scaling the normal to the grid.** The surface's normal is differenced from
+neighbouring cells, so it is a slope per _cell_: halve the spacing and every
+slope halves with it. Scaling it back by `GRID / 128` is arithmetically right
+and looked wrong — the finer grid resolves the packing of the individual
+particles, which came out as creases between them and, through a specular that
+tight, as a hard streak along every crease. The contour wants the fine grid and
+the normal does not. Differencing across four cells instead of one spans what
+the old grid's own neighbours spanned, so the light falls where it always fell
+and only the edge gets the finer grid.
+
+### ~~The hexagon in the middle of the view was never dimmed~~ — fixed
+
+Every hexagon is dimmed a little against its neighbours (`cellNoise` in
+`lib/fold.ts`, and the same hash in the shader) so the field does not read as a
+printed pattern. Multiply-xor-shift hashes of that shape have a fixed point at
+zero — every step of them takes 0 to 0 — so the hexagon at lattice `(0, 0)`
+came back as exactly 0 while its neighbours averaged a half. That hexagon is the
+middle of the view, and this exposure only ever _darkens_: the one hexagon
+nobody can look away from was the one hexagon never dimmed. Against the white
+ground a liquid cell is lit on it clipped to pure white and read as a hole
+punched in the middle of the figure — with the source triangle, which is also
+the only one at nought bounces and the one the facet exposure brightens most,
+the brightest thing on the screen.
+
+Seeding the hash fixes it: measured over the six triangles of the central
+hexagon, before 255/244/255/238/255/240 with three of them clipped at white,
+after 246/235/246/241/246/232 with none clipped — and 255 x (1 - 0.5917 x 0.06)
+is 245.95, which is the dimming arriving exactly as designed.
+
+The same three lines had a second fault found while fixing the first: negating
+both coordinates left the xor of the two products unchanged for **a third of
+the lattice**, so a third of all hexagons wore exactly the exposure of their
+opposite number through the middle of the view. A field with a half-turn
+symmetry in it is the same tell this variation exists to remove, one step
+subtler. Folding `i` in before `j` rather than xoring two independent products
+meets both faults; over an 81 x 81 patch it now gives 6561 distinct values, no
+symmetric pairs, and quartiles of .257 / .242 / .248 / .253. It costs one more
+multiply, per hexagon per frame in the 2D path and per pixel in the shader, and
+neither could measure it.
+
 ### Actual fluid, on the solver we already built
 
 The unusual-physics one, and the reason it is realistic to want it: **Position

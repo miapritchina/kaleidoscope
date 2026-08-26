@@ -77,8 +77,34 @@ export interface Lava {
  * The field is smooth, so this is not resolving detail — it is deciding how
  * accurately the *edge* lands, because the surface is a contour through it
  * and a coarse grid puts that contour a cell's width out.
+ *
+ * Which is exactly what went wrong at 128. The cell is drawn across
+ * `2 * side / sqrt(3)` device pixels, so on a phone at the default zoom one
+ * grid cell was three device pixels and at the far end of the zoom slider
+ * nearly eight — and the wax came out visibly blocky, its edges stepping in
+ * squares rather than curving. Bilinear filtering does not save it: the
+ * contour of a bilinearly reconstructed field kinks at every cell boundary,
+ * and at eight pixels a kink those kinks *are* the staircase. At 256 the
+ * contour lands within about a pixel and a half at the widest the slider
+ * goes, which is under the eye's resolution for an edge, and the blocks are
+ * gone. See ROADMAP.md, "A lava lamp", for the measured cost of the change.
  */
-export const GRID = 128;
+export const GRID = 256;
+
+/**
+ * How many cells apart the two samples the normal is differenced from are.
+ *
+ * The contour wants the fine grid and the normal does not, and they are not
+ * the same want. The surface is where the field crosses {@link SURFACE}, and
+ * that is worth resolving as finely as can be afforded. The *normal* is meant
+ * to describe the body of wax, and differenced cell to cell at 256 it
+ * describes something else: the packing of the individual particles, which
+ * comes out as creases between them and — through a specular this tight — as
+ * a hard streak along every one. Differenced across four cells it spans what
+ * the old 128 grid's own neighbours spanned, so the light falls where it has
+ * always fallen and only the edge gets the finer grid.
+ */
+const SLOPE_STEP = GRID / 128;
 
 /**
  * Where the surface is, as a sum of the drops' fields.
@@ -479,8 +505,17 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
   // reads as one body rather than as its members.
   const drawn = lava.reach * 1.55;
   const span = drawn * drawn;
-
-  field.fill(0);
+  // Cleared in full, in one pass each. Clearing only the rows the wax reaches
+  // was tried and taken out: two drops with a gap of empty rows between them
+  // left that gap uncleared, the shading below still ran over it, and last
+  // frame's wax came back as rectangular blocks hanging in the cell. A memset
+  // of a megabyte is not what this function costs.
+  weight.fill(0);
+  tinted.fill(0);
+  // Which rows the wax is in, so the shading below skips the empty ones. Only
+  // the *loop* is bounded by this; every cell it can read has been cleared.
+  let lowest = GRID;
+  let highest = -1;
 
   for (const drop of lava.drops) {
     const [red, green, blue] = TINTS[drop.tint]!;
@@ -489,8 +524,17 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
     const start = Math.max(0, Math.floor((drop.y - drawn + CHAMBER_RADIUS) / width));
     const end = Math.min(GRID - 1, Math.ceil((drop.y + drawn + CHAMBER_RADIUS) / width));
 
+    if (start < lowest) {
+      lowest = start;
+    }
+
+    if (end > highest) {
+      highest = end;
+    }
+
     for (let j = start; j <= end; j += 1) {
       const y = -CHAMBER_RADIUS + (j + 0.5) * width - drop.y;
+      const row = j * GRID;
 
       for (let i = from; i <= to; i += 1) {
         const x = -CHAMBER_RADIUS + (i + 0.5) * width - drop.x;
@@ -501,61 +545,89 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
         }
 
         const much = (1 - away) * (1 - away);
-        const at = (i + j * GRID) * 4;
+        const k = row + i;
+        const at = k * 3;
 
-        field[at] = field[at]! + much * red;
-        field[at + 1] = field[at + 1]! + much * green;
-        field[at + 2] = field[at + 2]! + much * blue;
-        field[at + 3] = field[at + 3]! + much;
+        weight[k] = weight[k]! + much;
+        tinted[at] = tinted[at]! + much * red;
+        tinted[at + 1] = tinted[at + 1]! + much * green;
+        tinted[at + 2] = tinted[at + 2]! + much * blue;
       }
     }
   }
+
+  // Everything outside that band is empty cell, which is one clear rather than
+  // a pass of the shading below.
+  pixels.fill(0, 0, Math.max(0, lowest) * GRID * 4);
+  pixels.fill(0, (highest + 1) * GRID * 4);
 
   // The surface: where the sum crosses SURFACE, softened over a little either
   // side so the edge is a liquid's and not a cut-out's.
   const edge = 0.1;
   const low = SURFACE - edge;
   const high = SURFACE + edge;
+  // The normal's two samples, in cells across and in cells down — see
+  // SLOPE_STEP.
+  const near = SLOPE_STEP;
+  const rows = SLOPE_STEP * GRID;
 
-  for (let j = 0; j < GRID; j += 1) {
+  for (let j = Math.max(0, lowest); j <= highest; j += 1) {
+    const row = j * GRID;
+
     for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
+      const k = row + i;
       const at = k * 4;
-      const much = field[at + 3]!;
+      const much = weight[k]!;
 
       if (much <= low) {
-        pixels.fill(0, at, at + 4);
+        pixels[at] = 0;
+        pixels[at + 1] = 0;
+        pixels[at + 2] = 0;
+        pixels[at + 3] = 0;
         continue;
       }
 
+      const tint = k * 3;
       // The average of what is here rather than the sum, or a deep overlap
       // would come out white — and the average is what makes two colours
       // running together mix along the seam between them.
-      let red = field[at]! / much;
-      let green = field[at + 1]! / much;
-      let blue = field[at + 2]! / much;
+      let red = tinted[tint]! / much;
+      let green = tinted[tint + 1]! / much;
+      let blue = tinted[tint + 2]! / much;
 
       // Lit off the field's own slope. The gradient is read from the summed
-      // field, which is smooth, so the normal is too.
-      const left = i > 0 ? field[at - 4 + 3]! : much;
-      const right = i < GRID - 1 ? field[at + 4 + 3]! : much;
-      const up = j > 0 ? field[at - GRID * 4 + 3]! : much;
-      const down = j < GRID - 1 ? field[at + GRID * 4 + 3]! : much;
+      // field, which is smooth, so the normal is too. Held in an array of its
+      // own rather than interleaved with the colour: the row above and the row
+      // below are read for every lit pixel, and a stride of one puts them in
+      // cache where a stride of four did not.
+      const left = i >= near ? weight[k - near]! : much;
+      const right = i < GRID - near ? weight[k + near]! : much;
+      const up = j >= near ? weight[k - rows]! : much;
+      const down = j < GRID - near ? weight[k + rows]! : much;
       const slopeX = (right - left) * 0.5;
       const slopeY = (down - up) * 0.5;
-      const length = Math.hypot(slopeX, slopeY, 0.9);
+      // Not Math.hypot: this runs once per lit pixel and the guard against
+      // overflow it buys is worth nothing on slopes of a field that peaks in
+      // the single digits.
+      const length = Math.sqrt(slopeX * slopeX + slopeY * slopeY + 0.81);
       // Light up and to the left, a little towards the eye.
-      const facing = (-slopeX * -0.42 + -slopeY * -0.62 + 0.9 * 0.66) / length;
-      const diffuse = 0.62 + 0.5 * Math.max(0, facing);
-      const gleam = Math.max(0, facing) ** 24 * 190;
+      const facing = (slopeX * 0.42 + slopeY * 0.62 + 0.594) / length;
+      const lit = facing > 0 ? facing : 0;
+      const diffuse = 0.62 + 0.5 * lit;
+      // The twenty-fourth power, as five multiplications. `** 24` calls out to
+      // a general pow, which for a whole exponent this small is pure overhead.
+      const lit2 = lit * lit;
+      const lit4 = lit2 * lit2;
+      const lit8 = lit4 * lit4;
+      const gleam = lit8 * lit8 * lit8 * 190;
 
       red = red * diffuse + gleam;
       green = green * diffuse + gleam;
       blue = blue * diffuse + gleam;
 
-      pixels[at] = Math.min(255, red);
-      pixels[at + 1] = Math.min(255, green);
-      pixels[at + 2] = Math.min(255, blue);
+      pixels[at] = red > 255 ? 255 : red;
+      pixels[at + 1] = green > 255 ? 255 : green;
+      pixels[at + 2] = blue > 255 ? 255 : blue;
       pixels[at + 3] = much >= high ? 255 : Math.round(smooth((much - low) / (high - low)) * 255);
     }
   }
@@ -565,8 +637,16 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
   return canvas;
 }
 
-/** Where the fields are summed, before any of it is a colour. */
-const field = new Float32Array(GRID * GRID * 4);
+/**
+ * Where the fields are summed, before any of it is a colour.
+ *
+ * Summed in floats and not in the picture's own bytes: the whole of the
+ * metaball trick is that the fields *add* past the surface — two clumps
+ * overlapping reach two and more — and a canvas's bytes stop at one, which
+ * would flatten every overlap to the same value and take the pinch with it.
+ */
+const weight = new Float32Array(GRID * GRID);
+const tinted = new Float32Array(GRID * GRID * 3);
 
 /** Smoothstep, for an edge that eases in and out rather than ramping. */
 function smooth(at: number): number {

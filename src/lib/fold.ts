@@ -228,11 +228,36 @@ function facetAround(u: number, v: number): number {
  * An integer hash rather than a seeded generator: this is wanted per hexagon per
  * frame, in any order, and it has to give the same answer for the same cell
  * every time or the field would shimmer as it is panned across.
+ *
+ * The two coordinates are folded in one after the other, and the seed is not
+ * decoration. Both are here because the obvious form of this —
+ * `imul(i, a) ^ imul(j, b)`, avalanched once — has two faults that are
+ * invisible in a histogram and perfectly visible on screen:
+ *
+ * - **A fixed point at zero.** Every step of a multiply-xor-shift takes 0 to
+ *   0, so the hexagon at the origin came back as exactly 0 while its
+ *   neighbours averaged a half. That hexagon is the middle of the view, and
+ *   the exposure this feeds only ever *darkens* — so the one hexagon nobody
+ *   can look away from was the one hexagon never dimmed. Against the white
+ *   ground a liquid cell is lit on, it read as a hole punched in the middle of
+ *   the figure. The seed breaks it; any odd constant would, and this is the
+ *   golden ratio's.
+ * - **A symmetry through the origin.** Negating both coordinates left the
+ *   xor of the two products unchanged for about a third of the lattice, so a
+ *   third of all hexagons wore exactly the exposure of their opposite number
+ *   through the middle of the view. A field with a half-turn symmetry in it is
+ *   the same tell this variation exists to remove, one step subtler. Mixing
+ *   `i` before `j` meets it, because there is no longer a pair of independent
+ *   products for the negation to cancel across.
+ *
+ * Two multiplies rather than one. It runs per hexagon per frame in the 2D path
+ * and per pixel in the shader, and neither could measure the difference.
  */
 export function cellNoise(i: number, j: number): number {
-  let hash = Math.imul(i, 0x27d4eb2d) ^ Math.imul(j, 0x165667b1);
-  hash = Math.imul(hash ^ (hash >>> 15), 0x2545f491);
-  hash ^= hash >>> 13;
+  let hash = Math.imul(i, 0x27d4eb2d) ^ 0x9e3779b9;
+  hash = Math.imul(hash ^ (hash >>> 15), 0x85ebca6b) ^ Math.imul(j, 0x165667b1);
+  hash = Math.imul(hash ^ (hash >>> 13), 0x2545f491);
+  hash ^= hash >>> 16;
 
   return (hash >>> 0) / 4294967296;
 }

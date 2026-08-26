@@ -35,8 +35,16 @@ export interface StirView {
   drag: { x: number; y: number };
 }
 
-/** Where a stage point lands in the cell, in cell units. */
-export function stirPoint(
+/**
+ * Where a stage point lands, in the frame the finger's own motion belongs to.
+ *
+ * Folded into the source triangle and put into cell units — but *before* the
+ * cell's own turn is taken off, because the finger is in the room and not in
+ * the tube. Turning the tube does not move a finger resting on the glass, and
+ * a velocity read after the turn has been divided out says that it does. See
+ * {@link trackStir}, which is the whole reason this stops one step short.
+ */
+export function heldPoint(
   point: { x: number; y: number },
   view: StirView,
 ): { x: number; y: number } {
@@ -59,26 +67,43 @@ export function stirPoint(
   // Into cell units: the cell is centred on the triangle's centroid and its
   // radius is the circumradius, exactly as the renderer paints it.
   const cellScale = side / Math.sqrt(3) / CHAMBER_RADIUS;
-  const cellX = (folded.x - side / 2) / cellScale - view.drag.x * DRAG_CELLS;
-  const cellY = (folded.y - (side * Math.sqrt(3)) / 6) / cellScale - view.drag.y * DRAG_CELLS;
+  return {
+    x: (folded.x - side / 2) / cellScale - view.drag.x * DRAG_CELLS,
+    y: (folded.y - (side * Math.sqrt(3)) / 6) / cellScale - view.drag.y * DRAG_CELLS,
+  };
+}
 
-  // And into the turning cell's own frame.
-  const turnCos = Math.cos(-view.cell);
-  const turnSin = Math.sin(-view.cell);
+/** Anything of the framework's frame, turned into the cell's. */
+function intoCell(vector: { x: number; y: number }, cell: number): { x: number; y: number } {
+  const turnCos = Math.cos(-cell);
+  const turnSin = Math.sin(-cell);
 
   return {
-    x: cellX * turnCos - cellY * turnSin,
-    y: cellX * turnSin + cellY * turnCos,
+    x: vector.x * turnCos - vector.y * turnSin,
+    y: vector.x * turnSin + vector.y * turnCos,
   };
+}
+
+/** Where a stage point lands in the cell, in cell units. */
+export function stirPoint(
+  point: { x: number; y: number },
+  view: StirView,
+): { x: number; y: number } {
+  return intoCell(heldPoint(point, view), view.cell);
 }
 
 /**
  * Fastest the fluid is told the finger moves, in cell units per second.
  *
  * A flick maps to several cells a frame through the fold; unclamped it reads
- * as an explosion rather than a stir.
+ * as an explosion rather than a stir. Two chamber radii a second is a finger
+ * sweeping the whole cell in half of one, which is as hard as anybody stirs
+ * anything — and it is the scale the cell itself works at, where the old cap
+ * of five was not: the wax's own top speed is 1.6, so every drag that reached
+ * the cap drove the cell at three times what anything in it can do, and the
+ * substance came apart rather than swirled.
  */
-const FASTEST = 5;
+const FASTEST = CHAMBER_RADIUS * 2;
 
 /**
  * A jump bigger than this between two frames is not motion.
@@ -100,28 +125,42 @@ export interface StirSample {
 /**
  * Tracks a folded point from frame to frame and reads a stir off it.
  *
- * @param tracker One object per touch, holding the previous folded point.
- *   Pass `last: null` after a lift, so the next touch starts fresh.
- * @returns The stir for this frame, or null while there is nothing to say —
- *   the first frame of a touch has a position and no velocity yet, and a
- *   held-still finger returns zero velocity, which is a spoon held in the
- *   fluid rather than no spoon.
+ * The tracking is done in the framework's frame and only the answer is turned
+ * into the cell's, and that is the point of the whole function. Differencing
+ * the point *after* the cell's turn has been divided out measures the frame
+ * turning as well as the finger moving: a finger resting perfectly still on
+ * the glass of a tube being turned at six radians a second reported a stir of
+ * three cell units a second — more than the wax can move on its own — pointed
+ * against the turn, everywhere at once, for as long as it was held. That is
+ * what a finger fighting its own rotation looked like, and nobody wrote it. A
+ * still finger stirs nothing; a moving one stirs by exactly how far it moved.
+ *
+ * @param tracker One object per touch, holding the previous point in the
+ *   framework's frame. Pass `last: null` after a lift, so the next touch
+ *   starts fresh.
+ * @param held Where the finger is now, from {@link heldPoint}.
+ * @param cell How far the cell is turned, which carries both the point and
+ *   the velocity into the frame the fluid is held in.
+ * @returns The stir for this frame, in the cell's own frame, or null while
+ *   there is nothing to say — the first frame of a touch has a position and
+ *   no velocity yet.
  */
 export function trackStir(
   tracker: { last: { x: number; y: number } | null },
-  at: { x: number; y: number },
+  held: { x: number; y: number },
+  cell: number,
   dt: number,
 ): StirSample | null {
   const last = tracker.last;
 
-  tracker.last = { x: at.x, y: at.y };
+  tracker.last = { x: held.x, y: held.y };
 
   if (!last || dt <= 0) {
     return null;
   }
 
-  const dx = at.x - last.x;
-  const dy = at.y - last.y;
+  const dx = held.x - last.x;
+  const dy = held.y - last.y;
 
   if (Math.hypot(dx, dy) > TELEPORT) {
     return null;
@@ -136,5 +175,8 @@ export function trackStir(
     vy *= FASTEST / speed;
   }
 
-  return { x: at.x, y: at.y, vx, vy };
+  const at = intoCell(held, cell);
+  const along = intoCell({ x: vx, y: vy }, cell);
+
+  return { x: at.x, y: at.y, vx: along.x, vy: along.y };
 }

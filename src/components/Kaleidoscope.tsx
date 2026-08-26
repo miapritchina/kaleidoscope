@@ -10,7 +10,7 @@ import type { MediaElement } from '../lib/media';
 import { KaleidoscopeRenderer } from '../lib/renderer';
 import { createScene, updateScene, type SceneCut } from '../lib/scene';
 import type { Settings, SubstanceId } from '../lib/settings';
-import { stirPoint, trackStir } from '../lib/stir';
+import { heldPoint, trackStir } from '../lib/stir';
 import { frameworkRadians } from '../lib/tiling';
 
 import styles from './Kaleidoscope.module.css';
@@ -269,12 +269,13 @@ export function Kaleidoscope({
       gesture.settle(deltaSeconds);
 
       // A finger on a cell of substance stirs it. The point is folded fresh
-      // every frame — the cell turns under a held finger, so where it is in
-      // the cell's frame changes even when the finger does not move.
+      // every frame, and tracked in the framework's frame rather than the
+      // cell's: the cell turns under a held finger, and a finger that has not
+      // moved has not stirred anything. See `lib/stir.ts`.
       let stir = null;
 
       if (liquid && stagePointerRef.current && gesture.mode === 'turn') {
-        const at = stirPoint(stagePointerRef.current, {
+        const held = heldPoint(stagePointerRef.current, {
           width: size.width,
           height: size.height,
           zoom: settings.zoom,
@@ -283,7 +284,7 @@ export function Kaleidoscope({
           drag: scene.drag,
         });
 
-        stir = trackStir(stirTrackerRef.current, at, deltaSeconds);
+        stir = trackStir(stirTrackerRef.current, held, scene.cell, deltaSeconds);
       } else {
         stirTrackerRef.current.last = null;
       }
