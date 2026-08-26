@@ -1,4 +1,5 @@
 import { CHAMBER_RADIUS } from './chamber';
+import { curlAt, velocityAt, type Flow } from './flow';
 import { mulberry32, randomBetween } from './random';
 
 /**
@@ -144,12 +145,38 @@ export interface GlitterUpdate {
   swirl: number;
   /** Which way is down in the cell's own frame, radians. */
   angle: number;
+  /**
+   * The body of fluid the flakes hang in, already advanced this frame.
+   *
+   * With it, a flake rides the fluid's own eddies — folding into sheets when
+   * the cell is swirled or stirred — and tumbles at the rate the fluid is
+   * turning where it hangs, which is what sends waves of flashes through the
+   * cell from the motion itself rather than only from the light moving.
+   * Without it the fluid is taken to turn as one rigid body, which is what
+   * this substance did before there was a fluid to hand it.
+   */
+  fluid?: Flow;
 }
+
+/**
+ * How fast a flake takes up the turning of the fluid around it.
+ *
+ * A platelet in a rotating patch of fluid is carried round with it — the
+ * rigorous version is Jeffery (1922), where the orbit rate is set by the
+ * local velocity gradient — so the facing turns at the local curl, and the
+ * lean is worked over at a fraction of it: the same shear that spins a flake
+ * about the eye's axis also rocks it over, and it is the rocking that drives
+ * a flake through alignment and makes the flash travel with the flow.
+ */
+const TUMBLE = 0.5;
+
+/** How much of the tumbling goes into the lean. */
+const TUMBLE_LEAN = 0.35;
 
 /** Advances the glitter in place. */
 export function updateGlitter(
   flakes: Flake[],
-  { dt, thickness, swirl, angle }: GlitterUpdate,
+  { dt, thickness, swirl, angle, fluid }: GlitterUpdate,
 ): void {
   if (dt <= 0 || flakes.length === 0) {
     return;
@@ -164,10 +191,24 @@ export function updateGlitter(
   const sinkY = Math.cos(angle) * sink;
 
   for (const flake of flakes) {
-    // The fluid turns as one body, so its speed here is the swirl about the
-    // middle.
-    const flowX = -swirl * flake.y;
-    const flowY = swirl * flake.x;
+    // The fluid's velocity where the flake hangs: the real field's, eddies
+    // and all, or a rigid turn of the whole body where there is no field.
+    if (fluid) {
+      velocityAt(fluid, flake.x, flake.y, carried);
+
+      // The rate the fluid turns at here is the rate the flake tumbles at.
+      const turning = curlAt(fluid, flake.x, flake.y) * TUMBLE * step;
+
+      flake.turn += turning;
+      flake.lean += turning * TUMBLE_LEAN;
+    } else {
+      carried.x = -swirl * flake.y;
+      carried.y = swirl * flake.x;
+      flake.turn += swirl * step;
+    }
+
+    const flowX = carried.x;
+    const flowY = carried.y;
 
     flake.vx += (flowX - flake.vx) * grip + sinkX;
     flake.vy += (flowY - flake.vy) * grip + sinkY;
@@ -230,6 +271,9 @@ const TOO_DIM = 0.02;
 /** How brightly each flake is lit this frame, worked out once and drawn twice. */
 let alight = new Float32Array(MOST_FLAKES);
 
+/** Scratch for the fluid's velocity, so the update allocates nothing. */
+const carried = { x: 0, y: 0 };
+
 /** Paints the glitter: every flake as itself, and the lit ones again as light. */
 export function drawGlitter(
   ctx: CanvasRenderingContext2D,
@@ -266,7 +310,10 @@ export function drawGlitter(
       sine * Math.sin(flake.turn) * midY +
       Math.cos(flake.lean) * midZ;
 
-    alight[i] = aligned > 0 ? Math.pow(aligned, SPECULAR) : 0;
+    // Both faces: foil is a mirror on either side, so a flake tumbled past
+    // edge-on flashes again on the way over rather than going dark for half
+    // of every tumble.
+    alight[i] = Math.pow(Math.abs(aligned), SPECULAR);
   }
 
   ctx.save();
@@ -283,9 +330,13 @@ export function drawGlitter(
     }
 
     const reach = flake.size * scale;
+    // Foreshortened: a flake leaning over shows its edge, and at these sizes
+    // the thinning is what lets the eye see it turning. The axis is not
+    // drawn — a speck this small has no legible axis — only the width.
+    const across = reach * (0.35 + 0.65 * Math.abs(Math.cos(flake.lean)));
 
     ctx.globalAlpha = Math.min(1, BODY + BODY_LIT * alight[i]!);
-    ctx.drawImage(foil, flake.x * scale - reach, flake.y * scale - reach, reach * 2, reach * 2);
+    ctx.drawImage(foil, flake.x * scale - across, flake.y * scale - reach, across * 2, reach * 2);
   }
 
   // And the flash, over the top and added rather than laid on: two flakes on

@@ -70,7 +70,11 @@ describe('the web app manifest', () => {
       const [wanted] = icon.sizes.split('x').map(Number);
       const { width, height } = pngSize(path);
 
-      expect({ src: icon.src, width, height }).toEqual({ src: icon.src, width: wanted, height: wanted });
+      expect({ src: icon.src, width, height }).toEqual({
+        src: icon.src,
+        width: wanted,
+        height: wanted,
+      });
     }
   });
 

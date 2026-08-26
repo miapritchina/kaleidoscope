@@ -4,6 +4,7 @@ import { drawMedia, isMediaReady, type MediaElement } from './media';
 import { CHAMBER_RADIUS } from './chamber';
 import { GROUND, rgbToCss } from './color';
 import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
+import { paintFilm } from './film';
 import { paintLava } from './lava';
 import {
   applyCutShape,
@@ -177,6 +178,18 @@ export const TILE = { width: 1351, height: 780 };
  * than one enormous one; this puts roughly two and a half across at zoom 1.
  */
 const TRIANGLE_FRACTION = 0.24;
+
+/**
+ * Side of the mirror triangle for a view of this size, at this zoom.
+ *
+ * Exported for whoever has to reason about the view without a renderer in
+ * hand — the stir mapping in `lib/stir.ts` folds a pointer back into the cell
+ * and needs the same triangle the figure was drawn with. One formula, so the
+ * two cannot disagree.
+ */
+export function triangleSideFor(width: number, height: number, zoom: number): number {
+  return Math.max(24, Math.min(width, height) * TRIANGLE_FRACTION * zoom);
+}
 
 /**
  * Composites the kaleidoscope.
@@ -408,7 +421,7 @@ export class KaleidoscopeRenderer {
   }
 
   #sideAtZoom(zoom: number): number {
-    return Math.max(24, Math.min(this.#width, this.#height) * TRIANGLE_FRACTION * zoom);
+    return triangleSideFor(this.#width, this.#height, zoom);
   }
 
   /** Serialises the current frame, e.g. for a download link. */
@@ -633,6 +646,24 @@ export class KaleidoscopeRenderer {
         ctx.drawImage(painted, -across, -across, across * 2, across * 2);
         ctx.restore();
         ctx.globalCompositeOperation = 'source-over';
+      }
+
+      return;
+    }
+
+    if (scene.film) {
+      const painted = paintFilm(scene.film);
+
+      if (painted) {
+        ctx.save();
+        ctx.translate(pan.x * cellScale, pan.y * cellScale);
+        ctx.rotate(scene.cell);
+        ctx.imageSmoothingEnabled = true;
+        // Laid on over the dark ground: these colours are reflections, and a
+        // reflection is only as visible as the ground is dark. Where the film
+        // runs out its alpha does too, and the fluid shows through.
+        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
+        ctx.restore();
       }
 
       return;
@@ -1231,13 +1262,15 @@ function defaultCanvas(): HTMLCanvasElement {
  *
  * The dry chamber's ground has always been white, on the reasoning that the
  * objects are the subject and white is what a photographer would stand them on.
- * Two of the three substances want the same thing for the same reason. Glitter
- * does not: a flake is a mirror, a mirror cannot be brighter than a lit white
- * page, and the whole of what glitter does is be brighter than what is behind
- * it. So its cell is a dark liquid, which is also what the real ones are.
+ * Lava and smoke want the same thing for the same reason. Glitter does not: a
+ * flake is a mirror, a mirror cannot be brighter than a lit white page, and
+ * the whole of what glitter does is be brighter than what is behind it. So its
+ * cell is a dark liquid, which is also what the real ones are — and the oil
+ * film's is too, because interference colours are reflections and an oil
+ * slick is vivid on wet asphalt and invisible on a white page.
  */
 function groundFor(substance: SubstanceId | null): string {
-  return substance === 'glitter' ? GLITTER_GROUND : GROUND;
+  return substance === 'glitter' || substance === 'film' ? GLITTER_GROUND : GROUND;
 }
 
 /** The dark liquid a cell of glitter hangs in. */

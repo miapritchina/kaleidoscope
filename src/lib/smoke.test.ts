@@ -178,3 +178,79 @@ describe('paintSmoke', () => {
     expect(paintSmoke(createSmoke(9), 0)).toBeNull();
   });
 });
+
+describe('warmth', () => {
+  it('opens the cell warm where the dye is', () => {
+    const smoke = createSmoke(3);
+    let together = 0;
+
+    for (let k = 0; k < GRID * GRID; k += 1) {
+      let dyed = 0;
+
+      for (let d = 0; d < DYES; d += 1) {
+        dyed += smoke.dye[d]![k]!;
+      }
+
+      if (dyed > 0.5) {
+        expect(smoke.heat[k]).toBeGreaterThan(0);
+        together += 1;
+      }
+    }
+
+    expect(together).toBeGreaterThan(0);
+  });
+
+  it('lifts the fluid against gravity where the cell is warm', () => {
+    const smoke = createSmoke(6);
+
+    // Strip the dye out, leaving only the warmth, so the lift is measured on
+    // its own rather than against the dye's weight.
+    for (let d = 0; d < DYES; d += 1) {
+      smoke.dye[d]!.fill(0);
+    }
+
+    for (let frame = 0; frame < 30; frame += 1) {
+      updateSmoke(smoke, { dt: 1 / 30, thickness: 0.35, swirl: 0, angle: 0 });
+    }
+
+    // Down at angle 0 is +y, so warm fluid should on balance be moving in -y.
+    let lift = 0;
+
+    for (let k = 0; k < GRID * GRID; k += 1) {
+      lift += smoke.v[k]! * smoke.heat[k]!;
+    }
+
+    expect(lift).toBeLessThan(0);
+  });
+});
+
+describe('the breeze', () => {
+  it('keeps an emptied cell from ever quite stopping', () => {
+    const smoke = createSmoke(9);
+
+    // No dye, no warmth, no turning: the one thing left is the breeze.
+    for (let d = 0; d < DYES; d += 1) {
+      smoke.dye[d]!.fill(0);
+    }
+
+    smoke.heat.fill(0);
+    smoke.u.fill(0);
+    smoke.v.fill(0);
+
+    for (let frame = 0; frame < 60 * 10; frame += 1) {
+      updateSmoke(smoke, { dt: 1 / 60, thickness: 0.35, swirl: 0, angle: 0 });
+    }
+
+    let moving = 0;
+
+    for (let k = 0; k < GRID * GRID; k += 1) {
+      moving += Math.hypot(smoke.u[k]!, smoke.v[k]!);
+    }
+
+    const average = moving / (GRID * GRID);
+
+    // Alive, and a whisper: a breeze, not a gale.
+    expect(average).toBeGreaterThan(0.001);
+    expect(average).toBeLessThan(0.5);
+  });
+});

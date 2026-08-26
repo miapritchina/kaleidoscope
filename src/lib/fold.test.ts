@@ -171,10 +171,8 @@ describe('foldIntoTriangle', () => {
     for (let facet = 0; facet < 6; facet += 1) {
       const turn = (facet + 0.5) * (Math.PI / 3);
       facets.add(
-        foldIntoTriangle(
-          { x: Math.cos(turn) * SIDE * 0.5, y: Math.sin(turn) * SIDE * 0.5 },
-          SIDE,
-        ).facet,
+        foldIntoTriangle({ x: Math.cos(turn) * SIDE * 0.5, y: Math.sin(turn) * SIDE * 0.5 }, SIDE)
+          .facet,
       );
     }
 

@@ -8,7 +8,8 @@ feed. Built with React 19, TypeScript and Vite.
 Swipe across the artwork to turn the cell. Every look is described by a small set of
 settings, so a generated pattern can be reproduced from its seed or shared as a link.
 
-What might come next, and what it would cost, is in [ROADMAP.md](ROADMAP.md).
+What might come next, and what it would cost, is in [ROADMAP.md](ROADMAP.md). Research
+notes and the current plan behind it live in [RESEARCH.md](RESEARCH.md).
 
 ## Getting started
 

@@ -87,6 +87,7 @@ const SUBSTANCE_KINDS: { id: SubstanceId; label: string; icon: IconName }[] = [
   { id: 'lava', label: 'Lava', icon: 'lava' },
   { id: 'smoke', label: 'Smoke', icon: 'smoke' },
   { id: 'glitter', label: 'Glitter', icon: 'glitter' },
+  { id: 'film', label: 'Oil film', icon: 'film' },
 ];
 
 const CAMERA_LABELS: Record<CameraFacing, string> = {
@@ -418,6 +419,16 @@ export function ControlPanel({
         {/* Real gravity is not here: its switch lives on the artwork's own
             toolbar, because switching it on is the tap iOS demands before the
             sensor may even be asked for. */}
+        {/* The switch is also the user gesture browsers demand before audio
+            may start, which is why sound cannot simply be on. */}
+        <ToggleField
+          label="Sound"
+          checked={settings.sound}
+          onChange={(checked) => {
+            onChange('sound', checked);
+          }}
+        />
+
         <ToggleField
           label="Show the mirrors"
           checked={settings.debug}

@@ -25,13 +25,13 @@ graph, and a scene-graph engine would have been weight carried and not used —
 so it is raw WebGL2 and costs 4.7 KB gzipped. The sizes that were on the table,
 kept for whenever a later effect needs more than three passes:
 
-| | version | unpacked |
-| --- | --- | --- |
-| `ogl` | 1.0.11 | 423 KB |
-| `twgl` | 7.0.3 | 1.16 MB |
-| `regl` | 2.1.1 | 1.21 MB |
-| `three` | 0.185.1 | 23.2 MB |
-| `pixi.js` | 8.19.0 | 72.4 MB |
+|           | version | unpacked |
+| --------- | ------- | -------- |
+| `ogl`     | 1.0.11  | 423 KB   |
+| `twgl`    | 7.0.3   | 1.16 MB  |
+| `regl`    | 2.1.1   | 1.21 MB  |
+| `three`   | 0.185.1 | 23.2 MB  |
+| `pixi.js` | 8.19.0  | 72.4 MB  |
 
 The 2D path stayed. It still paints the source triangle for both renderers, it
 still exports the seamless tile, and it is the whole renderer where WebGL2 is
@@ -86,7 +86,7 @@ applied to the one source that cannot bear it.
 
 ### Teleidoscope optics in camera mode
 
-The biggest single change in what the app *is*. A real teleidoscope has a solid
+The biggest single change in what the app _is_. A real teleidoscope has a solid
 glass sphere at the objective end, and its optics are specific: n≈1.5 puts the
 focus just outside the surface, so the sphere forms an **inverted, heavily
 compressed fisheye of the whole hemisphere in front of it**, with the
@@ -151,7 +151,7 @@ piece. Makes a settling pile feel alive rather than merely animated. **2D.**
 compositor and has been taken out of there.
 
 Real glitter is thousands of tiny flat mirrors at random orientations, and it
-does not glow — it *flashes*, one flake at a time, as the angle between you, the
+does not glow — it _flashes_, one flake at a time, as the angle between you, the
 flake and the light passes through alignment.
 
 That is the whole trick, and it is why glitter looks fake when it is drawn as
@@ -194,12 +194,12 @@ than invented. **GL.**
 ### ~~Mirrors that are green~~ — already done when this list was written
 
 Silvered mirrors are green — iron in the glass — and every bounce multiplies it.
-Photograph a real kaleidoscope and the outer reflections go dimmer *and* greener
+Photograph a real kaleidoscope and the outer reflections go dimmer _and_ greener
 while the middle stays neutral.
 
 Listing this was a mistake on my part: `MIRROR_TINT` has been per-channel since
 long before, at `{0.958, 0.983, 0.975}`, and both renderers raise it to the
-bounce count. The shader made it *more* right, because the count it is raised to
+bounce count. The shader made it _more_ right, because the count it is raised to
 is now exact rather than a radial estimate — but the green itself was never
 missing.
 
@@ -247,11 +247,11 @@ between passes, with no callback anywhere near the pairs that survive. This
 time it paid — same process, same machine:
 
 | pieces | ms/frame, pairwise | ms/frame, swept |
-| --- | --- | --- |
-| 60 | 0.49 | 0.26 |
-| 120 | 1.50 | 0.63 |
-| 250 | 5.36 | 2.06 |
-| 400 | 13.2 | 4.72 |
+| ------ | ------------------ | --------------- |
+| 60     | 0.49               | 0.26            |
+| 120    | 1.50               | 0.63            |
+| 250    | 5.36               | 2.06            |
+| 400    | 13.2               | 4.72            |
 
 What the plan did not anticipate: **"more pieces" has a ceiling of its own,
 and it arrives before full coverage does.** Measured on settled piles of
@@ -285,7 +285,6 @@ picture is clipped off-canvas around it and the figure goes black. It needs
 the media given somewhere on the surface to be drawn around. A grid photograph
 shows the fault immediately and is the test to use.
 
-
 ### Two things that were tried and did not work
 
 Both were proposed off the back of the WebGL move, on the reasoning that
@@ -312,18 +311,18 @@ fifty pieces. These numbers stand as the record of why the first build did not.
 than one. Going further does nothing:
 
 | substeps | ms/frame | overlap mean / 95th | creep |
-| --- | --- | --- | --- |
-| 2 | 0.184 | 6.75% / 19.3% | 0.025 |
-| 4 | 0.358 | 6.64% / 20.6% | 0.055 |
-| 8 | 0.677 | 6.68% / 21.4% | 0.144 |
-| 16 | 1.347 | 6.93% / 19.2% | 0.196 |
+| -------- | -------- | ------------------- | ----- |
+| 2        | 0.184    | 6.75% / 19.3%       | 0.025 |
+| 4        | 0.358    | 6.64% / 20.6%       | 0.055 |
+| 8        | 0.677    | 6.68% / 21.4%       | 0.144 |
+| 16       | 1.347    | 6.93% / 19.2%       | 0.196 |
 
 Accuracy is flat and the pile jitters roughly eight times as much, for seven
 times the cost.
 
 ### Make the solver rate-independent
 
-Which is what the table above is really saying. The constants are all *per pass*
+Which is what the table above is really saying. The constants are all _per pass_
 — `SEPARATION` resolves 80% of an overlap per pass, `FRICTION` converts 55% of
 the slip per pass, and the sleep thresholds are velocities. So changing the
 number of passes changes the material rather than refining the answer, and there
@@ -350,6 +349,13 @@ on load rather than returning at rest; and the fill ceiling recorded above —
 rest at three quarters packed, wedged solid at 160 pieces — is made of the same
 step-sized units. Raising that ceiling is what would close the last chinks of
 bare ground at the apex corners.
+
+A second road exists now: `lib/chamberRapier.ts` runs this chamber on Rapier —
+a rate-independent solver with real polygon colliders — behind `?solver=rapier`
+while it is being measured. First numbers, and a caution: on traced slivers it
+is 2.5× cheaper than the chains of circles at 150 pieces, but a crude 90°-tip
+test did not show it raising the fill ceiling. See "The Rapier spike, measured"
+in RESEARCH.md.
 
 ### ~~An oil cell~~ — done
 
@@ -497,7 +503,7 @@ of this, and cheap; the density constraint that makes the fluid itself a pile of
 particles is the other half, and is the job.
 
 Rendered as screen-space metaballs, which is another piece of luck: pieces are
-*already* chains of 2–4 circles for collision, so the metaball field is sitting
+_already_ chains of 2–4 circles for collision, so the metaball field is sitting
 there waiting to be drawn. **GL** to render; the solver work is **2D**-agnostic.
 
 ### ~~Smoke and ink~~ — done, on the CPU, and then given the cell to itself
@@ -506,7 +512,7 @@ there waiting to be drawn. **GL** to render; the solver work is **2D**-agnostic.
 rather than a tint poured around a pile of glass. The standard Stam solver, and
 it did look like nothing else.
 
-Two things had to be added before it looked like *smoke* rather than fog, and
+Two things had to be added before it looked like _smoke_ rather than fog, and
 both are known techniques that exist for exactly this reason: semi-Lagrangian
 advection is stable because it averages, and what an average takes out first is
 the smallest swirls. **Vorticity confinement** (Fedkiw, Stam and Jensen, 2001)
@@ -520,7 +526,7 @@ error the trace introduced.
 Between them was a wrong turn worth recording, because it is the obvious idea:
 an unsharp mask, taking a little of the local average back out of every cell.
 Sharpening by amplifying the difference from the neighbours amplifies the
-*shortest* wavelength hardest, and the shortest wavelength a grid has is a
+_shortest_ wavelength hardest, and the shortest wavelength a grid has is a
 checkerboard.
 
 The grid went from 64 to 96 when this stopped being a tint and became the whole
@@ -578,12 +584,12 @@ physically motivated. **2D.**
 
 **The first version of this had the idea backwards, and the note below is what
 that mistake looked like from inside it.** It read "a chamber of liquid" as
-*glass suspended in a liquid* — the same pile of shards, sinking more slowly,
+_glass suspended in a liquid_ — the same pile of shards, sinking more slowly,
 with dye poured around it and flakes sprinkled over it. The owner's correction
 was one sentence: instead of chunks there is a different substance in the
 chamber. A lava lamp. Smoke in air. Glitter.
 
-So a cell of liquid now holds **no glass at all**. The substance *is* the
+So a cell of liquid now holds **no glass at all**. The substance _is_ the
 content, and there are three of them behind a picker in the tab: `lib/lava.ts`,
 `lib/smoke.ts` and `lib/glitter.ts`. The oil cell below stays exactly as it was
 and is still what the **Shards** tab's chamber falls through; what went is the

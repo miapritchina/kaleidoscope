@@ -20,8 +20,12 @@ export function isSourceId(value: unknown): value is SourceId {
  * each other, smoke curling in a lit box, a cloud of glitter hanging in
  * clear fluid. The mirrors repeat whatever is in there, and what is in there is
  * the substance itself.
+ *
+ * The fourth is a film of oil: nanometres of it floating on the fluid, and the
+ * colours are not pigment — they are interference, the same physics as a soap
+ * bubble, read off the film's own thickness. See `lib/film.ts`.
  */
-export const SUBSTANCES = ['lava', 'smoke', 'glitter'] as const;
+export const SUBSTANCES = ['lava', 'smoke', 'glitter', 'film'] as const;
 
 export type SubstanceId = (typeof SUBSTANCES)[number];
 
@@ -162,6 +166,15 @@ export interface Settings {
    * than about the look being shared.
    */
   tilt: boolean;
+  /**
+   * Let the instrument be heard: glass ticking as the pile shifts, fluid
+   * washing as the cell swirls.
+   *
+   * Off by default, and not carried in a shared link — whether a room wants
+   * sound is about the recipient, not about the look being shared. Browsers
+   * gate audio behind a user gesture anyway, and the switch is the gesture.
+   */
+  sound: boolean;
   /** Draws the mirror triangle and the direction of gravity over the figure. */
   debug: boolean;
   /** Seed for the shard generator. */
@@ -225,6 +238,7 @@ export const DEFAULT_SETTINGS: Settings = {
   zoom: 1.2,
   angle: 0,
   tilt: false,
+  sound: false,
   debug: false,
   seed: 'kaleido',
 };
@@ -273,6 +287,7 @@ export function sanitizeSettings(input: unknown): Settings {
     zoom: clampToLimit(toNumber(raw.zoom, DEFAULT_SETTINGS.zoom), LIMITS.zoom),
     angle: clampToLimit(toNumber(raw.angle, DEFAULT_SETTINGS.angle), LIMITS.angle),
     tilt: typeof raw.tilt === 'boolean' ? raw.tilt : DEFAULT_SETTINGS.tilt,
+    sound: typeof raw.sound === 'boolean' ? raw.sound : DEFAULT_SETTINGS.sound,
     debug: typeof raw.debug === 'boolean' ? raw.debug : DEFAULT_SETTINGS.debug,
     seed: toSeed(raw.seed),
   };
