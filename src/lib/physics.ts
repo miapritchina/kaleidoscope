@@ -315,7 +315,7 @@ export function updateChamber(
   const step = dt / SUBSTEPS;
   // World down (+y on screen) expressed in the cell's own frame.
   //
-  // The renderer draws the cell rotated by `angle`, so its axes are turned by
+  // The body draws the cell rotated by its bearing, so its axes are turned by
   // `+angle` against the screen and world down has to be turned back by the same
   // amount to land in them. Sign this the other way — the easy mistake, since it
   // looks like "undo the rotation" — and gravity sweeps the cell at twice the

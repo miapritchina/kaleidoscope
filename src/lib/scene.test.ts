@@ -73,7 +73,7 @@ describe('createScene', () => {
   // settled at the default piece count, does the glass keep the mirror
   // triangle covered whichever way the cell has been turned?
   it('keeps the mirror triangle covered at the default piece count', () => {
-    // The triangle the renderer inscribes in the cell: corners at 90, 210 and
+    // The triangle the body inscribes in the cell: corners at 90, 210 and
     // 330 degrees on the wall, so every point of it lies within half the
     // radius of the middle along each of the three wall normals.
     const wall = CHAMBER_RADIUS / 2;

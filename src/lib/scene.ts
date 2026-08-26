@@ -71,9 +71,9 @@ export interface Scene {
    *
    * The glass is only recut once a pinch has come to rest — rebuilding and
    * resettling the pile is too much work to do per pointer move — but the hand
-   * still has to see something growing under it. The renderer divides the live
-   * setting by this to know how far the drawn glass is running ahead of the
-   * cut, and magnifies the sprites by the difference until the recut lands.
+   * still has to see something growing under it. The glass chamber divides the
+   * live setting by this to know how far the drawn glass is running ahead of
+   * the cut, and magnifies the sprites by the difference until the recut lands.
    */
   readonly chipScale: number;
   /**
@@ -382,8 +382,8 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
  * One set of glass the chamber is loaded with: a picture and where in it each
  * piece is cut from.
  *
- * The chamber can hold several at once, so the renderer hands the drawing an
- * array of these rather than a single picture. Which set a given piece belongs
+ * The chamber can hold several at once, so the glass chamber hands the drawing
+ * an array of these rather than a single picture. Which set a given piece belongs
  * to is fixed for that piece — see {@link glassAt} — so the pieces are shared
  * out evenly and a splinter keeps its own scrap of its own set as it tumbles.
  */
@@ -453,7 +453,7 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  * Advances the simulation in place.
  *
  * Mutation is deliberate: this runs every frame and the scene is owned by the
- * renderer, never by React state, so there is nothing to diff.
+ * chamber holding it, never by React state, so there is nothing to diff.
  */
 export function updateScene(
   scene: Scene,

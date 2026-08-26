@@ -214,26 +214,27 @@ const TRIANGLE_FRACTION = 0.24;
 /**
  * Side of the mirror triangle for a view of this size, at this zoom.
  *
- * Exported for whoever has to reason about the view without a renderer in
- * hand — the stir mapping in `lib/stir.ts` folds a pointer back into the cell
- * and needs the same triangle the figure was drawn with. One formula, so the
- * two cannot disagree.
+ * Exported for whoever has to reason about the view without a body in hand,
+ * which in practice is a test. The body itself has exactly this one formula
+ * and no other, so there is nothing for it to disagree with.
  */
 export function triangleSideFor(width: number, height: number, zoom: number): number {
   return Math.max(24, Math.min(width, height) * TRIANGLE_FRACTION * zoom);
 }
 
 /**
- * Composites the kaleidoscope.
+ * The tube, its mirrors, and the optics in front of them.
  *
- * The source — shard field, photo or camera — is painted once per frame into an
- * offscreen triangle, then that triangle is mirrored into a hexagon and the
- * hexagon stamped across the field. That keeps the per-frame cost proportional
- * to the source rather than to `source x triangles`, and it is what makes the
- * reflections line up exactly.
+ * The chamber is asked to paint itself once per frame into an offscreen
+ * triangle; that triangle is then mirrored into a hexagon and the hexagon
+ * stamped across the field. Once, not six times — which keeps the per-frame
+ * cost proportional to the chamber rather than to `chamber x triangles`, and is
+ * what makes the reflections line up exactly rather than nearly.
+ *
+ * It never asks what it is painting. See `lib/chamber.ts`.
  *
  * All geometry is in device pixels; the canvas backing store is sized by
- * {@link KaleidoscopeRenderer.resize} and never scaled by the DPR, which avoids
+ * {@link KaleidoscopeBody.resize} and never scaled by the DPR, which avoids
  * compounding transforms.
  */
 export class KaleidoscopeBody {

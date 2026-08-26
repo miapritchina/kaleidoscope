@@ -7,7 +7,7 @@ import { Compositor } from './compositor';
  *
  * Nothing here draws. jsdom has no WebGL at all, so these tests are about the
  * one thing that has to hold in an environment like that: the compositor
- * refuses to build, quietly and without throwing, and the renderer's 2D path
+ * refuses to build, quietly and without throwing, and the body's 2D path
  * carries the frame. `renderer.test.ts` is what proves the picture still
  * appears when it does; the shader's own output is checked in a real browser,
  * because there is nowhere else it can be.

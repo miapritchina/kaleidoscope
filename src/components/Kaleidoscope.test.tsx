@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../lib/settings';
 import { Kaleidoscope } from './Kaleidoscope';
 
-// jsdom has no canvas backend, so the renderer cannot start. The component is
+// jsdom has no canvas backend, so the body cannot start. The component is
 // expected to degrade quietly rather than take the page down with it.
 afterEach(() => {
   vi.restoreAllMocks();
