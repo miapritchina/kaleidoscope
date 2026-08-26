@@ -165,6 +165,18 @@ const VIGNETTE_CLEAR = 0.16;
  */
 const RIM_DISPERSION = 1.4;
 
+/**
+ * How far the room's light tips away from straight ahead.
+ *
+ * A phone lying flat under a ceiling light is looking straight up it; held over
+ * at an angle, the light arrives across the glass. This is how much of that
+ * travel a full tip is worth, and it is what turns a tilt into a wave of
+ * flashes rather than a uniform brightening. The instrument's attitude, so the
+ * body works it out and hands the answer over — a chamber with something shiny
+ * in it should not have to ask how the phone is being held.
+ */
+const LIGHT_THROW = 0.55;
+
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
 
@@ -443,14 +455,15 @@ export class KaleidoscopeBody {
     }
 
     const triangle = this.#sideAtZoom(optics.zoom);
+    const framework = frameworkRadians(optics.angle);
     const source: WedgeSource = { chamber, optics };
 
     this.#source = source;
     this.#paintWedge(source, triangle);
-    this.#compositeTiling(triangle, frameworkRadians(optics.angle), optics);
+    this.#compositeTiling(triangle, framework, optics);
 
     if (optics.debug) {
-      this.#drawDebug(triangle, this.#tilt, frameworkRadians(optics.angle));
+      this.#drawDebug(triangle, this.#tilt, framework);
     }
   }
 
@@ -632,8 +645,14 @@ export class KaleidoscopeBody {
       // picture rather than on bare ground behind it.
       reach: CHAMBER_RADIUS + (scale > 0 ? SEAM_BLEED / scale : 0),
       // Where the room's light is, seen from a phone being held at this tilt.
-      // The light stays where it is and the instrument turns under it.
-      light: { x: Math.sin(this.#tilt), y: Math.cos(this.#tilt), z: 1 },
+      // The light stays where it is and the instrument turns under it, which is
+      // why anything shiny fires in waves as the phone moves and sits still
+      // when it does not.
+      light: {
+        x: Math.sin(this.#tilt) * LIGHT_THROW,
+        y: Math.cos(this.#tilt) * LIGHT_THROW,
+        z: 1,
+      },
     };
   }
 

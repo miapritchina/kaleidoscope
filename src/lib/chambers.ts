@@ -50,8 +50,6 @@ export interface ChamberInputs {
   media: () => MediaElement | null;
   /** The pictures the glass is cut out of. */
   skins: () => readonly MediaElement[];
-  /** How far the instrument is being held over, in radians. */
-  tilt: () => number;
 }
 
 /** The settled part of the settings: what a rebuild actually depends on. */
@@ -108,7 +106,7 @@ export function createChamber(cut: ChamberCut, inputs: ChamberInputs): Chamber {
           amount: cut.amount,
           scale: cut.scale,
         },
-        { thickness: () => inputs.settings().thickness, tilt: inputs.tilt },
+        { thickness: () => inputs.settings().thickness },
       );
     case 'image':
     case 'camera':

@@ -141,10 +141,10 @@ export function Kaleidoscope({
   // is expected to leave alone between renders, and this is a letterbox the
   // frame loop reads out of. Kept stable by the state initialiser and written
   // to in an effect, so nothing is mutated while rendering.
-  const [live] = useState(() => ({ settings, media, skins, tiltRef }));
+  const [live] = useState(() => ({ settings, media, skins }));
   useEffect(() => {
-    Object.assign(live, { settings, media, skins, tiltRef });
-  }, [live, settings, media, skins, tiltRef]);
+    Object.assign(live, { settings, media, skins });
+  }, [live, settings, media, skins]);
 
   // A new seed, count, substance or piece size means a genuinely different
   // chamber; anything else is applied to the running one without resetting it.
@@ -198,7 +198,6 @@ export function Kaleidoscope({
         settings: () => live.settings,
         media: () => live.media,
         skins: () => live.skins ?? [],
-        tilt: () => live.tiltRef?.current ?? 0,
       }),
     [cut, live],
   );

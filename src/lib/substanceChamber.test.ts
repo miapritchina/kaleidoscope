@@ -76,7 +76,6 @@ describe('createSubstanceChamber', () => {
       { seed: 'cover', substance: 'glitter', amount: 0.9 },
       {
         thickness: () => 0.35,
-        tilt: () => 0,
         createCanvas: () =>
           ({
             width: 0,

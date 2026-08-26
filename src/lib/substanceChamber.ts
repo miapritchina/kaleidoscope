@@ -55,29 +55,12 @@ export interface SubstanceChamberInputs {
    */
   thickness: () => number;
   /**
-   * How far the instrument is being held over, in radians.
-   *
-   * Only the glitter wants it, and only for the light: the room's lamp stays
-   * where it is while the instrument turns under it, which is what makes the
-   * flakes fire in waves as the phone moves and sit still when it does not.
-   */
-  tilt: () => number;
-  /**
    * Where to make the offscreen surfaces the flake sprites are drawn on.
    *
    * Only for a test running without a canvas backend, as in `lib/glitter.ts`.
    */
   createCanvas?: () => HTMLCanvasElement;
 }
-
-/**
- * How far the room's light tips away from straight ahead.
- *
- * A phone lying flat under a ceiling light is looking straight up it; held over
- * at an angle, the light arrives across the glass. This is how much of that
- * travel a full tip is worth.
- */
-const LIGHT_THROW = 0.55;
 
 /**
  * Builds a chamber of substance.
@@ -88,7 +71,7 @@ const LIGHT_THROW = 0.55;
  */
 export function createSubstanceChamber(
   cut: SceneCut & { seed: string; substance: SubstanceId },
-  inputs: SubstanceChamberInputs = { thickness: () => 0.35, tilt: () => 0 },
+  inputs: SubstanceChamberInputs = { thickness: () => 0.35 },
 ): Chamber {
   const scene = createScene(cut.seed, 0, { ...cut, holds: 'substance' });
   let flakes: FlakeSprites | null = null;
@@ -209,17 +192,13 @@ export function createSubstanceChamber(
           ? createFlakeSprites({ createCanvas: inputs.createCanvas })
           : sharedFlakes();
 
-        const tilt = inputs.tilt();
-
         drawGlitter(ctx, scene.flakes, {
           scale: view.scale,
           rotation: view.rotation,
           pan,
-          light: {
-            x: Math.sin(tilt) * LIGHT_THROW,
-            y: Math.cos(tilt) * LIGHT_THROW,
-            z: 1,
-          },
+          // Where the body says the room's lamp is. A flake is a mirror; where
+          // the light is coming from is the whole of what it has to know.
+          light: view.light,
           sprites: flakes,
         });
       }
