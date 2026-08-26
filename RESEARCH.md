@@ -224,6 +224,56 @@ screenshots are good, and the feel is the owner's call.
    via velocity injection along the drag), `scene.ts` plumbing, each
    substance's update. Small, immediate joy; also the first consumer of a
    stir API the flow field will formalize.
+
+   **The disambiguation is no longer only a matter of taste — there is a
+   result about it.** Reported from a phone as "finger stir seems to disagree
+   with finger rotation", and it did, measurably: the turn was read from the
+   finger's screen displacement without regard to where the finger was
+   (rightwards and downwards both anticlockwise), while the stir is folded
+   back to exactly where the finger is. Probed at four places on the stage
+   with the same swipe, the two came out with agreement +1 in half the stage
+   and -1 in the other half — the same swipe pushing the wax one way and
+   sweeping the cell the other.
+
+   Reading the turn off the lever the finger has about the middle of the
+   _view_ does not fix it, and the reason is worth writing down. For the two
+   to agree at the finger, the turn has to be proportional to `q x J.dP`,
+   where `q` is the finger's _folded_ position about the cell's middle and `J`
+   is the fold's local Jacobian. `J` is orthogonal with determinant ±1 by the
+   parity of the reflections, so the sign flips at every mirror. Written back
+   in screen terms: each triangle has its own centre of rotation and alternate
+   triangles turn opposite ways, which is exactly what a kaleidoscope looks
+   like when you turn one. A turn read that way reverses every time the finger
+   crosses a seam — four times in a swipe across the stage at the default zoom
+   — and nets out at about nothing. **So no screen-space turn gesture can
+   agree with the folded stir everywhere. One finger cannot coherently do
+   both, and the disambiguation is a real fork rather than a preference.**
+
+   What _was_ plainly wrong, and is fixed, is two things underneath it:
+
+   - The stir's velocity was differenced from the folded point _after_ the
+     cell's own turn had been divided out, so the frame's rotation was
+     measured along with the finger's movement. A finger resting perfectly
+     still on the glass of a tube turning at six radians a second reported a
+     stir of about three cell units a second — more than the wax's own top
+     speed of 1.6 — pointed against the turn, everywhere at once, for as long
+     as it was held. Tracking in the framework's frame and turning only the
+     answer into the cell's fixes it; there are tests on both halves of it.
+   - The stir's speed cap was 5 cell units a second against a chamber radius
+     of 1.15 and a wax top speed of 1.6, so any ordinary drag saturated it and
+     drove the cell at three times what anything in it can do. It is two
+     chamber radii a second now — a finger crossing the whole cell in half of
+     one.
+
+   Together those two turn the drag from something that blew the cell apart
+   into something that swirls it, and they take the held-finger fight out
+   entirely. The direction question is untouched and still the owner's: a
+   moving finger's nudge can still curl against the field in half the
+   triangles, and the choices are (a) leave it, now that it reads as a wake
+   rather than a fight, (b) one finger stirs and does not turn on the Liquid
+   tab, with turning moved to two fingers or a rim gesture, or (c) turn from
+   the folded lever and accept that a swipe stops turning the tube.
+
 2. **Shared flow field.** _Built_ — `lib/flow.ts`; smoke extends it,
    glitter rides a coarse one and tumbles by local curl, foreshortened and
    flashing on both faces. Extract the velocity solver from `smoke.ts` into

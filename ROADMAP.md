@@ -285,6 +285,39 @@ picture is clipped off-canvas around it and the figure goes black. It needs
 the media given somewhere on the surface to be drawn around. A grid photograph
 shows the fault immediately and is the test to use.
 
+### ~~The chamber came up with no glass in it~~ — fixed
+
+Reported as the shard physics having degraded after the liquid-cell merge. It
+had not: the classic solver's trace over 600 steps, 90 pieces on real traced
+shapes, in air and in liquid, on two seeds, is bit for bit identical either side
+of that merge, and side-by-side renders of the reported seed show no difference.
+The merge touched `chamber.ts` only to export `GRAVITY` for the Rapier spike,
+and `shape.ts` only to add a convex hull the classic solver never reads.
+
+What was wrong is one line older than the merge, in `useImageUrls`. The pictures
+the glass is cut from are loaded once and cached by url, and the `load` listener
+was attached **only on the effect run that started the load**. That listener
+closes over a `live` flag its own cleanup sets false. So an effect torn down and
+set up again — which is every effect in StrictMode, and any change of the chosen
+mix — left the dead listener as the only one on a picture still in flight, and
+skipped attaching a live one because the cache already held the element. The
+picture landed to nobody, the ready list stayed empty, and the chamber sat there
+asking to be filled with glass it had already fetched.
+
+A race, so it presented as intermittent: whether the decode beat the remount. In
+a headless run on this machine it lost **8 times out of 8**; with the listener
+attached on every run of the effect, 0 out of 8. Two of the five tests in
+`useImageUrls.test.tsx` fail on the old code.
+
+It is worth knowing what an empty chamber does to the pile rather than only to
+the picture. `applyCutShape` gives every piece `ROUND` when no set has loaded,
+so the pile settles as a heap of discs; when a picture does land, every piece's
+collision shape is swapped for its real one under a pile that has already come
+to rest, and the solver pushes the new overlaps apart. One set of two failing to
+load does the same thing halfway, and redistributes which piece is cut from
+which set as well. That is the shape of "the physics went wrong" without the
+physics having changed at all.
+
 ### Two things that were tried and did not work
 
 Both were proposed off the back of the WebGL move, on the reasoning that
@@ -576,6 +609,172 @@ displace the liquid they fall through — the light phase is drawn and not simul
 pools do not slosh as a fluid, they tilt as a rigid surface driven by how fast gravity is
 moving in the cell's frame, and by the finger. Which is a good deal of what the hand feels
 and none of what a free surface actually does. The item below is where that would come from.
+
+### ~~The wax was drawn at a third of the size it is shown at~~ — fixed
+
+The rebuilt wax (`lib/lava.ts`, the particle build) came out visibly blocky:
+edges stepping in squares rather than curving, worst at the far end of the zoom
+slider. The surface is a contour through a field sampled on a grid, and the
+grid was 128 across the chamber while the chamber is drawn across
+`2 * side / sqrt(3)` device pixels — three device pixels a cell at the default
+zoom on a phone, and nearly eight at the top of the slider. Bilinear filtering
+does not rescue that: the contour of a bilinearly reconstructed field kinks at
+every cell boundary, and at eight pixels a kink the kinks _are_ the staircase.
+
+The first build hid it. Its blobs were a handful of large metaballs, so the
+field's features were tens of cells across and the contour's error was a small
+fraction of one; the particle build's features are a few cells across, and the
+same grid puts the same error right on the edge you are looking at.
+
+Raising the grid to 256 fixes the picture and costs four times the cells, so the
+paint was rewritten to pay for it. Measured in one browser process, `paintLava`
+per call, at the two ends of the Amount slider (63 and 104 drops):
+
+|           | grid 128       | grid 256       |
+| --------- | -------------- | -------------- |
+| as it was | 0.78 / 0.80 ms | 3.01 / 3.15 ms |
+| rewritten | 0.32 / 0.30 ms | 1.20 / 1.27 ms |
+
+Four times the cells for about 1.5x the old cost. What paid for it: the field's
+weight split out of the interleaved colour array, so the four neighbours the
+normal is differenced from are a stride of one apart instead of four; the
+twenty-fourth power of the specular as five multiplications instead of a call to
+a general `pow`; `Math.sqrt` in place of a three-argument `Math.hypot`; and the
+shading loop bounded to the rows the wax is actually in.
+
+Two things were got wrong on the way, both worth keeping:
+
+**Clearing only the rows the wax reaches.** It followed from bounding the loop
+and it is wrong: two drops with a gap of empty rows between them leave that gap
+uncleared, the shading still runs over it, and last frame's wax comes back as
+rectangular blocks hanging in the cell. The arrays are cleared in full — a
+memset of a megabyte is not what this function costs — and only the _loop_ is
+bounded.
+
+**Scaling the normal to the grid.** The surface's normal is differenced from
+neighbouring cells, so it is a slope per _cell_: halve the spacing and every
+slope halves with it. Scaling it back by `GRID / 128` is arithmetically right
+and looked wrong — the finer grid resolves the packing of the individual
+particles, which came out as creases between them and, through a specular that
+tight, as a hard streak along every crease. The contour wants the fine grid and
+the normal does not. Differencing across four cells instead of one spans what
+the old grid's own neighbours spanned, so the light falls where it always fell
+and only the edge gets the finer grid.
+
+### ~~The rebuilt wax was one shiny sausage~~ — fixed, and the reason is worth keeping
+
+Reported as "lava looks like poo, not like lava — I liked the visual of the old
+version more", and that was fair. Four separate things, none of them the
+particle simulation itself:
+
+**Every cell ended as one lump.** Which this file predicted, in the paragraph
+above about the first build: _"anything that grows past a fraction of the cell
+is pulled into two, because merging only runs one way and without that every
+cell ends as one lump."_ The rebuild dropped the explicit split in favour of
+emergent topology and walked straight into it. Surface tension has one lowest
+shape in a small cell and it is a single blob; what keeps a lamp looking like a
+lamp is that the circulation tears bodies apart about as fast as they run
+together.
+
+What was stopping the tearing was **the heat diffusion**, which was the
+rebuild's own new idea. Heat that spreads through a body makes every drop in it
+the same temperature; a body at one temperature rises or sinks rigidly; a rigid
+body is never sheared, never stretched, and never pinches. The stretching a
+lamp runs on is precisely the _disagreement_ — the end of a blob that has
+reached the cool glass sinking while the rest of it is still climbing. It is
+nought now, and the plumbing is kept.
+
+That alone was not enough, and the rest was found by search rather than
+argument: three seeds, three moments each, counting separate bodies of wax after
+ninety seconds. Mean bodies, shipped settings: **1.0**. The knob that matters is
+`STIFF`, and it has a window — too much and the cell is one sausage, too little
+and it is a lace of tendrils and spatter, which looks worse than the sausage.
+Landed on buoyancy 1.3 (was 0.55), drag 0.6 (was 2.4) and `STIFF` 0.004 (was
+0.008): **2.8 bodies**, fat and rounded rather than ragged.
+
+**The bodies were lumpy, and lit like plastic.** Two things, and neither is the
+physics. The drawn field reached 1.55 of a drop's interaction radius against a
+surface a single drop could cross on its own, so a body came out as the lumpy
+union of its members — every particle a bump, every gap a crease. Widened to
+2.2 with the surface raised to 1.15 to match, the same particles read as one
+smooth body. And the light was far too strong for a surface that can now be
+seen: a shaded side at 0.62 turns orange wax brown, and a specular of 190
+through a twenty-fourth power draws a hard white streak along every ridge.
+0.88 / 0.22 / 45 gives the rounding without the plastic.
+
+**The colour was speckle.** Each drop carried an index into the four-colour
+palette, and a body is a few dozen drops that have drifted in from wherever, so
+bodies came out mottled pink and orange rather than being _a_ colour. Colour is
+carried per drop now and spreads between touching drops the way heat used to —
+which is what actually wanted diffusing. A body settles to one colour in a
+second or two and two bodies running together blend, which is what the first
+build did on a merge. Spreading alone ends in the mud the palette note warns
+about by a different road, so each drop is also drawn slowly back to its own
+wax: the cell still holds four colours after ten minutes, and a fresh blend
+still shows.
+
+**And it looked different on every device.** The relaxation moves a drop by the
+pressure times the _square_ of the step, and the step was whatever the frame
+was, clamped at 1/20. At sixty frames a second it is exactly as tuned; at
+twenty, every displacement is nine times what the constants mean and the wax
+blows itself apart into a spray of separate droplets. This is not hypothetical:
+the headless browser these screenshots are taken in runs at a median of 135 ms a
+frame, and every "before" picture of the rebuilt lava taken here shows the spray
+rather than the sausage a phone shows. The wax banks time and steps at a fixed
+sixty a second now, at most three steps a frame, so below about twenty frames a
+second it runs slow rather than wrong. `lib/flow.ts` banks for the same reason.
+
+Cost, measured in one browser process, `paintLava` per call at the two ends of
+the Amount slider:
+
+|                           | 63 drops | 104 drops |
+| ------------------------- | -------- | --------- |
+| shipped, grid 128         | 0.78 ms  | 0.80 ms   |
+| grid 256, rewritten paint | 1.20 ms  | 1.27 ms   |
+| and the wider drawn field | 2.04 ms  | 2.23 ms   |
+
+The last row is the price of the look: the accumulation is
+`DRAWN^2 x COVER x GRID^2 / 4` texels and is otherwise **independent of the drop
+count**, so widening the field from 1.55 to 2.2 is exactly twice the work and
+fewer, larger drops would not have been cheaper. `updateLava` is 0.16 / 0.40 ms
+and did not move.
+
+**Tried and taken out: the colour on a quarter grid.** Only the contour needs
+the fine grid — colour within a body is constant by construction and crosses
+over many cells where two bodies meet — so summing it at 64 across and reading
+it back bilinearly should have been a sixteenth of the colour work. It measured
+**2.11 / 2.25 ms**, which is no change at all: what the accumulation saves, the
+bilinear read spends again, once per lit pixel. The fine grid stays.
+
+### ~~The hexagon in the middle of the view was never dimmed~~ — fixed
+
+Every hexagon is dimmed a little against its neighbours (`cellNoise` in
+`lib/fold.ts`, and the same hash in the shader) so the field does not read as a
+printed pattern. Multiply-xor-shift hashes of that shape have a fixed point at
+zero — every step of them takes 0 to 0 — so the hexagon at lattice `(0, 0)`
+came back as exactly 0 while its neighbours averaged a half. That hexagon is the
+middle of the view, and this exposure only ever _darkens_: the one hexagon
+nobody can look away from was the one hexagon never dimmed. Against the white
+ground a liquid cell is lit on it clipped to pure white and read as a hole
+punched in the middle of the figure — with the source triangle, which is also
+the only one at nought bounces and the one the facet exposure brightens most,
+the brightest thing on the screen.
+
+Seeding the hash fixes it: measured over the six triangles of the central
+hexagon, before 255/244/255/238/255/240 with three of them clipped at white,
+after 246/235/246/241/246/232 with none clipped — and 255 x (1 - 0.5917 x 0.06)
+is 245.95, which is the dimming arriving exactly as designed.
+
+The same three lines had a second fault found while fixing the first: negating
+both coordinates left the xor of the two products unchanged for **a third of
+the lattice**, so a third of all hexagons wore exactly the exposure of their
+opposite number through the middle of the view. A field with a half-turn
+symmetry in it is the same tell this variation exists to remove, one step
+subtler. Folding `i` in before `j` rather than xoring two independent products
+meets both faults; over an 81 x 81 patch it now gives 6561 distinct values, no
+symmetric pairs, and quartiles of .257 / .242 / .248 / .253. It costs one more
+multiply, per hexagon per frame in the 2D path and per pixel in the shader, and
+neither could measure it.
 
 ### Actual fluid, on the solver we already built
 

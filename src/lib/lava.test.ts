@@ -151,22 +151,45 @@ describe('updateLava', () => {
 
     run(lava, 5);
 
-    let worst = 0;
-    let previous = pictureOf(lava);
+    const pictures = [pictureOf(lava)];
 
     for (let frame = 0; frame < 60 * 5; frame += 1) {
       updateLava(lava, still);
-
-      const picture = pictureOf(lava);
-
-      worst = Math.max(worst, pictureShift(previous, picture));
-      previous = picture;
+      pictures.push(pictureOf(lava));
     }
 
-    // A leap the size of the first build's stagger moved more than a whole
-    // blob's worth of picture in one frame. Smooth motion moves a few drops
-    // one cell at a time.
-    expect(worst).toBeLessThan(lava.drops.length * 0.5);
+    let oneFrame = 0;
+    let twoFrames = 0;
+
+    for (let i = 0; i + 1 < pictures.length; i += 1) {
+      oneFrame += pictureShift(pictures[i]!, pictures[i + 1]!);
+    }
+
+    for (let i = 0; i + 2 < pictures.length; i += 1) {
+      twoFrames += pictureShift(pictures[i]!, pictures[i + 2]!);
+    }
+
+    // The first build's fault was a *stagger*: the cell alternated between two
+    // arrangements at frame rate, so every frame moved a great deal of picture
+    // and every second frame moved almost none. Measured as a size, that is
+    // indistinguishable from wax that simply moves quickly — which this wax now
+    // does, since the drive was raised to break bodies apart. Measured as a
+    // direction it is unmistakable, and needs no threshold to be tuned: motion
+    // that goes somewhere covers more ground in two frames than in one, and
+    // motion that alternates covers less.
+    expect(twoFrames / (pictures.length - 2)).toBeGreaterThan(
+      (oneFrame / (pictures.length - 1)) * 1.2,
+    );
+
+    // And it is still wax rather than a firework: no single frame moves more
+    // than a fraction of the cell's drops a whole grid square.
+    let worst = 0;
+
+    for (let i = 0; i + 1 < pictures.length; i += 1) {
+      worst = Math.max(worst, pictureShift(pictures[i]!, pictures[i + 1]!));
+    }
+
+    expect(worst).toBeLessThan(lava.drops.length);
   });
 
   it('takes a stir', () => {

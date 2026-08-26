@@ -163,11 +163,13 @@ Fold foldIntoTriangle(vec2 p, float side) {
   return folded;
 }
 
-/** The same integer hash the 2D renderer uses, so both vary the same hexagons. */
+/** The same integer hash the 2D renderer uses, so both vary the same hexagons.
+    The seed and the order the coordinates go in both matter — see lib/fold.ts. */
 float cellNoise(ivec2 cell) {
-  uint hash = uint(cell.x) * 0x27d4eb2du ^ uint(cell.y) * 0x165667b1u;
-  hash = (hash ^ (hash >> 15)) * 0x2545f491u;
-  hash ^= hash >> 13;
+  uint hash = uint(cell.x) * 0x27d4eb2du ^ 0x9e3779b9u;
+  hash = (hash ^ (hash >> 15)) * 0x85ebca6bu ^ uint(cell.y) * 0x165667b1u;
+  hash = (hash ^ (hash >> 13)) * 0x2545f491u;
+  hash ^= hash >> 16;
 
   return float(hash) / 4294967296.0;
 }

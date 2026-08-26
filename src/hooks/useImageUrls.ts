@@ -25,6 +25,10 @@ export function useImageUrls(urls: readonly string[]): readonly HTMLImageElement
   useEffect(() => {
     let live = true;
     const list = key ? key.split('\n') : [];
+    // Read once here rather than through the ref in the cleanup, which by then
+    // is a different effect's idea of "current" as far as the linter is
+    // concerned. The map itself is made once and never replaced.
+    const loading = cache.current;
 
     // The decoded pictures, in the order asked for. Set only when it actually
     // differs, so a load that adds nothing new does not cascade a render.
@@ -34,7 +38,7 @@ export function useImageUrls(urls: readonly string[]): readonly HTMLImageElement
       }
 
       const loaded = list
-        .map((url) => cache.current.get(url))
+        .map((url) => loading.get(url))
         .filter((image): image is HTMLImageElement => image != null && image.naturalWidth > 0);
 
       setReady((was) =>
@@ -45,20 +49,31 @@ export function useImageUrls(urls: readonly string[]): readonly HTMLImageElement
     };
 
     for (const url of list) {
-      if (cache.current.has(url)) {
-        continue;
+      let image = loading.get(url);
+
+      if (!image) {
+        image = new Image();
+        loading.set(url, image);
+        // Bundled alongside the app, so same-origin; set anyway, since the
+        // cut-out finder reads the pixels back and a tainted canvas cannot be.
+        image.crossOrigin = 'anonymous';
+        // A missing or corrupt file is not worth breaking the app over: it just
+        // never joins the mix.
+        image.addEventListener('error', () => undefined);
+        image.src = url;
       }
 
-      const image = new Image();
-      cache.current.set(url, image);
-      // Bundled alongside the app, so same-origin; set anyway, since the
-      // cut-out finder reads the pixels back and a tainted canvas cannot be.
-      image.crossOrigin = 'anonymous';
+      // Listened for on every run of the effect and not only on the run that
+      // started the load, which is the whole of a bug that emptied the chamber.
+      // `settle` closes over this run's `live`, and the cleanup below sets it
+      // false; so an effect that is torn down and set up again — which is every
+      // effect in StrictMode, and any change of the mix — used to leave the
+      // first run's dead listener as the only one on a picture still in flight,
+      // and skip attaching a live one because the cache already held it. The
+      // picture landed to nobody, `ready` stayed empty, and the chamber sat
+      // there asking to be filled with glass it had already fetched. It was a
+      // race, so it looked intermittent: whether the decode beat the remount.
       image.addEventListener('load', settle);
-      // A missing or corrupt file is not worth breaking the app over: it just
-      // never joins the mix.
-      image.addEventListener('error', () => undefined);
-      image.src = url;
     }
 
     // Pick up anything already decoded from an earlier mix, then whatever the
@@ -67,6 +82,10 @@ export function useImageUrls(urls: readonly string[]): readonly HTMLImageElement
 
     return () => {
       live = false;
+
+      for (const url of list) {
+        loading.get(url)?.removeEventListener('load', settle);
+      }
     };
   }, [key]);
 
