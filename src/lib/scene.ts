@@ -1,4 +1,4 @@
-import { CHAMBER_RADIUS } from './chamber';
+import { CHAMBER_RADIUS, MAX_STEP_SECONDS } from './chamber';
 import {
   advanceFlow,
   AIR,
@@ -76,41 +76,6 @@ export interface Scene {
    * cut, and magnifies the sprites by the difference until the recut lands.
    */
   readonly chipScale: number;
-  /** Accumulated pan of the cell, in cells. */
-  pan: { x: number; y: number };
-  /**
-   * Angle the object cell has been turned to, in radians.
-   *
-   * Plenty of real kaleidoscopes turn the cell and not the barrel: the mirrors
-   * are fixed in the tube and the chamber of glass rotates against them on its
-   * own bearing. That is this, and it is why the figure's framework holds still
-   * on screen while what is inside it moves.
-   */
-  cell: number;
-  /**
-   * Angle of the contents inside the tube, in radians.
-   *
-   * The chips are loose, so they lag the cell and then settle. That lag is the
-   * relative angle between this and {@link Scene.cell}, and it is what makes the
-   * figure evolve rather than only revolve.
-   */
-  contents: number;
-  /**
-   * Where the viewer has dragged the source to, each axis in `[-1, 1]`.
-   *
-   * A position rather than a velocity: the source follows the pointer and stays
-   * where it is let go, which is what dragging something means. A photo's
-   * travel reaches the wedge's own span plus whatever hangs outside it, so its
-   * edges may be dragged into view but some of it always remains.
-   */
-  drag: { x: number; y: number };
-  /**
-   * How far the instrument is tilted, in radians.
-   *
-   * Gravity's direction on screen, and nothing else — the figure does not turn
-   * with it. Kept so the debug overlay has something to point at.
-   */
-  tilt: number;
   /**
    * How fast the fluid in the cell is turning, in radians per second.
    *
@@ -152,31 +117,27 @@ export interface Scene {
   elapsed: number;
 }
 
+/**
+ * What one frame does to the contents of a cell.
+ *
+ * Notice what is *not* here: no mirror angle, no tilt, no rotation of the cell
+ * itself. All three of those move gravity and nothing else, and composing them
+ * is the body's job — see `lib/body.ts`. What arrives here is the answer.
+ */
 export interface SceneUpdate {
   /** Seconds since the previous frame. */
   dt: number;
+  /**
+   * Which way is down, in the cell's own frame, in radians.
+   *
+   * Gravity keeps pointing at the floor whatever the instrument does, so its
+   * direction *within the cell* is everything the instrument has been turned
+   * by, composed. Nothing else moves the pieces — they tip, avalanche and
+   * settle, which is what a real one does and why it never repeats.
+   */
+  gravity: number;
   /** How fast the cell is being turned, in radians per second. */
   turn: number;
-  /** Current drag position, each axis in `[-1, 1]`. */
-  drag: { x: number; y: number };
-  /**
-   * How far the instrument itself is tilted, in radians.
-   *
-   * This moves gravity, not the figure. The mirrors and the chamber are both
-   * fixed in the tube and the tube is the phone, so tilting it turns nothing on
-   * screen — what changes is which way the pieces fall, exactly as it does when
-   * you tip a real one in your hand.
-   */
-  tilt?: number | undefined;
-  /**
-   * How far the mirror framework itself is turned, in radians.
-   *
-   * The figure turns with it and the pieces do not: gravity does not care which
-   * way up the tube is held. Since the cell is drawn inside the framework, its
-   * rotation has to come off gravity's direction here, or holding the
-   * instrument sideways would have the pile falling sideways with it.
-   */
-  framework?: number | undefined;
   /**
    * How thick the substance cell's fluid is, 0 thin to 1 gel.
    *
@@ -214,12 +175,6 @@ const STIR_REACH = CHAMBER_RADIUS * 0.28;
  */
 const FLUID_GRID = 64;
 
-/** Largest step the simulation will take, so a backgrounded tab cannot jump. */
-const MAX_STEP_SECONDS = 1 / 20;
-
-/** How far a full drag moves the chamber, in cell units. */
-export const DRAG_CELLS = 0.5;
-
 /**
  * How much larger a chip is drawn than the footprint it collides with.
  *
@@ -234,26 +189,6 @@ export const DRAG_CELLS = 0.5;
  * footprint.
  */
 export const DEPTH_OVERLAP = 1.3;
-
-/**
- * How quickly the contents catch up with the cell, per second.
- *
- * Loose chips are dragged round by friction rather than bolted to the wall:
- * they trail while the cell is turning and settle once it stops. Without this
- * lag the figure would revolve perfectly rigidly, which is the thing that reads
- * as a picture being rotated rather than an instrument being turned.
- */
-const CONTENTS_CATCHUP = 4;
-
-/**
- * Furthest the contents may trail the cell, in radians.
- *
- * Without a cap the lag settles at `rate / catchup`, so a brisk swipe leaves the
- * chips half a turn behind and they go on unwinding for seconds after the finger
- * lifts — which reads as the tube still turning. Friction does not work that
- * way: past a point the chips simply get dragged along.
- */
-const MAX_LAG = 0.3;
 
 /** Fractional part, for turning a piece's fixed number into a stable choice. */
 function frac(value: number): number {
@@ -398,11 +333,6 @@ export function createScene(seed: string, shardCount: number, cut: SceneCut = {}
     seed,
     shards,
     chipScale: Math.max(0.05, chipScale),
-    pan: { x: 0, y: 0 },
-    cell: 0,
-    tilt: 0,
-    contents: 0,
-    drag: { x: 0, y: 0 },
     flow: 0,
     substance: holds === 'substance' ? substance : null,
     // Whichever one the cell is filled with, and only that one: the other two
@@ -527,50 +457,16 @@ export function applyCutShape(shards: Shard[], glasses: readonly Glass[]): boole
  */
 export function updateScene(
   scene: Scene,
-  {
-    dt,
-    turn,
-    drag,
-    tilt = 0,
-    framework = 0,
-    medium = AIR,
-    thickness = 0.35,
-    stir = null,
-  }: SceneUpdate,
+  { dt, gravity, turn, medium = AIR, thickness = 0.35, stir = null }: SceneUpdate,
 ): Scene {
   const step = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
 
   scene.elapsed += step;
-  scene.cell += turn * step;
-  scene.tilt = tilt;
-  // Exponential approach, clamped so a long frame cannot overshoot past the
-  // tube and swing back.
-  scene.contents += (scene.cell - scene.contents) * Math.min(1, CONTENTS_CATCHUP * step);
-
-  const lag = scene.cell - scene.contents;
-
-  if (Math.abs(lag) > MAX_LAG) {
-    scene.contents = scene.cell - Math.sign(lag) * MAX_LAG;
-  }
-
-  scene.drag.x = drag.x;
-  scene.drag.y = drag.y;
   // The fluid is dragged round by the wall rather than bolted to it, so it
   // trails the tube and then outlives it. In a dry cell this is the tube's own
   // rate, and the swirl below comes out at exactly nought.
   scene.flow = advanceFlow(scene.flow, step, turn, medium);
 
-  // Gravity keeps pointing at the floor whatever the instrument does, so its
-  // direction within the cell is however far the cell has been turned, plus
-  // however far the framework it is drawn inside has been turned, plus however
-  // far the whole thing is tilted. All three compose: turning the tube sweeps
-  // gravity around the cell, holding the instrument at an angle takes it back
-  // off again, and tipping the phone moves it once more without turning
-  // anything on screen. Nothing else moves the pieces — they tip, avalanche and
-  // settle, which is what a real one does and why it never repeats.
-  // Which way is down, in the cell's own frame. Everything loose in the cell
-  // wants it: the glass, the flakes and the ink alike.
-  const angle = scene.cell + framework + tilt;
   // The fluid's turning as the cell sees it: the tube's own rate taken off,
   // since everything in the cell is held in the cell's frame, not the world's.
   const swirl = scene.flow - turn;
@@ -578,7 +474,12 @@ export function updateScene(
   // The classic solver unless the Rapier spike has been asked for and has
   // loaded — see `lib/solver.ts`. Both take the same update and mutate the
   // same shards, so the rest of the scene cannot tell them apart.
-  (chamberOverride() ?? updateChamber)(scene.shards, { dt: step, angle, medium, swirl });
+  (chamberOverride() ?? updateChamber)(scene.shards, {
+    dt: step,
+    angle: gravity,
+    medium,
+    swirl,
+  });
 
   // A finger in the cell: the fluid at the touch is set to the finger's own
   // velocity, and whatever hangs in the fluid is carried along. Queued into
@@ -607,23 +508,23 @@ export function updateScene(
   // which way is down — because those are the whole of what a cell does to
   // what is in it.
   if (scene.lava) {
-    updateLava(scene.lava, { dt: step, thickness, swirl, angle, stir });
+    updateLava(scene.lava, { dt: step, thickness, swirl, angle: gravity, stir });
   }
 
   if (scene.drops) {
-    updateDrops(scene.drops, { dt: step, thickness, swirl, angle, stir });
+    updateDrops(scene.drops, { dt: step, thickness, swirl, angle: gravity, stir });
   }
 
   if (scene.smoke) {
-    updateSmoke(scene.smoke, { dt: step, thickness, swirl, angle });
+    updateSmoke(scene.smoke, { dt: step, thickness, swirl, angle: gravity });
   }
 
   if (scene.film) {
-    updateFilm(scene.film, { dt: step, thickness, swirl, angle });
+    updateFilm(scene.film, { dt: step, thickness, swirl, angle: gravity });
   }
 
   if (scene.ink) {
-    updateInk(scene.ink, { dt: step, thickness, swirl, angle });
+    updateInk(scene.ink, { dt: step, thickness, swirl, angle: gravity });
   }
 
   if (scene.flakes) {
@@ -637,7 +538,7 @@ export function updateScene(
       dt: step,
       thickness,
       swirl,
-      angle,
+      angle: gravity,
       ...(scene.fluid ? { fluid: scene.fluid } : {}),
     });
   }

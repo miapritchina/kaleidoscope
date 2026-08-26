@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { asContext, createFakeContext, type FakeContext } from '../test/fakeCanvas';
-import { KaleidoscopeRenderer, TILE } from './body';
-import { createScene } from './scene';
-import { DEFAULT_SETTINGS } from './settings';
+import { KaleidoscopeBody, triangleSideFor, TILE, type BodyOptics } from './body';
+import { CHAMBER_DRAG, CHAMBER_RADIUS, type Chamber, type ChamberStep } from './chamber';
+import { createGlassChamber } from './glassChamber';
 import { frameworkRadians, latticePeriod } from './tiling';
 
 interface Harness {
-  renderer: KaleidoscopeRenderer;
+  body: KaleidoscopeBody;
   main: FakeContext;
   /** The surface the mirrors sample, which the source is painted onto. */
   wedge: FakeContext;
@@ -24,7 +24,42 @@ interface Harness {
   tileCanvas: () => { width: number; height: number } | undefined;
 }
 
-function createRenderer(): Harness {
+/** A chamber of glass, which is what most of these are looking through. */
+function glass(count = 6, seed = 'seed') {
+  return createGlassChamber({ seed, count });
+}
+
+/**
+ * A chamber that records what it is told and paints a square.
+ *
+ * Everything about the fitting can be checked through one of these, and none
+ * of it needs a pile of glass: what the body promises a chamber is the same
+ * promise whatever the chamber turns out to be.
+ */
+function stub(over: Partial<Chamber> = {}) {
+  const steps: ChamberStep[] = [];
+  const views: { scale: number; rotation: number; pan: { x: number; y: number } }[] = [];
+
+  const chamber: Chamber = {
+    ground: '#123456',
+    open: false,
+    update(step) {
+      steps.push({ ...step });
+    },
+    paint(ctx, view) {
+      views.push({ scale: view.scale, rotation: view.rotation, pan: { ...view.pan } });
+      ctx.fillRect(-view.scale, -view.scale, view.scale * 2, view.scale * 2);
+    },
+    ...over,
+  };
+
+  return { chamber, steps, views };
+}
+
+/** The optics, which is all of the settings a body actually reads. */
+const OPTICS: BodyOptics = { zoom: 1, angle: 0, bead: 0 };
+
+function createBody(): Harness {
   const main = createFakeContext();
   const offscreen = [createFakeContext(), createFakeContext(), createFakeContext()];
   const canvases: { width: number; height: number }[] = [];
@@ -52,13 +87,10 @@ function createRenderer(): Harness {
     return surface as unknown as HTMLCanvasElement;
   };
 
-  const renderer = new KaleidoscopeRenderer(
-    canvas as unknown as HTMLCanvasElement,
-    createOffscreen,
-  );
+  const body = new KaleidoscopeBody(canvas as unknown as HTMLCanvasElement, createOffscreen);
 
   return {
-    renderer,
+    body,
     main,
     wedge: offscreen[0]!,
     hexagon: offscreen[1]!,
@@ -71,43 +103,43 @@ function createRenderer(): Harness {
   };
 }
 
-describe('KaleidoscopeRenderer', () => {
+describe('KaleidoscopeBody', () => {
   it('throws when a 2D context is unavailable', () => {
     const canvas = { getContext: () => null } as unknown as HTMLCanvasElement;
 
-    expect(() => new KaleidoscopeRenderer(canvas)).toThrow(/Canvas 2D context/);
+    expect(() => new KaleidoscopeBody(canvas)).toThrow(/Canvas 2D context/);
   });
 
   it('sizes the backing store by the device pixel ratio', () => {
-    const { renderer, canvas } = createRenderer();
+    const { body, canvas } = createBody();
 
-    renderer.resize(300, 200, 2);
+    body.resize(300, 200, 2);
 
     expect(canvas.width).toBe(600);
     expect(canvas.height).toBe(400);
-    expect(renderer.size).toEqual({ width: 600, height: 400 });
+    expect(body.size).toEqual({ width: 600, height: 400 });
   });
 
   it('clamps the device pixel ratio to keep the fill cost bounded', () => {
-    const { renderer } = createRenderer();
+    const { body } = createBody();
 
-    renderer.resize(100, 100, 4);
+    body.resize(100, 100, 4);
 
-    expect(renderer.size).toEqual({ width: 200, height: 200 });
+    expect(body.size).toEqual({ width: 200, height: 200 });
   });
 
   it('treats a ratio below 1 as 1', () => {
-    const { renderer } = createRenderer();
+    const { body } = createBody();
 
-    renderer.resize(100, 100, 0.5);
+    body.resize(100, 100, 0.5);
 
-    expect(renderer.size).toEqual({ width: 100, height: 100 });
+    expect(body.size).toEqual({ width: 100, height: 100 });
   });
 
   it('does nothing when rendering before a resize', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
+    body.render(glass(4), OPTICS);
 
     expect(main.calls).toHaveLength(0);
   });
@@ -115,10 +147,10 @@ describe('KaleidoscopeRenderer', () => {
   // Six triangles meet at every corner to make the hexagon, alternately
   // mirrored so neighbours always meet mirror to mirror.
   it('assembles the hexagon from six triangles, every other one reflected', () => {
-    const { renderer, hexagon } = createRenderer();
+    const { body, hexagon } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
 
     expect(hexagon.countOf('clip')).toBe(6);
     expect(hexagon.countOf('drawImage')).toBe(6);
@@ -132,10 +164,10 @@ describe('KaleidoscopeRenderer', () => {
   // The point of building the hexagon once: the field costs one blit per
   // hexagon, not six clipped draws, however many are on screen.
   it('tiles the field with that one hexagon', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
 
     // Enough to fill the view several times over, and each is a plain blit.
     expect(main.countOf('drawImage')).toBeGreaterThan(6);
@@ -143,14 +175,14 @@ describe('KaleidoscopeRenderer', () => {
   });
 
   it('stamps more hexagons as the zoom shrinks them', () => {
-    const wide = createRenderer();
-    const close = createRenderer();
+    const wide = createBody();
+    const close = createBody();
 
-    wide.renderer.resize(200, 200, 1);
-    wide.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, zoom: 0.5 });
+    wide.body.resize(200, 200, 1);
+    wide.body.render(glass(6), { ...OPTICS, zoom: 0.5 });
 
-    close.renderer.resize(200, 200, 1);
-    close.renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, zoom: 3 });
+    close.body.resize(200, 200, 1);
+    close.body.render(glass(6), { ...OPTICS, zoom: 3 });
 
     expect(wide.main.countOf('drawImage')).toBeGreaterThan(close.main.countOf('drawImage'));
   });
@@ -159,16 +191,19 @@ describe('KaleidoscopeRenderer', () => {
   // corner the six triangles are assembled around instead, most of the chamber
   // sits outside the view and turning sweeps the pile clean out of it.
   it('inscribes the mirror triangle in the object cell', () => {
-    const { renderer, wedge, hexagonCanvas } = createRenderer();
+    const { body, wedge, hexagonCanvas } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 4), DEFAULT_SETTINGS);
+    body.resize(240, 240, 1);
+    body.render(glass(4), OPTICS);
 
     // The hexagon stamp spans the triangle's side either way of its centre,
     // plus the seam bleed, which is what gives the side back.
     const side = hexagonCanvas.width / 2 - 2;
-    // First the margin, then the cell. Anything after that is per-chip.
-    const [, cell] = wedge.argsOf('translate') as [unknown, [number, number]];
+    // One move: to the triangle's apex, and the triangle's own centre past it.
+    // Anything after that is the chamber's own doing.
+    const [placed] = wedge.argsOf('translate') as [[number, number]];
+    const apex = { x: 2, y: 2 + Math.ceil(side / (2 * Math.sqrt(3))) };
+    const cell = [placed[0] - apex.x, placed[1] - apex.y] as const;
 
     // The centroid lies along the triangle's 30-degree bisector, one
     // circumradius out — so the cell reaches all three corners and no further.
@@ -182,14 +217,14 @@ describe('KaleidoscopeRenderer', () => {
   // framework instead sweeps the figure around the screen, which reads as a
   // picture being spun rather than an instrument being worked.
   it('turns the cell and leaves the mirror framework where it is', () => {
-    const { renderer, main, wedge } = createRenderer();
-    const scene = createScene('seed', 6);
-    scene.cell = 0.77;
-    scene.contents = 0.77;
+    const { body, main, wedge } = createBody();
+    const chamber = glass(6);
 
-    renderer.resize(200, 200, 1);
-    renderer.render(scene, DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.step(chamber, { dt: 1 / 20, turn: 0.77 * 20, drag: { x: 0, y: 0 }, tilt: 0, angle: 0 });
+    body.render(chamber, OPTICS);
 
+    expect(body.bearing).toBeCloseTo(0.77, 12);
     expect(wedge.argsOf('rotate')).toContainEqual([0.77]);
     expect(main.argsOf('rotate')).not.toContainEqual([0.77]);
   });
@@ -197,17 +232,23 @@ describe('KaleidoscopeRenderer', () => {
   // The joins are part of the framework, so they hold still with it. Drawn
   // inside the turning cell they would sweep across the glass like a fan.
   it('holds the mirror joins still as the cell turns', () => {
-    const still = createRenderer();
-    const turned = createRenderer();
-    const scene = createScene('seed', 6);
-    const spun = createScene('seed', 6);
-    spun.cell = 0.9;
+    const still = createBody();
+    const turned = createBody();
+    const scene = glass(6);
+    const spun = glass(6);
 
-    still.renderer.resize(240, 240, 1);
-    still.renderer.render(scene, DEFAULT_SETTINGS);
+    still.body.resize(240, 240, 1);
+    still.body.render(scene, OPTICS);
 
-    turned.renderer.resize(240, 240, 1);
-    turned.renderer.render(spun, DEFAULT_SETTINGS);
+    turned.body.resize(240, 240, 1);
+    turned.body.step(spun, {
+      dt: 1 / 20,
+      turn: 0.9 * 20,
+      drag: { x: 0, y: 0 },
+      tilt: 0,
+      angle: 0,
+    });
+    turned.body.render(spun, OPTICS);
 
     expect(turned.main.argsOf('moveTo')).toEqual(still.main.argsOf('moveTo'));
     expect(turned.main.argsOf('lineTo')).toEqual(still.main.argsOf('lineTo'));
@@ -218,10 +259,10 @@ describe('KaleidoscopeRenderer', () => {
   // degrees apart; outlining the triangles instead would stroke every edge
   // twice, once from each side, and leave the joins twice as dark as the rest.
   it('draws the mirror joins as three families of parallel lines', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(240, 240, 1);
+    body.render(glass(6), OPTICS);
 
     // One batched path, so no edge is painted over itself.
     expect(main.countOf('stroke')).toBe(1);
@@ -245,10 +286,10 @@ describe('KaleidoscopeRenderer', () => {
   // The mirrors dim the light on its way through; the barrel is in front of
   // them. Two separate things, and they composite differently.
   it('multiplies the view by the mirror falloff, then lays the barrel over it', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(240, 240, 1);
+    body.render(glass(6), OPTICS);
 
     const fills = main.stylesOf('fillRect');
     // The backdrop, the falloff, the barrel.
@@ -259,10 +300,10 @@ describe('KaleidoscopeRenderer', () => {
   });
 
   it('balances every save with a restore', () => {
-    const { renderer, main, hexagon } = createRenderer();
+    const { body, main, hexagon } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
 
     expect(main.countOf('save')).toBe(main.countOf('restore'));
     expect(hexagon.countOf('save')).toBe(hexagon.countOf('restore'));
@@ -272,11 +313,11 @@ describe('KaleidoscopeRenderer', () => {
   // idempotent, so a still pile stamped over its own remains walks away from a
   // single pass of it. Every frame is painted from scratch.
   it('repaints the source rather than drawing over what is there', () => {
-    const { renderer, wedge } = createRenderer();
+    const { body, wedge } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
+    body.render(glass(6), OPTICS);
 
     // The ground laid down afresh each time, and never at part opacity.
     expect(wedge.countOf('fillRect')).toBe(2);
@@ -286,10 +327,10 @@ describe('KaleidoscopeRenderer', () => {
   // Which way up the tube is being held. It stays put while the cell turns
   // under it, so it reads as the instrument's attitude and not as motion.
   it('turns the whole framework by the mirror angle', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, angle: 30 });
+    body.resize(240, 240, 1);
+    body.render(glass(6), { ...OPTICS, angle: 30 });
 
     expect(main.argsOf('rotate')).toContainEqual([frameworkRadians(30)]);
   });
@@ -297,20 +338,264 @@ describe('KaleidoscopeRenderer', () => {
   // Zero is not an unrotated field: it is the turn that stands the source
   // triangle on its base, which is what zero degrees means on the slider.
   it('stands the triangle on its base at zero, which is the default', () => {
-    const { renderer, main } = createRenderer();
+    const { body, main } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(240, 240, 1);
+    body.render(glass(6), OPTICS);
 
     expect(main.argsOf('rotate')).toEqual([[frameworkRadians(0)]]);
   });
 
   it('exposes the frame as a data url', () => {
-    const { renderer } = createRenderer();
+    const { body } = createBody();
 
-    renderer.resize(50, 50, 1);
+    body.resize(50, 50, 1);
 
-    expect(renderer.toDataUrl()).toMatch(/^data:image\/png/);
+    expect(body.toDataUrl()).toMatch(/^data:image\/png/);
+  });
+});
+
+/**
+ * The fitting itself: what the body promises whatever is in the chamber.
+ *
+ * These are the tests that keep the two parts apart. Every one of them is run
+ * against a chamber that is not the app's — if any of them can only be made to
+ * pass by the body knowing what is inside, the separation has gone.
+ */
+describe('the body and its chamber', () => {
+  // The whole of what the instrument does to what is inside it, and the one
+  // piece of arithmetic the body does on the chamber's behalf.
+  it('composes gravity out of the bearing, the framework and the tilt', () => {
+    const { body } = createBody();
+    const { chamber, steps } = stub();
+
+    body.resize(200, 200, 1);
+    body.step(chamber, {
+      dt: 1 / 20,
+      turn: 8,
+      drag: { x: 0, y: 0 },
+      tilt: 0.25,
+      angle: 30,
+    });
+
+    expect(steps).toHaveLength(1);
+    // A fifth of a radian of bearing, plus the framework, plus the tilt.
+    expect(body.bearing).toBeCloseTo(0.4, 12);
+    expect(steps[0]!.gravity).toBeCloseTo(0.4 + frameworkRadians(30) + 0.25, 12);
+  });
+
+  // Turning the body turns the mirrors and the chamber together, so the
+  // chamber's own bearing is untouched by it — but gravity is not, because the
+  // chamber is drawn inside the framework.
+  it('leaves the bearing alone when only the framework is turned', () => {
+    const { body } = createBody();
+    const { chamber, steps } = stub();
+
+    body.resize(200, 200, 1);
+    body.step(chamber, { dt: 1, turn: 0, drag: { x: 0, y: 0 }, tilt: 0, angle: 90 });
+
+    expect(body.bearing).toBe(0);
+    expect(steps[0]!.gravity).toBeCloseTo(frameworkRadians(90), 12);
+  });
+
+  // Turning the chamber turns only the chamber. The mirrors do not move, and
+  // the figure's framework does not either.
+  it('turns the chamber alone when the chamber is turned', () => {
+    const { body } = createBody();
+    const { chamber, views } = stub();
+
+    body.resize(200, 200, 1);
+    body.step(chamber, { dt: 1 / 20, turn: 20, drag: { x: 0, y: 0 }, tilt: 0, angle: 0 });
+    body.render(chamber, OPTICS);
+
+    expect(body.bearing).toBeCloseTo(1, 12);
+    expect(views[0]!.rotation).toBeCloseTo(1, 12);
+  });
+
+  // A tab left in the background comes back with a minute's worth of frame in
+  // hand. Handed on at face value, a chamber would teleport its contents.
+  it('clamps a long frame before any chamber sees it', () => {
+    const { body } = createBody();
+    const { chamber, steps } = stub();
+
+    body.resize(200, 200, 1);
+    body.step(chamber, { dt: 30, turn: 0, drag: { x: 0, y: 0 }, tilt: 0, angle: 0 });
+    body.step(chamber, { dt: -5, turn: 0, drag: { x: 0, y: 0 }, tilt: 0, angle: 0 });
+
+    expect(steps[0]!.dt).toBeCloseTo(1 / 20, 12);
+    expect(steps[1]!.dt).toBe(0);
+  });
+
+  // The cell reaches all three corners of the triangle and no further, so
+  // everything a chamber simulates has a chance of being seen and nothing is
+  // simulated that never could be.
+  it('scales the chamber so its wall touches the triangle corners', () => {
+    const { body } = createBody();
+    const { chamber, views } = stub();
+
+    body.resize(240, 240, 1);
+    body.render(chamber, OPTICS);
+
+    const side = triangleSideFor(240, 240, 1);
+
+    expect(views[0]!.scale * CHAMBER_RADIUS).toBeCloseTo(side / Math.sqrt(3), 6);
+  });
+
+  it("hands a cell its drag at a cell's worth of travel", () => {
+    const { body } = createBody();
+    const { chamber, views } = stub();
+
+    body.resize(240, 240, 1);
+    body.step(chamber, { dt: 0, turn: 0, drag: { x: 1, y: -0.5 }, tilt: 0, angle: 0 });
+    body.render(chamber, OPTICS);
+
+    expect(views[0]!.pan).toEqual({ x: CHAMBER_DRAG, y: -CHAMBER_DRAG / 2 });
+  });
+
+  // The chamber says what it is lit against, and the body covers the whole
+  // surface with it — not just the triangle. The optics sample outside the
+  // triangle's own reach, and unpainted pixels came back as holes.
+  it('covers the whole surface with the ground the chamber asks for', () => {
+    const { body, wedge } = createBody();
+    const { chamber } = stub({ ground: 'rgb(1 2 3)' });
+
+    body.resize(200, 200, 1);
+    body.render(chamber, OPTICS);
+
+    const [ground] = wedge.stylesOf('fillRect');
+
+    expect(ground?.fillStyle).toBe('rgb(1 2 3)');
+  });
+
+  // A chamber may leave the context in any state it likes. That is the body's
+  // problem, not the next frame's.
+  it('puts the context back after a chamber that wrecks it', () => {
+    const { body, wedge } = createBody();
+    const { chamber } = stub({
+      paint(ctx) {
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.rotate(1);
+      },
+    });
+
+    body.resize(200, 200, 1);
+    body.render(chamber, OPTICS);
+
+    expect(wedge.globalAlpha).toBe(1);
+    expect(wedge.globalCompositeOperation).toBe('source-over');
+  });
+
+  it('survives a chamber that throws, and still composites the frame', () => {
+    const { body, main } = createBody();
+    const { chamber } = stub({
+      paint() {
+        throw new Error('this chamber is broken');
+      },
+    });
+
+    body.resize(200, 200, 1);
+
+    expect(() => {
+      body.render(chamber, OPTICS);
+    }).toThrow(/broken/);
+
+    // And the surface is not left mid-transform for the next frame.
+    body.render(stub().chamber, OPTICS);
+    expect(main.countOf('save')).toBe(main.countOf('restore'));
+  });
+
+  // A bead is a marble over the objective, and a cell that caps the tube has no
+  // objective to put one over. The chamber answers for itself.
+  it('puts the bead over an open chamber and never over a closed one', () => {
+    const closed = createBody();
+    const open = createBody();
+
+    closed.body.resize(200, 200, 1);
+    closed.body.render(stub({ open: false }).chamber, { ...OPTICS, bead: 1 });
+
+    open.body.resize(200, 200, 1);
+    open.body.render(stub({ open: true }).chamber, { ...OPTICS, bead: 1 });
+
+    // Without a shader there is nothing to read the bead off but the fact that
+    // neither path fell over; the shader carries it as a uniform. What can be
+    // checked here is that `open` is the only thing that decides.
+    expect(closed.main.countOf('drawImage')).toBeGreaterThan(0);
+    expect(open.main.countOf('drawImage')).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Folding a finger on the figure back into the chamber.
+ *
+ * The screen shows one triangle of chamber and a field of its reflections, so
+ * a finger is almost never over the chamber itself.
+ */
+describe('probe', () => {
+  const upright: BodyOptics = { zoom: 1, angle: 0, bead: 0 };
+  // Zero on the mirror-angle slider carries a sixty-degree upright turn (see
+  // frameworkRadians), so these hold the framework at a true zero to test the
+  // scale and the bearing on their own.
+  const flat: BodyOptics = { zoom: 1, angle: -60, bead: 0 };
+
+  function sized() {
+    const harness = createBody();
+
+    harness.body.resize(1000, 1000, 1);
+
+    return harness.body;
+  }
+
+  it('maps the middle of the stage to the middle of the chamber', () => {
+    const at = sized().probe({ x: 500, y: 500 }, upright);
+
+    expect(Math.hypot(at.x, at.y)).toBeLessThan(0.01);
+  });
+
+  it('maps an offset to cell units through the triangle scale', () => {
+    const side = triangleSideFor(1000, 1000, 1);
+    const scale = side / Math.sqrt(3) / CHAMBER_RADIUS;
+    const at = sized().probe({ x: 500 + scale * 0.5, y: 500 }, flat);
+
+    expect(at.x).toBeCloseTo(0.5, 1);
+    expect(at.y).toBeCloseTo(0, 1);
+  });
+
+  it('turns with the chamber, so the stir lands where the fluid is', () => {
+    const side = triangleSideFor(1000, 1000, 1);
+    const scale = side / Math.sqrt(3) / CHAMBER_RADIUS;
+    const body = sized();
+
+    body.step(stub().chamber, {
+      dt: 1 / 20,
+      turn: 10 * Math.PI,
+      drag: { x: 0, y: 0 },
+      tilt: 0,
+      angle: -60,
+    });
+
+    const at = body.probe({ x: 500 + scale * 0.5, y: 500 }, flat);
+
+    expect(at.x).toBeCloseTo(0, 1);
+    expect(at.y).toBeCloseTo(-0.5, 1);
+  });
+
+  it('folds a finger far out on the field back into the chamber', () => {
+    // Anywhere on the stage: the point is over some reflection of the chamber,
+    // and the fold carries it home. Never outside the wall.
+    const body = sized();
+
+    for (const point of [
+      { x: 30, y: 40 },
+      { x: 950, y: 100 },
+      { x: 80, y: 900 },
+      { x: 990, y: 990 },
+    ]) {
+      const at = body.probe(point, upright);
+
+      expect(Math.hypot(at.x, at.y)).toBeLessThanOrEqual(CHAMBER_RADIUS + 1e-6);
+    }
   });
 });
 
@@ -328,11 +613,11 @@ describe('the exported tile', () => {
   });
 
   it('has nothing to cut before the first frame', async () => {
-    const { renderer } = createRenderer();
+    const { body } = createBody();
 
-    renderer.resize(200, 200, 1);
+    body.resize(200, 200, 1);
 
-    await expect(renderer.toPatternBlob()).resolves.toBeNull();
+    await expect(body.toPatternBlob()).resolves.toBeNull();
   });
 
   // On screen every hexagon is laid down at a slightly different exposure, so
@@ -340,11 +625,11 @@ describe('the exported tile', () => {
   // exactly what is wanted, and that variation is the one thing standing
   // between the field and an exact repeat.
   it('stamps every hexagon at the same exposure, unlike the screen', async () => {
-    const { renderer, main, tile } = createRenderer();
+    const { body, main, tile } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
-    await renderer.toPatternBlob();
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
+    await body.toPatternBlob();
 
     const onTile = tile.stylesOf('drawImage').map((style) => style.globalAlpha);
     const onScreen = main.stylesOf('drawImage').map((style) => style.globalAlpha);
@@ -357,11 +642,11 @@ describe('the exported tile', () => {
   // Radial, both of them: they describe looking down a tube rather than the
   // pattern, and baked in they would put a dark blot at every repeat.
   it('leaves the barrel and the mirror falloff off it', async () => {
-    const { renderer, tile } = createRenderer();
+    const { body, tile } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
-    await renderer.toPatternBlob();
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
+    await body.toPatternBlob();
 
     // The backdrop, and nothing laid over the top of the field.
     expect(tile.countOf('fillRect')).toBe(1);
@@ -372,15 +657,15 @@ describe('the exported tile', () => {
   // viewport and the slider make it, so the source is painted again at the
   // tile's size rather than scaled up from the screen's.
   it('paints the source again at its own size, and puts the surface back', async () => {
-    const { renderer, wedge, wedgeCanvas } = createRenderer();
+    const { body, wedge, wedgeCanvas } = createBody();
 
-    renderer.resize(200, 200, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
+    body.resize(200, 200, 1);
+    body.render(glass(6), OPTICS);
 
     const forScreen = wedgeCanvas.width;
     const painted = wedge.countOf('fillRect');
 
-    await renderer.toPatternBlob();
+    await body.toPatternBlob();
 
     // Painted a second time, on a surface big enough for a tile-sized triangle.
     expect(wedge.countOf('fillRect')).toBe(painted + 1);
@@ -391,21 +676,21 @@ describe('the exported tile', () => {
   // line up with the sides of a picture. How you are holding the tube is not a
   // property of the pattern.
   it('is stamped upright however the instrument is being held', async () => {
-    const { renderer, tile } = createRenderer();
+    const { body, tile } = createBody();
 
-    renderer.resize(240, 240, 1);
-    renderer.render(createScene('seed', 6), { ...DEFAULT_SETTINGS, angle: 30 });
-    await renderer.toPatternBlob();
+    body.resize(240, 240, 1);
+    body.render(glass(6), { ...OPTICS, angle: 30 });
+    await body.toPatternBlob();
 
     expect(tile.argsOf('rotate')).toEqual([[0]]);
   });
 
   it('sizes the tile to the period, whatever the viewport is', async () => {
-    const { renderer, tileCanvas } = createRenderer();
+    const { body, tileCanvas } = createBody();
 
-    renderer.resize(90, 320, 1);
-    renderer.render(createScene('seed', 6), DEFAULT_SETTINGS);
-    await renderer.toPatternBlob();
+    body.resize(90, 320, 1);
+    body.render(glass(6), OPTICS);
+    await body.toPatternBlob();
 
     expect(tileCanvas()).toMatchObject({ width: TILE.width, height: TILE.height });
   });

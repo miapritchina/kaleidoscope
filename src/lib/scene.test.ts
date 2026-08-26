@@ -240,7 +240,7 @@ describe('a cell of substance', () => {
     const before = scene.lava!.drops.map((drop) => ({ x: drop.x, y: drop.y }));
 
     for (let frame = 0; frame < 60; frame += 1) {
-      updateScene(scene, { dt: 1 / 60, turn: 0, drag: { x: 0, y: 0 } });
+      updateScene(scene, { dt: 1 / 60, turn: 0, gravity: 0 });
     }
 
     expect(
@@ -253,13 +253,11 @@ describe('a cell of substance', () => {
 });
 
 describe('updateScene', () => {
-  const drag = { x: 0, y: 0 };
-
   it('keeps every chip inside the chamber wall', () => {
     const scene = createScene('wall', 30);
 
     for (let i = 0; i < 200; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: Math.PI, drag });
+      updateScene(scene, { dt: 0.05, turn: Math.PI, gravity: 0 });
     }
 
     for (const shard of scene.shards) {
@@ -267,85 +265,10 @@ describe('updateScene', () => {
     }
   });
 
-  it('turns the cell at the given rate', () => {
-    const scene = createScene('spin', 4);
-
-    updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
-
-    expect(scene.cell).toBeCloseTo(Math.PI * 2 * 0.05, 6);
-  });
-
-  it('turns the other way for a negative rate', () => {
-    const scene = createScene('spin', 4);
-
-    updateScene(scene, { dt: 0.05, turn: -Math.PI * 2, drag });
-
-    expect(scene.cell).toBeLessThan(0);
-  });
-
-  // The chips are loose, so they trail the cell and then settle. That lag is
-  // what makes the figure evolve rather than only revolve.
-  it('lets the contents lag the cell while it turns', () => {
-    const scene = createScene('lag', 4);
-
-    updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
-
-    expect(scene.contents).toBeLessThan(scene.cell);
-    expect(scene.contents).toBeGreaterThan(0);
-  });
-
-  it('lets the contents settle once the turn stops', () => {
-    const scene = createScene('settle', 4);
-
-    updateScene(scene, { dt: 0.05, turn: Math.PI * 2, drag });
-    const lagWhileTurning = scene.cell - scene.contents;
-
-    for (let i = 0; i < 60; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag });
-    }
-
-    expect(scene.cell - scene.contents).toBeLessThan(lagWhileTurning);
-    expect(scene.contents).toBeCloseTo(scene.cell, 3);
-  });
-
-  // Left uncapped, a brisk swipe leaves the chips so far behind that they go on
-  // unwinding for seconds after the finger lifts, which reads as still turning.
-  it('caps how far the contents can trail, however fast the turn', () => {
-    const scene = createScene('cap', 4);
-
-    for (let i = 0; i < 40; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: Math.PI * 4, drag });
-    }
-
-    expect(Math.abs(scene.cell - scene.contents)).toBeLessThanOrEqual(0.3 + 1e-9);
-  });
-
-  it('settles quickly once the turn stops, even after a fast one', () => {
-    const scene = createScene('quick', 4);
-
-    for (let i = 0; i < 40; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: Math.PI * 4, drag });
-    }
-    for (let i = 0; i < 10; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag });
-    }
-
-    // Half a second after release the contents are all but caught up.
-    expect(Math.abs(scene.cell - scene.contents)).toBeLessThan(0.05);
-  });
-
-  it('never overshoots the cell on a long frame', () => {
-    const scene = createScene('overshoot', 4);
-
-    updateScene(scene, { dt: 5, turn: Math.PI * 2, drag });
-
-    expect(scene.contents).toBeLessThanOrEqual(scene.cell);
-  });
-
   it('clamps an oversized frame so a backgrounded tab cannot jump', () => {
     const scene = createScene('clamp', 4);
 
-    updateScene(scene, { dt: 30, turn: Math.PI * 2, drag });
+    updateScene(scene, { dt: 30, turn: Math.PI * 2, gravity: 0 });
 
     // Fully agitated at this rate, so elapsed advances by the whole clamped step.
     expect(scene.elapsed).toBeCloseTo(1 / 20, 6);
@@ -358,13 +281,13 @@ describe('updateScene', () => {
     // Left alone for a few seconds first: a pile that is still relaxing has not
     // finished settling yet, which is a different thing from simmering.
     for (let i = 0; i < 120; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag });
+      updateScene(scene, { dt: 0.05, turn: 0, gravity: 0 });
     }
 
     const before = scene.shards.map((shard) => ({ x: shard.x, y: shard.y }));
 
     for (let i = 0; i < 30; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag });
+      updateScene(scene, { dt: 0.05, turn: 0, gravity: 0 });
     }
 
     for (const [index, shard] of scene.shards.entries()) {
@@ -372,18 +295,23 @@ describe('updateScene', () => {
     }
   });
 
-  // Turning tips the pile, and it avalanches. That is the whole mechanism.
-  it('avalanches the pile when the cell is turned', () => {
+  // Turning tips the pile, and it avalanches. That is the whole mechanism, and
+  // in the cell's own frame it is gravity sweeping round — which is exactly
+  // what the body hands over when the chamber is turned.
+  it('avalanches the pile when gravity sweeps round it', () => {
     const scene = createScene('avalanche', 24);
 
     for (let i = 0; i < 40; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag });
+      updateScene(scene, { dt: 0.05, turn: 0, gravity: 0 });
     }
     const settled = scene.shards.map((shard) => ({ x: shard.x, y: shard.y }));
 
     // Half a turn puts the pile where the ceiling used to be.
+    let gravity = 0;
+
     for (let i = 0; i < 40; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: Math.PI / 2, drag });
+      gravity += (Math.PI / 2) * 0.05;
+      updateScene(scene, { dt: 0.05, turn: Math.PI / 2, gravity });
     }
 
     const moved = scene.shards.filter(
@@ -398,13 +326,13 @@ describe('updateScene', () => {
     const inverted = createScene('down', 24);
 
     for (let i = 0; i < 120; i += 1) {
-      updateScene(upright, { dt: 0.05, turn: 0, drag });
+      updateScene(upright, { dt: 0.05, turn: 0, gravity: 0 });
     }
 
-    // Held upside down, gravity in the cell's frame reverses.
-    inverted.cell = Math.PI;
+    // Held upside down, gravity in the cell's frame reverses. Which way that
+    // is worked out is the body's business; the cell only ever sees the angle.
     for (let i = 0; i < 120; i += 1) {
-      updateScene(inverted, { dt: 0.05, turn: 0, drag });
+      updateScene(inverted, { dt: 0.05, turn: 0, gravity: Math.PI });
     }
 
     const centre = (scene: typeof upright) =>
@@ -414,98 +342,12 @@ describe('updateScene', () => {
     expect(centre(inverted)).toBeLessThan(0);
   });
 
-  // Tipping a real one in your hand does not turn the figure: the mirrors and
-  // the chamber are both fixed in the tube. What changes is which way the
-  // pieces fall.
-  it('lets a tilt move gravity without turning anything', () => {
-    const scene = createScene('tilt', 24);
-
-    for (let i = 0; i < 160; i += 1) {
-      updateScene(scene, { dt: 0.05, turn: 0, drag, tilt: Math.PI / 2 });
-    }
-
-    // A quarter turn of tilt puts the floor along one side of the cell, so the
-    // pile gathers sideways rather than at the bottom.
-    const centreX = scene.shards.reduce((sum, shard) => sum + shard.x, 0) / scene.shards.length;
-    const centreY = scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
-
-    expect(Math.abs(centreX)).toBeGreaterThan(Math.abs(centreY));
-    // And the figure has not moved: the cell is drawn at this angle, and it is
-    // exactly where it started.
-    expect(scene.cell).toBe(0);
-    expect(scene.contents).toBe(0);
-  });
-
-  it('takes a tilt and a turn together', () => {
-    const tilted = createScene('both', 20);
-    const turned = createScene('both', 20);
-
-    // A third of a turn of tilt is the same as a third of a turn of tube, as
-    // far as the pieces are concerned — they compose into one direction for
-    // gravity. A third and not a half, because the cell is the mirror triangle
-    // and only a third of a turn brings its walls back onto themselves.
-    for (let i = 0; i < 120; i += 1) {
-      updateScene(tilted, { dt: 0.05, turn: 0, drag, tilt: (2 * Math.PI) / 3 });
-      turned.cell = (2 * Math.PI) / 3;
-      updateScene(turned, { dt: 0.05, turn: 0, drag });
-    }
-
-    for (const [index, shard] of tilted.shards.entries()) {
-      expect(
-        Math.hypot(shard.x - turned.shards[index]!.x, shard.y - turned.shards[index]!.y),
-      ).toBeLessThan(0.2);
-    }
-  });
-
-  // Holding the tube at an angle turns the figure and leaves the pieces where
-  // the floor puts them. The cell is drawn inside the framework, so unless the
-  // framework's angle comes off gravity's the pile leans with the instrument —
-  // which no real one does.
-  it('turns the framework without taking the pile with it', () => {
-    for (const framework of [0, Math.PI / 3, -Math.PI / 4, Math.PI]) {
-      const scene = createScene('framework', 24);
-
-      for (let i = 0; i < 160; i += 1) {
-        updateScene(scene, { dt: 0.05, turn: 0, drag, framework });
-      }
-
-      // Where the pile has gathered, put back through the rotation the renderer
-      // will apply to it. However the instrument is being held, the glass ends
-      // up at the bottom of the screen.
-      const x = scene.shards.reduce((sum, shard) => sum + shard.x, 0) / scene.shards.length;
-      const y = scene.shards.reduce((sum, shard) => sum + shard.y, 0) / scene.shards.length;
-      const onScreen = {
-        x: x * Math.cos(framework) - y * Math.sin(framework),
-        y: x * Math.sin(framework) + y * Math.cos(framework),
-      };
-
-      // Below the middle, by a real pile's depth. Not centred sideways: the
-      // contacts hold, so a heap keeps whatever lopsidedness it settled with
-      // rather than levelling itself off like a liquid.
-      expect(onScreen.y, `held at ${String(framework)}`).toBeGreaterThan(0.1);
-      // And the figure's own angle is not something the framework touches.
-      expect(scene.cell).toBe(0);
-    }
-  });
-
   it('ignores negative time steps', () => {
     const scene = createScene('negative', 4);
 
-    updateScene(scene, { dt: -5, turn: Math.PI * 2, drag });
+    updateScene(scene, { dt: -5, turn: Math.PI * 2, gravity: 0 });
 
     expect(scene.elapsed).toBe(0);
-    expect(scene.cell).toBe(0);
-  });
-
-  it('records the drag as a position, so the source stays where it is let go', () => {
-    const scene = createScene('pan', 4);
-
-    updateScene(scene, { dt: 0.1, turn: 0, drag: { x: 0.5, y: -0.25 } });
-    expect(scene.drag).toEqual({ x: 0.5, y: -0.25 });
-
-    // Holding still must not keep accumulating, the way a velocity would.
-    updateScene(scene, { dt: 0.1, turn: 0, drag: { x: 0.5, y: -0.25 } });
-    expect(scene.drag).toEqual({ x: 0.5, y: -0.25 });
   });
 });
 

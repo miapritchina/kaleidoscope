@@ -3,15 +3,20 @@ import { useEffect, useImperativeHandle, useMemo, useRef, useState, type RefObje
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useElementSize } from '../hooks/useElementSize';
 import { useStageGesture } from '../hooks/useStageGesture';
-import { AIR, FRESH_LIQUID, liquidCell } from '../lib/physics';
-import { createChime, readImpacts, type Chime, type Impact } from '../lib/chime';
+import { KaleidoscopeBody } from '../lib/body';
+import type { Chamber } from '../lib/chamber';
+import {
+  chamberCut,
+  createChamber,
+  isSameInstrument,
+  sameCut,
+  type ChamberCut,
+} from '../lib/chambers';
+import { createChime, type Chime } from '../lib/chime';
 import { cx } from '../lib/cx';
 import type { MediaElement } from '../lib/media';
-import { KaleidoscopeRenderer } from '../lib/body';
-import { createScene, updateScene, type SceneCut } from '../lib/scene';
 import type { Settings, SubstanceId } from '../lib/settings';
-import { heldPoint, trackStir } from '../lib/stir';
-import { frameworkRadians } from '../lib/tiling';
+import { trackStir } from '../lib/stir';
 
 import styles from './Kaleidoscope.module.css';
 
@@ -70,11 +75,15 @@ export interface KaleidoscopeProps {
 }
 
 /**
- * The canvas surface.
+ * The canvas surface: a body, a chamber, and a frame loop that turns one.
  *
- * Everything that changes per frame — the scene, the renderer, the pointer —
+ * Everything that changes per frame — the body, the chamber, the pointer —
  * lives in refs. React owns the settings; the animation loop owns the pixels.
  * Re-rendering this component never restarts the animation.
+ *
+ * Notice how little of this file knows what is in the chamber. One `useMemo`
+ * builds one, and after that it is a thing with an `update` and a `paint`. A
+ * chamber that showed a video would not add a line here.
  */
 export function Kaleidoscope({
   settings,
@@ -86,7 +95,7 @@ export function Kaleidoscope({
   ref,
 }: KaleidoscopeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<KaleidoscopeRenderer | null>(null);
+  const bodyRef = useRef<KaleidoscopeBody | null>(null);
   // A pinch sizes what is being looked at, not the tube it is looked at
   // through: the mirror triangle has a slider of its own. Read when the pinch
   // starts, so it scales from wherever it has got to rather than from whatever
@@ -110,8 +119,6 @@ export function Kaleidoscope({
   // the user gesture browsers demand before audio may start — and torn down
   // the moment it is off, so no context lingers making silence.
   const chimeRef = useRef<Chime | null>(null);
-  const heardRef = useRef<{ velocities: Float32Array }>({ velocities: new Float32Array(0) });
-  const impactsRef = useRef<Impact[]>([]);
   useEffect(() => {
     if (!settings.sound) {
       return;
@@ -125,68 +132,46 @@ export function Kaleidoscope({
     };
   }, [settings.sound]);
 
-  // A new seed, count or piece size means a genuinely different scene; anything
-  // else is applied to the running simulation without resetting it. Size counts
-  // because it is geometry: bigger pieces displace their neighbours and settle
-  // into a different pile, which cannot be done by scaling what is already
-  // there.
+  // Every input the chamber reads live rather than being rebuilt for, in one
+  // box behind one ref, so that a new photograph, a loaded object set or a
+  // moved slider costs nothing. A chamber outlives all of them, and holding
+  // them together is what lets it be built from `cut` alone.
   //
-  // What the glass is suspended in. Six numbers, rebuilt whenever the slider
-  // moves; the running simulation takes the new one on the very next frame, so
-  // the fluid thickens under a pile that is already drifting.
-  const liquid = settings.source === 'liquid';
-  const medium = useMemo(
-    () => (liquid ? liquidCell(settings.thickness) : AIR),
-    [liquid, settings.thickness],
-  );
-
-  // How the glass is cut, which waits for the hand to stop. Building a scene
-  // settles the pile, which takes an appreciable slice of a second at a full
-  // chamber — and a pinch changes the size on every pointer move, so rebuilding
-  // on each one froze the whole app mid-gesture, on every tab, whether or not
-  // the chamber was even on screen. A photo and the camera read the live value;
-  // only the glass is worth recutting, once, when the hand has come to rest.
-  // The variety waits the same way and for the same reason: both of them say
-  // what size each piece is cut to, which is geometry and not drawing.
-  //
-  // The fluid in here is the *kind* of cell and not the thickness — one of two
-  // fixed objects, compared by identity — because what a fresh cell is settled
-  // against is a dry cell or a wet one, and nothing finer. See FRESH_LIQUID.
-  const fill = liquid ? FRESH_LIQUID : AIR;
-  const wanted: SceneCut = {
-    scale: settings.sourceScale,
-    variety: settings.variety,
-    medium: fill,
-    holds: liquid ? 'substance' : 'glass',
-    substance: settings.substance,
-    amount: settings.amount,
-  };
-  const [cut, setCut] = useState<SceneCut>(wanted);
+  // A plain box rather than a ref, deliberately: a ref is for something React
+  // is expected to leave alone between renders, and this is a letterbox the
+  // frame loop reads out of. Kept stable by the state initialiser and written
+  // to in an effect, so nothing is mutated while rendering.
+  const [live] = useState(() => ({ settings, media, skins, tiltRef }));
   useEffect(() => {
-    const settled =
-      cut.scale === wanted.scale &&
-      cut.variety === wanted.variety &&
-      cut.medium === wanted.medium &&
-      cut.holds === wanted.holds &&
-      cut.substance === wanted.substance &&
-      cut.amount === wanted.amount;
+    Object.assign(live, { settings, media, skins, tiltRef });
+  }, [live, settings, media, skins, tiltRef]);
 
-    if (settled) {
+  // A new seed, count, substance or piece size means a genuinely different
+  // chamber; anything else is applied to the running one without resetting it.
+  // Size counts because it is geometry: bigger pieces displace their
+  // neighbours and settle into a different pile, which cannot be done by
+  // scaling what is already there.
+  //
+  // Rebuilding waits for the hand to stop. Building a chamber settles a pile
+  // of a hundred and fifty pieces, which takes an appreciable slice of a
+  // second — and a pinch changes the size on every pointer move, so rebuilding
+  // on each one froze the whole app mid-gesture, on every tab, whether or not
+  // the glass was even on screen.
+  const wanted = chamberCut(settings);
+  const [cut, setCut] = useState<ChamberCut>(wanted);
+  useEffect(() => {
+    if (sameCut(cut, wanted)) {
       return;
     }
 
     // Switching tabs or substances is not a drag and does not wait: it should
     // hand back the other instrument at once. Only the sliders are held back,
     // because a hand on one of those asks for a rebuild on every pointer move.
-    const dragged =
-      cut.holds === wanted.holds &&
-      cut.medium === wanted.medium &&
-      cut.substance === wanted.substance;
     const timer = window.setTimeout(
       () => {
         setCut(wanted);
       },
-      dragged ? RECUT_DELAY_MS : 0,
+      isSameInstrument(cut, wanted) ? RECUT_DELAY_MS : 0,
     );
 
     return () => {
@@ -196,26 +181,35 @@ export function Kaleidoscope({
     // fresh object every render; its fields are the dependencies.
   }, [
     cut,
+    wanted.source,
+    wanted.seed,
+    wanted.shards,
     wanted.scale,
     wanted.variety,
-    wanted.medium,
-    wanted.holds,
     wanted.substance,
     wanted.amount,
   ]);
 
-  const scene = useMemo(
-    () => createScene(settings.seed, settings.shards, cut),
-    [settings.seed, settings.shards, cut],
+  // Whatever is in the far end of the tube. The one line in this component
+  // that knows there is more than one kind — and it does not know which.
+  const chamber: Chamber = useMemo(
+    () =>
+      createChamber(cut, {
+        settings: () => live.settings,
+        media: () => live.media,
+        skins: () => live.skins ?? [],
+        tilt: () => live.tiltRef?.current ?? 0,
+      }),
+    [cut, live],
   );
 
   useImperativeHandle(
     ref,
     () => ({
-      capture: () => rendererRef.current?.toDataUrl() ?? null,
+      capture: () => bodyRef.current?.toDataUrl() ?? null,
       // The tile is a period of the figure, so its size is the geometry's to
       // decide rather than the settings'.
-      capturePattern: async () => (await rendererRef.current?.toPatternBlob()) ?? null,
+      capturePattern: async () => (await bodyRef.current?.toPatternBlob()) ?? null,
     }),
     [],
   );
@@ -228,101 +222,86 @@ export function Kaleidoscope({
     }
 
     try {
-      rendererRef.current = new KaleidoscopeRenderer(canvas);
+      bodyRef.current = new KaleidoscopeBody(canvas);
     } catch (error) {
-      console.error('Unable to start the kaleidoscope renderer', error);
-      rendererRef.current = null;
+      console.error('Unable to start the kaleidoscope body', error);
+      bodyRef.current = null;
     }
 
     return () => {
-      rendererRef.current = null;
+      bodyRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const renderer = rendererRef.current;
+    const body = bodyRef.current;
 
-    if (!renderer || size.width === 0 || size.height === 0) {
+    if (!body || size.width === 0 || size.height === 0) {
       return;
     }
 
-    renderer.resize(size.width, size.height, window.devicePixelRatio);
+    body.resize(size.width, size.height, window.devicePixelRatio);
     // Repaint on any of these even while paused, so a newly picked photo or a
     // changed setting shows up without needing the animation to be running.
-    renderer.render(scene, settings, media, skins);
-  }, [size.width, size.height, scene, settings, media, skins]);
+    body.render(chamber, settings);
+  }, [size.width, size.height, chamber, settings, media, skins]);
 
   useAnimationFrame(
     (deltaSeconds) => {
-      const renderer = rendererRef.current;
+      const body = bodyRef.current;
 
-      if (!renderer) {
+      if (!body) {
         return;
       }
 
       // Paused freezes the simulation, not the interaction: a zero step still
-      // takes the new drag position and repaints, so the source can be moved
-      // around while the animation is stopped.
-      // `updateScene` clamps the step, so a long frame cannot teleport the field.
-      // A finger held still fires no move events, so the rate has to be expired
-      // here rather than waiting for one — and a flick coasts down here too.
+      // takes the new drag position and repaints, so the contents can be moved
+      // around while the animation is stopped. A finger held still fires no
+      // move events, so the rate has to be expired here rather than waiting
+      // for one — and a flick coasts down here too.
       gesture.settle(deltaSeconds);
 
-      // A finger on a cell of substance stirs it. The point is folded fresh
-      // every frame, and tracked in the framework's frame rather than the
-      // cell's: the cell turns under a held finger, and a finger that has not
-      // moved has not stirred anything. See `lib/stir.ts`.
-      let stir = null;
+      // A finger on the figure stirs whatever is in the chamber. The point is
+      // folded fresh every frame, and tracked in the body's frame rather than
+      // the chamber's: the chamber turns under a held finger, and a finger
+      // that has not moved has not stirred anything. The body does the
+      // folding — it owns the mirrors that make it necessary — and hands over
+      // its bearing so the reading can be carried across at the end. See
+      // `lib/stir.ts`.
+      let touch = null;
 
-      if (liquid && stagePointerRef.current && gesture.mode === 'turn') {
-        const held = heldPoint(stagePointerRef.current, {
-          width: size.width,
-          height: size.height,
-          zoom: settings.zoom,
-          angleDegrees: settings.angle,
-          cell: scene.cell,
-          drag: scene.drag,
-        });
+      if (stagePointerRef.current && gesture.mode === 'turn') {
+        const held = body.probe(stagePointerRef.current, settings);
 
-        stir = trackStir(stirTrackerRef.current, held, scene.cell, deltaSeconds);
+        touch = trackStir(stirTrackerRef.current, held, body.bearing, deltaSeconds);
       } else {
         stirTrackerRef.current.last = null;
       }
 
-      updateScene(scene, {
+      body.step(chamber, {
         dt: paused ? 0 : deltaSeconds,
         turn: gesture.turnRef.current,
         drag: gesture.panRef.current,
         tilt: tiltRef?.current ?? 0,
-        medium,
-        stir,
-        // The one thing a cell of substance takes live: how much its fluid
-        // resists whatever is moving through it. Which substance and how much
-        // of it are geometry, and wait with the rest of the cut.
-        thickness: settings.thickness,
-        // The cell is drawn inside the framework, so the framework's angle has
-        // to come off gravity's or the pile would lean with the instrument.
-        // Derived by the same function the renderer uses, upright offset and
-        // all — computed separately the pile leans by the difference.
-        framework: frameworkRadians(settings.angle),
+        angle: settings.angle,
+        touch,
       });
-      // What the frame sounded like: the glass's collisions, read off the
-      // solver's own velocity changes, and the fluid's swirl as a wash.
+
+      // What the frame sounded like, asked of the chamber rather than read out
+      // of it: only the chamber knows whether it holds anything that can knock.
       const chime = chimeRef.current;
 
       if (chime && !paused) {
-        readImpacts(scene.shards, heardRef.current, impactsRef.current);
+        const sound = chamber.listen?.() ?? { impacts: [], wash: 0 };
 
-        for (const impact of impactsRef.current) {
+        for (const impact of sound.impacts) {
           chime.clink(impact.strength, impact.size);
         }
 
-        chime.wash(
-          scene.substance ? Math.min(1, Math.abs(scene.flow - gesture.turnRef.current) / 2) : 0,
-        );
+        chime.wash(sound.wash);
       }
 
-      renderer.render(scene, settings, media, skins);
+      body.render(chamber, settings);
     },
     !paused || gesture.mode !== null || tiltRef !== undefined,
   );

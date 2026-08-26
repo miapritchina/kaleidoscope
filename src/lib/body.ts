@@ -1,30 +1,15 @@
-import { createChipSprites, type ChipSprites } from './chips';
-import { Compositor } from './compositor';
-import { drawMedia, isMediaReady, type MediaElement } from './media';
-import { CHAMBER_RADIUS } from './chamber';
+import {
+  CHAMBER_DRAG,
+  CHAMBER_RADIUS,
+  MAX_STEP_SECONDS,
+  type Chamber,
+  type ChamberTouch,
+  type ChamberView,
+} from './chamber';
 import { GROUND, rgbToCss } from './color';
-import { paintDrops } from './drops';
-import { createFlakeSprites, drawGlitter, type FlakeSprites } from './glitter';
-import { paintFilm } from './film';
-import { paintInk } from './ink';
-import { paintLava } from './lava';
-import {
-  applyCutShape,
-  DRAG_CELLS,
-  drawChamber,
-  SKIN_PATCH,
-  type Glass,
-  type Scene,
-} from './scene';
-import { paintSmoke } from './smoke';
-import { createSkinPatches, measureSource, type SkinPatches } from './skin';
-import {
-  isChamberSource,
-  isGlassSource,
-  LIMITS,
-  type Settings,
-  type SubstanceId,
-} from './settings';
+import { Compositor } from './compositor';
+import { foldIntoTriangle } from './fold';
+import { LIMITS } from './settings';
 import {
   coverWithHexagons,
   frameworkRadians,
@@ -32,26 +17,81 @@ import {
   traceHexagon,
   traceTriangle,
   triangleCentre,
+  type Vector,
 } from './tiling';
 
-/** Which source last painted the wedge, so a switch can clear it. */
-type WedgeMode = 'chamber' | 'media' | 'empty';
+/**
+ * The body of the instrument: three mirrors, a barrel, and an eyehole.
+ *
+ * Nothing in this file knows what is in the chamber. It knows there is one,
+ * that it is round, that it is {@link CHAMBER_RADIUS} across, and that asking
+ * it to paint itself produces a picture — and that is the whole of the
+ * acquaintance. Glass, oil, a photograph, a video: the arithmetic below does
+ * not branch on any of it, which is what makes the figure something that can
+ * be got right once. See `lib/chamber.ts` for the bargain the two sides keep.
+ */
 
 /**
- * Everything the wedge is painted from.
+ * What the figure was last painted from.
  *
- * Kept after a frame so the same source can be painted again at a different
+ * Kept after a frame so the same thing can be painted again at a different
  * size — which is what an exported tile needs, since its size is fixed and the
  * triangle on screen is whatever the viewport and the slider make it.
  */
 interface WedgeSource {
-  scene: Scene;
-  settings: Settings;
-  sprites: ChipSprites;
-  mode: WedgeMode;
-  media: MediaElement | null;
-  /** The sets of glass loaded into the chamber, each scored once. */
-  glasses: readonly Glass[];
+  chamber: Chamber;
+  optics: BodyOptics;
+}
+
+/**
+ * The settings the body reads. Everything here is about the tube.
+ *
+ * Deliberately not `Settings`: what is in the chamber, how big its pieces are
+ * and how thick its fluid is are none of the body's business, and a body that
+ * took the whole object would drift back into reading them. An app-wide
+ * `Settings` satisfies this by having the four fields, so nothing at the call
+ * site has to be taken apart.
+ */
+export interface BodyOptics {
+  /** How large the mirror triangle is, as a multiplier. */
+  zoom: number;
+  /** How far the mirror framework is set, in degrees. */
+  angle: number;
+  /** How much glass bead is over the open end, 0 to 1. */
+  bead: number;
+  /** Whether to draw the mirrors and gravity over the top. */
+  debug?: boolean;
+}
+
+/** What one frame does to the instrument. */
+export interface BodyStep {
+  /** Seconds since the previous frame. Clamped here, once, for everyone. */
+  dt: number;
+  /**
+   * How fast the chamber is being turned in its bearing, in radians per second.
+   *
+   * The chamber alone. Plenty of real kaleidoscopes are built this way: the
+   * mirrors are fixed in the barrel and the chamber of glass turns against
+   * them on its own bearing. Turning the whole tiling as the chamber turns
+   * instead sweeps the figure around the screen, which reads as a picture
+   * being spun and drowns the thing worth watching.
+   */
+  turn: number;
+  /** Where the viewer has dragged the contents, each axis in `[-1, 1]`. */
+  drag: { x: number; y: number };
+  /**
+   * How far the instrument itself is tilted, in radians.
+   *
+   * This moves gravity, not the figure. The mirrors and the chamber are both
+   * fixed in the tube and the tube is the phone, so tilting it turns nothing on
+   * screen — what changes is which way the contents fall, exactly as it does
+   * when you tip a real one in your hand.
+   */
+  tilt: number;
+  /** How far the mirror framework is set, in degrees. */
+  angle: number;
+  /** A finger in the chamber, already folded there by {@link KaleidoscopeBody.probe}. */
+  touch?: ChamberTouch | null;
 }
 
 /**
@@ -125,16 +165,6 @@ const VIGNETTE_CLEAR = 0.16;
  */
 const RIM_DISPERSION = 1.4;
 
-/**
- * How far the room's light tips away from straight ahead.
- *
- * A phone lying flat under a ceiling light is looking straight up it; held over
- * at an angle, the light arrives across the glass. This is how much of that
- * travel a full tip is worth, and it is what turns a tilt into a wave of
- * flashes rather than a uniform brightening.
- */
-const LIGHT_THROW = 0.55;
-
 /** How dark the barrel is at the very corner of the view. */
 const VIGNETTE_DEPTH = 0.62;
 
@@ -206,7 +236,7 @@ export function triangleSideFor(width: number, height: number, zoom: number): nu
  * {@link KaleidoscopeRenderer.resize} and never scaled by the DPR, which avoids
  * compounding transforms.
  */
-export class KaleidoscopeRenderer {
+export class KaleidoscopeBody {
   readonly #canvas: HTMLCanvasElement;
   readonly #ctx: CanvasRenderingContext2D;
   readonly #wedge: HTMLCanvasElement;
@@ -221,34 +251,33 @@ export class KaleidoscopeRenderer {
   #falloff: CanvasGradient | null = null;
   #falloffSide = 0;
   #vignetteCache: CanvasGradient | null = null;
-  #sprites: ChipSprites | null = null;
-  #flakes: FlakeSprites | null = null;
 
   readonly #createCanvas: () => HTMLCanvasElement;
   #tile: HTMLCanvasElement | null = null;
   #source: WedgeSource | null = null;
 
-  // One score per picture, kept until the picture itself changes. Keyed by the
-  // element so several sets can be scored at once and each is only worked once,
-  // however the chosen mix is toggled about.
-  readonly #patchCache = new Map<
-    CanvasImageSource,
-    { patches: SkinPatches | null; stamp: string }
-  >();
+  /**
+   * How the instrument is being held: the pose, and nothing about the picture.
+   *
+   * The bearing is the body's rather than the chamber's because the bearing is
+   * part of the tube — a chamber dropped into a different instrument does not
+   * bring its own idea of how far it has been turned. The drag and the tilt are
+   * here for the same reason, and because the debug arrow and the fold both
+   * want them.
+   */
+  #bearing = 0;
+  #drag = { x: 0, y: 0 };
+  #tilt = 0;
 
   /**
    * The shader, where there is one.
    *
-   * Built on the first frame rather than in the constructor: a renderer is
+   * Built on the first frame rather than in the constructor: a body is
    * made before it has a size, and asking for a WebGL context costs a real
    * allocation on the GPU that a test which never draws should not pay.
    */
   #shader: Compositor | null = null;
   #shaderTried = false;
-
-  /** Which glass and which scene the pieces were last sized against. */
-  #girthGlasses: readonly Glass[] = [];
-  #girthOn: Scene | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -314,107 +343,114 @@ export class KaleidoscopeRenderer {
   }
 
   /**
-   * Draws one frame. Call after {@link resize} and after advancing the scene.
+   * Advances the instrument by one frame, and the chamber with it.
    *
-   * @param media Photo or camera element to mirror instead of the shard field.
-   *   Ignored unless `settings.source` selects it, and skipped until it has
-   *   pixels — a source that is chosen but not ready renders as the backdrop.
-   * @param skins The chosen object sets' pictures, which the pieces are cut out
-   *   of and shared across — see `lib/skin.ts`. Any that are not loaded yet are
-   *   left out of the mix; none loaded, the chamber comes up empty. Separate
-   *   from `media`, which the mirrors repeat: the two are independent, so the
-   *   objects can come out of one picture while the mirrors repeat another.
+   * Separate from {@link render} because the two happen at different rates: a
+   * paused instrument is still repainted when a slider moves, and a settings
+   * change should show up without the animation running.
+   *
+   * The one piece of arithmetic here that matters is gravity. Three things
+   * move it and all three compose: turning the chamber sweeps gravity around
+   * it, setting the mirrors over takes it back off again — the chamber is
+   * drawn *inside* the framework, so the framework's angle has to come off
+   * gravity's or the pile would lean with the instrument — and tipping the
+   * phone moves it once more without turning anything on screen. What comes
+   * out is one angle in the chamber's own frame, which is the only form the
+   * chamber ever sees.
    */
-  render(
-    scene: Scene,
-    settings: Settings,
-    media?: MediaElement | null,
-    skins?: readonly MediaElement[] | null,
-  ): void {
+  step(chamber: Chamber, { dt, turn, drag, tilt, angle, touch = null }: BodyStep): void {
+    // Clamped here, once, so that no chamber has to defend itself against a
+    // tab that has been in the background for a minute.
+    const seconds = Math.min(Math.max(dt, 0), MAX_STEP_SECONDS);
+
+    this.#bearing += turn * seconds;
+    this.#drag = { x: drag.x, y: drag.y };
+    this.#tilt = tilt;
+
+    chamber.update({
+      dt: seconds,
+      gravity: this.#bearing + frameworkRadians(angle) + tilt,
+      turn,
+      touch,
+    });
+  }
+
+  /** How far the chamber has been turned in its bearing, in radians. */
+  get bearing(): number {
+    return this.#bearing;
+  }
+
+  /**
+   * Where a point on the stage lands, in the body's own frame and cell units.
+   *
+   * The screen shows one triangle of chamber and a field of its reflections, so
+   * a finger is almost never over the chamber itself — it is over some mirror
+   * image of it. The fold knows which, and this is the body's own placement run
+   * backwards through it: the same triangle, the same centring, the same
+   * framework rotation, the same drag.
+   *
+   * It stops one step short of the chamber's own frame, deliberately. The
+   * bearing is not applied, because a finger is in the room rather than in the
+   * tube: the chamber turns under a held finger, and a point read after the
+   * bearing has been divided out moves when the finger has not. Differencing
+   * such points measures the tube turning as well as the hand moving. So the
+   * frames are kept apart until the reading is done — `trackStir` in
+   * `lib/stir.ts` differences here and carries only the answer across, with
+   * {@link KaleidoscopeBody.bearing} for the crossing.
+   *
+   * The rest lives here because every step of it is the body's. A chamber that
+   * wants to be stirred takes the answer and never learns there were mirrors.
+   */
+  probe(point: Vector, optics: BodyOptics): Vector {
+    const side = this.#sideAtZoom(optics.zoom);
+    const framework = frameworkRadians(optics.angle);
+
+    // Undo the view's placement: centre, then the framework's rotation, then
+    // the offset that put the source triangle's centre in the middle.
+    const dx = point.x - this.#width / 2;
+    const dy = point.y - this.#height / 2;
+    const cos = Math.cos(-framework);
+    const sin = Math.sin(-framework);
+    const centre = triangleCentre(side);
+    const folded = foldIntoTriangle(
+      { x: dx * cos - dy * sin + centre.x, y: dx * sin + dy * cos + centre.y },
+      side,
+    ).point;
+
+    // Out of the triangle and into the chamber's own units, undoing exactly
+    // what #paintWedge and #chamberView do on the way in — bar the bearing.
+    const scale = this.#cellScale(side);
+    const pan = this.#chamberPan();
+
+    return {
+      x: (folded.x - centre.x) / scale - pan.x,
+      y: (folded.y - centre.y) / scale - pan.y,
+    };
+  }
+
+  /**
+   * Draws one frame. Call after {@link resize}.
+   *
+   * @param chamber Whatever is in the far end of the tube. Asked to paint
+   *   itself once, into one triangle; everything on screen after that is that
+   *   triangle and its reflections.
+   * @param optics How the tube itself is set. See {@link BodyOptics}.
+   */
+  render(chamber: Chamber, optics: BodyOptics): void {
     if (this.#width === 0 || this.#height === 0) {
       return;
     }
 
-    const triangle = this.#triangleSide(settings);
-
-    // Shapes and lighting only, and neither depends on a setting, so they are
-    // built once and kept.
-    this.#sprites ??= createChipSprites();
-    this.#flakes ??= createFlakeSprites();
-    const sprites = this.#sprites;
-
-    const chamber = isChamberSource(settings.source);
-    const frame = chamber ? null : media;
-    const mode: WedgeMode = chamber ? 'chamber' : isMediaReady(frame) ? 'media' : 'empty';
-
-    // Every chosen set that has pixels yet, scored once each and kept — see
-    // #patchesOf. A set still loading is simply not in the mix until it lands,
-    // and none loaded leaves the chamber empty rather than full of shapes
-    // nobody chose.
-    const glasses: Glass[] = (skins ?? [])
-      .filter((item): item is MediaElement => isMediaReady(item))
-      .map((skin) => ({ skin, patches: this.#patchesOf(skin) }));
-
-    // What each piece is cut to is what it should collide on, and that is
-    // settled by the glass rather than by the frame. Applied here because
-    // this is where the two meet: the scene knows nothing about pictures and
-    // the pictures know nothing about the scene.
-    if (
-      isGlassSource(settings.source) &&
-      (this.#girthOn !== scene || !sameGlasses(this.#girthGlasses, glasses))
-    ) {
-      this.#girthGlasses = glasses;
-      this.#girthOn = scene;
-      applyCutShape(scene.shards, glasses);
-    }
-
-    const source: WedgeSource = {
-      scene,
-      settings,
-      sprites,
-      mode,
-      media: frame ?? null,
-      glasses,
-    };
-
-    const framework = frameworkRadians(settings.angle);
+    const triangle = this.#sideAtZoom(optics.zoom);
+    const source: WedgeSource = { chamber, optics };
 
     this.#source = source;
     this.#paintWedge(source, triangle);
-    this.#compositeTiling(triangle, framework, settings);
+    this.#compositeTiling(triangle, frameworkRadians(optics.angle), optics);
 
-    if (settings.debug) {
-      this.#drawDebug(triangle, scene.tilt, framework);
+    if (optics.debug) {
+      this.#drawDebug(triangle, this.#tilt, frameworkRadians(optics.angle));
     }
-  }
-
-  /**
-   * Where in the skin each piece is cut from, scored once per picture.
-   *
-   * Kept until the picture itself changes. A camera frame changes every frame
-   * and is not rescored for each one: reading a canvas back is a pipeline stall,
-   * and a live feed is interesting all over anyway — the scoring is there for a
-   * still of a subject on a plain backdrop, which is what a picked photo
-   * usually is.
-   */
-  #patchesOf(skin: CanvasImageSource): SkinPatches | null {
-    const size = measureSource(skin);
-    const stamp = `${String(size.width)}x${String(size.height)}`;
-    const cached = this.#patchCache.get(skin);
-
-    if (cached?.stamp === stamp) {
-      return cached.patches;
-    }
-
-    const patches = createSkinPatches(skin, { patch: SKIN_PATCH });
-    this.#patchCache.set(skin, { patches, stamp });
-
-    return patches;
-  }
-
-  /** Side of the mirror triangle in device pixels. */
-  #triangleSide(settings: Settings): number {
-    return this.#sideAtZoom(settings.zoom);
   }
 
   /** The largest side the zoom slider can reach, for sizing the surfaces. */
@@ -518,217 +554,96 @@ export class KaleidoscopeRenderer {
     }
   }
 
-  /** Paints the chosen source into the offscreen wedge surface. */
+  /**
+   * Puts the chamber where the mirrors can see it, and asks it to paint.
+   *
+   * This is the whole of the body's side of the bargain, and it is four steps:
+   *
+   * 1. Cover the surface — all of it — with whatever the chamber says it is
+   *    lit against. Not just the triangle: the bead samples outside the
+   *    triangle's own reach, and anything it finds unpainted comes back as
+   *    transparent black, which showed up as holes punched through the figure.
+   *    Painting the whole surface costs nothing and has no such edge.
+   * 2. Move to the middle of the cell, which is the middle of the triangle.
+   *    The mirror triangle is inscribed in the chamber, the way a real tube's
+   *    mirrors span the round cell at the end of it. Hanging the cell off the
+   *    corner the six triangles are assembled around instead leaves most of it
+   *    outside the view, and turning sweeps the contents clean out of it.
+   * 3. Hand over a scale, a bearing and a drag, and let the chamber paint.
+   * 4. Put the context back, whatever the chamber did to it.
+   *
+   * Nothing here asks what is in the chamber, and there is nowhere it could:
+   * the only thing that varies between one chamber and the next is a colour
+   * and a callback.
+   */
   #paintWedge(source: WedgeSource, triangleSide: number): void {
-    const { scene, settings, sprites, mode, media, glasses } = source;
+    const { chamber } = source;
     const ctx = this.#wedgeCtx;
-    const reach = Math.ceil(triangleSide);
 
     // Painted from scratch every frame. It cannot be built up by fading what is
-    // already there and drawing over it: the pieces composite with `multiply`
-    // and `lighter`, neither of which is idempotent, so a still pile stamped
-    // over its own remains walks away from a single pass of it.
+    // already there and drawing over it: a chamber may composite with
+    // `multiply` and `lighter`, neither of which is idempotent, so a still pile
+    // stamped over its own remains walks away from a single pass of it.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    // What the cell is lit against. White for anything a dye or a coloured
-    // liquid is seen through, because that is what makes them read as
-    // transmitted colour rather than as paint; dark for glitter, because a
-    // flake cannot be brighter than a lit white page and its whole business is
-    // being brighter than what is behind it.
-    ctx.fillStyle = mode === 'chamber' ? groundFor(scene.substance) : GROUND;
-    // The whole surface, not just the part this triangle uses. The bead samples
-    // outside the triangle's own reach, and anything it finds unpainted comes
-    // back as transparent black — which showed up as holes punched through the
-    // figure. Painting the surface costs nothing and has no such edge.
+    ctx.filter = 'none';
+    ctx.fillStyle = chamber.ground;
     ctx.fillRect(0, 0, this.#wedge.width, this.#wedge.height);
 
     const apex = wedgeApex(triangleSide);
+    const centre = triangleCentre(triangleSide);
 
-    if (mode === 'media' && media) {
-      ctx.save();
-      // drawMedia centres on the apex, which sits inside the margin.
-      ctx.translate(apex.x, apex.y);
-      drawMedia(ctx, media, {
-        size: reach,
-        // The source's own magnification, not the tube's: the mirror triangle
-        // is sized separately, and conflating the two meant a wider tube also
-        // enlarged the picture inside it.
-        zoom: settings.sourceScale,
-        // A photo has no physics of its own, so it simply turns with the cell,
-        // a little behind it.
-        rotation: scene.contents,
-        pan: scene.drag,
-      });
+    ctx.save();
+    ctx.translate(apex.x + centre.x, apex.y + centre.y);
+
+    try {
+      chamber.paint(ctx, this.#chamberView(triangleSide));
+    } finally {
+      // Balanced whatever the chamber did — a chamber that throws, or that
+      // leaves a save of its own dangling, must not be able to leave the next
+      // frame drawing through its transform.
       ctx.restore();
-    } else if (mode === 'chamber') {
-      ctx.save();
-      ctx.translate(apex.x, apex.y);
-      // The mirror triangle is inscribed in the object cell, the way a real
-      // tube's mirrors span the round chamber at the end of it. Hanging the cell
-      // off the corner the six triangles are assembled around instead leaves
-      // most of the simulation outside the view, and turning sweeps the pile
-      // clean out of it.
-      ctx.translate(reach / 2, (reach * Math.sqrt(3)) / 6);
-
-      // The triangle's circumradius: the cell reaches all three corners and no
-      // further, so everything that is simulated has a chance of being seen.
-      const cellScale = reach / Math.sqrt(3) / CHAMBER_RADIUS;
-      const pan = { x: scene.drag.x * DRAG_CELLS, y: scene.drag.y * DRAG_CELLS };
-
-      if (scene.substance) {
-        this.#paintSubstance(ctx, scene, cellScale, pan);
-        ctx.restore();
-
-        return;
-      }
-
-      drawChamber(ctx, scene, {
-        scale: cellScale,
-        // A pinch in progress, seen live: the glass is only recut once the
-        // size rests, so until then the sprites run ahead of the cut by the
-        // gap between the live setting and the scale the scene was cut at.
-        magnify: Math.max(0.05, settings.sourceScale) / scene.chipScale,
-        // The cell turns inside the fixed mirrors. What the glass does within it
-        // is the physics' business, not this rotation's.
-        rotation: scene.cell,
-        pan,
-        sprites,
-        glasses,
-      });
-
-      ctx.restore();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.filter = 'none';
     }
   }
 
   /**
-   * Paints whichever substance the cell is filled with.
+   * How the chamber is placed for a triangle of this size.
    *
-   * All four are drawn in the cell's own frame — turned with the tube and
-   * moved with the drag — because all three are things in the chamber rather
-   * than effects on the picture, and the mirrors are meant to fold them exactly
-   * as they fold a piece of glass.
+   * The scale is the one number that ties the two parts together: the cell's
+   * radius maps onto the triangle's circumradius, so the cell reaches all three
+   * corners and no further. Everything simulated has a chance of being seen,
+   * and nothing is simulated that never could be.
    */
-  #paintSubstance(
-    ctx: CanvasRenderingContext2D,
-    scene: Scene,
-    cellScale: number,
-    pan: { x: number; y: number },
-  ): void {
-    const across = CHAMBER_RADIUS * cellScale;
+  #chamberView(side: number): ChamberView {
+    const scale = this.#cellScale(side);
 
-    if (scene.lava) {
-      const painted = paintLava(scene.lava);
+    return {
+      scale,
+      rotation: this.#bearing,
+      pan: this.#chamberPan(),
+      drag: { x: this.#drag.x, y: this.#drag.y },
+      // A little past the wall, so the seam bleed lands on the chamber's own
+      // picture rather than on bare ground behind it.
+      reach: CHAMBER_RADIUS + (scale > 0 ? SEAM_BLEED / scale : 0),
+      // Where the room's light is, seen from a phone being held at this tilt.
+      // The light stays where it is and the instrument turns under it.
+      light: { x: Math.sin(this.#tilt), y: Math.cos(this.#tilt), z: 1 },
+    };
+  }
 
-      if (painted) {
-        ctx.save();
-        ctx.translate(pan.x * cellScale, pan.y * cellScale);
-        ctx.rotate(scene.cell);
-        ctx.imageSmoothingEnabled = true;
-        // Laid on rather than multiplied: the wax is a body of colour with a
-        // surface, and what is behind it does not come through.
-        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
-        ctx.restore();
-      }
+  /** Cell units to device pixels, for a triangle of this size. */
+  #cellScale(side: number): number {
+    return side / Math.sqrt(3) / CHAMBER_RADIUS;
+  }
 
-      return;
-    }
-
-    if (scene.drops) {
-      const painted = paintDrops(scene.drops);
-
-      if (painted) {
-        ctx.save();
-        ctx.translate(pan.x * cellScale, pan.y * cellScale);
-        ctx.rotate(scene.cell);
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.imageSmoothingEnabled = true;
-        // Two transparent liquids, one behind the other: what the beads come
-        // out as is the pair multiplied rather than a colour chosen anywhere,
-        // which is the whole trick these toys are sold on.
-        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
-        ctx.restore();
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      return;
-    }
-
-    if (scene.smoke) {
-      const painted = paintSmoke(scene.smoke);
-
-      if (painted) {
-        ctx.save();
-        ctx.translate(pan.x * cellScale, pan.y * cellScale);
-        ctx.rotate(scene.cell);
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.imageSmoothingEnabled = true;
-        // Taken out of the light rather than added to it, which is what a dye
-        // does: it does not paint the cell, it decides what gets through it.
-        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
-        ctx.restore();
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      return;
-    }
-
-    if (scene.ink) {
-      const painted = paintInk(scene.ink);
-
-      if (painted) {
-        ctx.save();
-        ctx.translate(pan.x * cellScale, pan.y * cellScale);
-        ctx.rotate(scene.cell);
-        ctx.globalCompositeOperation = 'multiply';
-        ctx.imageSmoothingEnabled = true;
-        // Multiplied, which is both what paint does to the light coming
-        // through it and what makes the chamber's white ground the paper the
-        // Kubelka-Munk layer was solved over.
-        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
-        ctx.restore();
-        ctx.globalCompositeOperation = 'source-over';
-      }
-
-      return;
-    }
-
-    if (scene.film) {
-      const painted = paintFilm(scene.film);
-
-      if (painted) {
-        ctx.save();
-        ctx.translate(pan.x * cellScale, pan.y * cellScale);
-        ctx.rotate(scene.cell);
-        ctx.imageSmoothingEnabled = true;
-        // Laid on over the dark ground: these colours are reflections, and a
-        // reflection is only as visible as the ground is dark. Where the film
-        // runs out its alpha does too, and the fluid shows through.
-        ctx.drawImage(painted, -across, -across, across * 2, across * 2);
-        ctx.restore();
-      }
-
-      return;
-    }
-
-    if (scene.flakes) {
-      this.#flakes ??= createFlakeSprites();
-      drawGlitter(ctx, scene.flakes, {
-        scale: cellScale,
-        rotation: scene.cell,
-        pan,
-        // Where the room's light is, seen from a phone being held at the
-        // scene's tilt. The light stays where it is and the instrument turns
-        // under it, which is why the flakes fire in waves as the phone moves
-        // and sit still when it does not.
-        light: {
-          x: Math.sin(scene.tilt) * LIGHT_THROW,
-          y: Math.cos(scene.tilt) * LIGHT_THROW,
-          z: 1,
-        },
-        sprites: this.#flakes,
-      });
-    }
+  /** Where the drag has carried a cell's contents, in cell units. */
+  #chamberPan(): { x: number; y: number } {
+    return { x: this.#drag.x * CHAMBER_DRAG, y: this.#drag.y * CHAMBER_DRAG };
   }
 
   /**
@@ -739,10 +654,10 @@ export class KaleidoscopeRenderer {
    * hexagon once and stamping it keeps the per-frame cost at six clipped draws
    * plus one cheap blit per hexagon, however much of the field is on screen.
    */
-  #compositeTiling(side: number, angle: number, settings: Settings): void {
+  #compositeTiling(side: number, angle: number, optics: BodyOptics): void {
     const ctx = this.#ctx;
 
-    if (this.#compositeWithShader(side, angle, settings)) {
+    if (this.#compositeWithShader(side, angle, optics)) {
       return;
     }
 
@@ -801,7 +716,7 @@ export class KaleidoscopeRenderer {
     return this.#shader;
   }
 
-  #compositeWithShader(side: number, angle: number, settings: Settings): boolean {
+  #compositeWithShader(side: number, angle: number, optics: BodyOptics): boolean {
     const shader = this.#theShader();
 
     if (!shader) {
@@ -833,27 +748,19 @@ export class KaleidoscopeRenderer {
         depth: VIGNETTE_DEPTH,
       },
       dispersion: RIM_DISPERSION,
-      // Never over the chamber. The bead is a marble over the objective, and a
-      // real instrument with an object cell has no objective to put one over —
-      // the cell caps the tube. It was tried applying to everything, and over
-      // the chamber it inverted gravity: the pile hung opposite the arrow,
-      // with every avalanche crushed into the rings around the apex corners.
-      // A half-turn of the painted cell cancelled that, but the owner's call
-      // is simpler and truer: the bead does not touch the glass, ever. It
-      // remains the teleidoscope optic, for a photograph and the camera.
-      bead: this.#source?.mode === 'chamber' ? 0 : settings.bead,
-      // The triangle's middle, for both kinds of source.
-      //
-      // Not right for a photograph, and known not to be: `drawMedia` centres a
-      // picture on the apex, so the lens axis sits off the picture and a photo
-      // is seen through the edge of the marble rather than its centre — which
-      // a grid photograph shows plainly. Centring on the apex instead was
-      // tried and is worse: the apex sits two pixels into the surface, most of
-      // the picture is clipped away off-canvas around it, and inverting about
-      // it samples nothing at all — the whole figure goes black. Fixing it
-      // properly means giving the media somewhere to be drawn around that is
-      // actually on the surface, which is a change to the wedge and not to
-      // this line.
+      // Over an open chamber only, and the chamber says which it is. The bead
+      // is a marble over the objective, and a real instrument with an object
+      // cell has no objective to put one over — the cell caps the tube. It was
+      // tried applying to everything, and over a cell it inverted gravity: the
+      // pile hung opposite the arrow, with every avalanche crushed into the
+      // rings around the apex corners. A half-turn of the painted cell
+      // cancelled that, but the owner's call is simpler and truer: the bead
+      // does not touch the glass, ever. It remains the teleidoscope optic.
+      bead: this.#source?.chamber.open === true ? optics.bead : 0,
+      // The middle of the chamber, which is the middle of the triangle. Every
+      // chamber is painted about that point, so the bead's axis and the
+      // picture's middle are the same place by construction — which they were
+      // not while a photograph was drawn about the triangle's corner instead.
       beadAt: triangleCentre(side),
       // The bead's rim is the triangle's circumcircle — the circle through
       // its corners — so the whole of the view sits inside the glass. The
@@ -1276,44 +1183,6 @@ function cellNoise(i: number, j: number): number {
   return (hash >>> 0) / 4294967296;
 }
 
-/**
- * Whether two lists of glass are the same sets in the same order.
- *
- * The list is rebuilt every frame, so it cannot be compared by reference; but
- * its members are stable — the same picture elements and their cached scores —
- * so a shallow compare tells a genuine change of mix from a fresh array of the
- * same thing, and keeps the pieces from being re-sized every frame.
- */
-function sameGlasses(a: readonly Glass[], b: readonly Glass[]): boolean {
-  return (
-    a.length === b.length &&
-    a.every((glass, index) => {
-      const other = b[index]!;
-
-      return glass.skin === other.skin && glass.patches === other.patches;
-    })
-  );
-}
-
 function defaultCanvas(): HTMLCanvasElement {
   return document.createElement('canvas');
 }
-
-/**
- * What a cell of substance is lit against.
- *
- * The dry chamber's ground has always been white, on the reasoning that the
- * objects are the subject and white is what a photographer would stand them on.
- * Lava and smoke want the same thing for the same reason. Glitter does not: a
- * flake is a mirror, a mirror cannot be brighter than a lit white page, and
- * the whole of what glitter does is be brighter than what is behind it. So its
- * cell is a dark liquid, which is also what the real ones are — and the oil
- * film's is too, because interference colours are reflections and an oil
- * slick is vivid on wet asphalt and invisible on a white page.
- */
-function groundFor(substance: SubstanceId | null): string {
-  return substance === 'glitter' || substance === 'film' ? GLITTER_GROUND : GROUND;
-}
-
-/** The dark liquid a cell of glitter hangs in. */
-const GLITTER_GROUND = '#0e1526';

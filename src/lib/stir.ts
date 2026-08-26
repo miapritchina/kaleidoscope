@@ -1,79 +1,29 @@
 import { CHAMBER_RADIUS } from './chamber';
-import { foldIntoTriangle } from './fold';
-import { triangleSideFor } from './body';
-import { DRAG_CELLS } from './scene';
-import { frameworkRadians, triangleCentre } from './tiling';
 
 /**
- * A finger on the figure, folded back into the cell.
+ * Reading a stir off a finger that is being folded.
  *
- * The screen shows one triangle of cell and a field of its reflections, so a
- * finger is almost never over the cell itself — it is over some mirror image
- * of it. The fold knows which: the same arithmetic that carries each pixel
- * back into the source triangle (`lib/fold.ts`) carries the finger back too,
- * so a drag *anywhere* on the figure stirs the one cell, and the stir appears
- * under the finger and in every reflection at once — which is the only place
- * it could honestly appear, since what is under the finger *is* a reflection.
+ * The screen shows one triangle of chamber and a field of its reflections, so
+ * a finger is almost never over the chamber itself — it is over some mirror
+ * image of it. Carrying it home is the body's arithmetic and lives there, in
+ * `KaleidoscopeBody.probe`: it is the body's own placement run backwards, and
+ * a second copy of it would be a second thing to keep in step.
  *
- * The mapping retraces the view's own placement exactly: the same triangle
- * side formula the renderer draws with, the same centring, the same framework
- * rotation, the same pan, the same turn of the cell. Then the fold, and the
- * point lands in the cell's own frame, where the fluids live.
+ * What is left here is the part that is not geometry at all — turning a
+ * sequence of folded points into a velocity, which is harder than it sounds
+ * for exactly the reason the fold makes it interesting, and for a second
+ * reason besides: the finger is in the room and the chamber is turning under
+ * it, so the two frames have to be kept apart until the very last step. The
+ * body hands over a point in *its* frame, the differencing happens there, and
+ * only the answer is carried into the chamber's. See {@link trackStir}.
  */
-
-export interface StirView {
-  /** The stage, in the same pixels as the point. */
-  width: number;
-  height: number;
-  /** The mirror-size slider. */
-  zoom: number;
-  /** The mirror-angle slider, in degrees. */
-  angleDegrees: number;
-  /** How far the cell has been turned, radians. `Scene.cell`. */
-  cell: number;
-  /** Where the source has been dragged to, each axis in `[-1, 1]`. */
-  drag: { x: number; y: number };
-}
 
 /**
- * Where a stage point lands, in the frame the finger's own motion belongs to.
+ * Anything of the body's frame, turned into the chamber's.
  *
- * Folded into the source triangle and put into cell units — but *before* the
- * cell's own turn is taken off, because the finger is in the room and not in
- * the tube. Turning the tube does not move a finger resting on the glass, and
- * a velocity read after the turn has been divided out says that it does. See
- * {@link trackStir}, which is the whole reason this stops one step short.
+ * Kept here rather than in the body because it is the last step of reading a
+ * stir, and reading a stir is the whole of what this file does.
  */
-export function heldPoint(
-  point: { x: number; y: number },
-  view: StirView,
-): { x: number; y: number } {
-  const side = triangleSideFor(view.width, view.height, view.zoom);
-  const framework = frameworkRadians(view.angleDegrees);
-
-  // Undo the view's placement: centre, then the framework's rotation, then
-  // the offset that put the source triangle's centre in the middle.
-  const dx = point.x - view.width / 2;
-  const dy = point.y - view.height / 2;
-  const cos = Math.cos(-framework);
-  const sin = Math.sin(-framework);
-  const centre = triangleCentre(side);
-  const fieldX = dx * cos - dy * sin + centre.x;
-  const fieldY = dx * sin + dy * cos + centre.y;
-
-  // Fold into the source triangle, apex at the origin.
-  const folded = foldIntoTriangle({ x: fieldX, y: fieldY }, side).point;
-
-  // Into cell units: the cell is centred on the triangle's centroid and its
-  // radius is the circumradius, exactly as the renderer paints it.
-  const cellScale = side / Math.sqrt(3) / CHAMBER_RADIUS;
-  return {
-    x: (folded.x - side / 2) / cellScale - view.drag.x * DRAG_CELLS,
-    y: (folded.y - (side * Math.sqrt(3)) / 6) / cellScale - view.drag.y * DRAG_CELLS,
-  };
-}
-
-/** Anything of the framework's frame, turned into the cell's. */
 function intoCell(vector: { x: number; y: number }, cell: number): { x: number; y: number } {
   const turnCos = Math.cos(-cell);
   const turnSin = Math.sin(-cell);
@@ -82,14 +32,6 @@ function intoCell(vector: { x: number; y: number }, cell: number): { x: number; 
     x: vector.x * turnCos - vector.y * turnSin,
     y: vector.x * turnSin + vector.y * turnCos,
   };
-}
-
-/** Where a stage point lands in the cell, in cell units. */
-export function stirPoint(
-  point: { x: number; y: number },
-  view: StirView,
-): { x: number; y: number } {
-  return intoCell(heldPoint(point, view), view.cell);
 }
 
 /**
@@ -125,8 +67,8 @@ export interface StirSample {
 /**
  * Tracks a folded point from frame to frame and reads a stir off it.
  *
- * The tracking is done in the framework's frame and only the answer is turned
- * into the cell's, and that is the point of the whole function. Differencing
+ * The tracking is done in the body's frame and only the answer is turned
+ * into the chamber's, and that is the point of the whole function. Differencing
  * the point *after* the cell's turn has been divided out measures the frame
  * turning as well as the finger moving: a finger resting perfectly still on
  * the glass of a tube being turned at six radians a second reported a stir of
@@ -136,10 +78,10 @@ export interface StirSample {
  * still finger stirs nothing; a moving one stirs by exactly how far it moved.
  *
  * @param tracker One object per touch, holding the previous point in the
- *   framework's frame. Pass `last: null` after a lift, so the next touch
+ *   body's frame. Pass `last: null` after a lift, so the next touch
  *   starts fresh.
- * @param held Where the finger is now, from {@link heldPoint}.
- * @param cell How far the cell is turned, which carries both the point and
+ * @param held Where the finger is now, from `KaleidoscopeBody.probe`.
+ * @param cell How far the chamber is turned in its bearing, which carries both the point and
  *   the velocity into the frame the fluid is held in.
  * @returns The stir for this frame, in the cell's own frame, or null while
  *   there is nothing to say — the first frame of a touch has a position and

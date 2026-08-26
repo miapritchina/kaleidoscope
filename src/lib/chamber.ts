@@ -77,7 +77,28 @@
  */
 export const CHAMBER_RADIUS = 1.15;
 
-/** A finger in the chamber, in the chamber's own frame and its own units. */
+/**
+ * Largest step a chamber is ever handed, in seconds.
+ *
+ * The body clamps to this before telling anyone the time. A tab that has been
+ * in the background for a minute comes back with a minute's worth of frame on
+ * its hands, and a chamber given that at face value would teleport its
+ * contents through its own walls. Twenty a second is slow enough to be honest
+ * about and fast enough that nothing tunnels.
+ */
+export const MAX_STEP_SECONDS = 1 / 20;
+
+/**
+ * How far a full drag slides the contents of a cell, in cell units.
+ *
+ * Part of the fitting rather than any one chamber's, because the body needs it
+ * twice: once to place the chamber, and once to fold a finger on the figure
+ * back into it. Half a cell — the contents stay where the mirrors can see
+ * them, which is the whole point of a chamber that is the size of the view.
+ */
+export const CHAMBER_DRAG = 0.5;
+
+/** A finger in the chamber, in the cell's own frame and its own units. */
 export interface ChamberTouch {
   x: number;
   y: number;
@@ -107,7 +128,15 @@ export interface ChamberStep {
    * wall can drag round. Nought when nothing is turning it.
    */
   turn: number;
-  /** A finger stirring the contents, or nothing. */
+  /**
+   * A finger stirring the contents, or nothing.
+   *
+   * In the same frame the chamber is painted in: the middle of the cell at the
+   * origin, turned with the bearing, moved by {@link ChamberView.pan}. A
+   * chamber that carries its contents somewhere else instead — a photograph,
+   * which travels much further than a cell of glass ever could — is not being
+   * stirred by this and should ignore it.
+   */
   touch: ChamberTouch | null;
 }
 
@@ -125,13 +154,20 @@ export interface ChamberView {
    */
   rotation: number;
   /**
-   * How far the viewer has dragged the contents, each axis in `[-1, 1]`.
+   * How far to move the contents, in cell units.
    *
-   * A position rather than a velocity: it follows the pointer and stays where
-   * it is let go. Left as a share of a full drag rather than converted to cell
-   * units, because what a full drag is *worth* is the chamber's to say — a
-   * pile of glass slides a little way across its cell, and a photograph has a
-   * whole picture to travel over.
+   * The drag below, taken at {@link CHAMBER_DRAG} — a cell's worth of travel,
+   * which is what anything actually inside a cell gets. A position rather than
+   * a velocity: it follows the pointer and stays where it is let go.
+   */
+  pan: { x: number; y: number };
+  /**
+   * The same drag, untranslated, each axis in `[-1, 1]`.
+   *
+   * For a chamber whose contents are not confined to the cell and so travel
+   * further than {@link ChamberView.pan} allows: a photograph has a whole
+   * picture to move over, and stopping it at the wall read as the drag being
+   * broken. Such a chamber uses this instead of `pan`, never both.
    */
   drag: { x: number; y: number };
   /**
