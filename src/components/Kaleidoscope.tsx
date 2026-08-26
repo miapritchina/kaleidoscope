@@ -388,6 +388,7 @@ const SUBSTANCE_NAMES: Record<SubstanceId, string> = {
   drops: 'a liquid timer, draining bead by bead',
   smoke: 'smoke',
   glitter: 'glitter',
+  ink: 'watercolour in water',
   film: 'an oil film',
 };
 

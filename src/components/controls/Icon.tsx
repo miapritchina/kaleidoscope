@@ -17,6 +17,7 @@ export type IconName =
   | 'lava'
   | 'drops'
   | 'smoke'
+  | 'ink'
   | 'photo'
   | 'camera'
   | 'shuffle'
@@ -55,6 +56,8 @@ const PATHS: Record<IconName, string> = {
   gravity: 'M12 3v13m0 0 4-4m-4 4-4-4M6 21h12',
   glitter:
     'M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z',
+  // A loaded brush, and the paint running off it.
+  ink: 'M9.6 3.2h4.8l-.7 8.2a2.2 2.2 0 0 1-2 2 2.2 2.2 0 0 1-2-2ZM12 13.6V17M8.8 20.4c1-1 1.6-1.6 3.2-1.6s2.2.6 3.2 1.6',
   // A drop, and the bands of colour an oil film wears.
   film: 'M12 3c3.4 4 5 6.7 5 9a5 5 0 0 1-10 0c0-2.3 1.6-5 5-9ZM8.6 12.6c1.2 1 2.4-.6 3.4-.6s2.2 1.6 3.4.6M9.4 15.2c1 .8 1.8-.4 2.6-.4s1.6 1.2 2.6.4',
 };
