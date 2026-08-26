@@ -17,15 +17,16 @@ export function isSourceId(value: unknown): value is SourceId {
  * Not glass in a liquid — *instead* of glass. A kaleidoscope's object cell does
  * not have to hold loose pieces at all, and the ones that do not are a
  * different instrument entirely: a lava lamp's blobs climbing and sinking past
- * each other, smoke curling in a lit box, a cloud of glitter hanging in
+ * each other, a liquid timer draining bead by bead into the pool it is making,
+ * smoke curling in a lit box, a cloud of glitter hanging in
  * clear fluid. The mirrors repeat whatever is in there, and what is in there is
  * the substance itself.
  *
- * The fourth is a film of oil: nanometres of it floating on the fluid, and the
+ * The last is a film of oil: nanometres of it floating on the fluid, and the
  * colours are not pigment — they are interference, the same physics as a soap
  * bubble, read off the film's own thickness. See `lib/film.ts`.
  */
-export const SUBSTANCES = ['lava', 'smoke', 'glitter', 'film'] as const;
+export const SUBSTANCES = ['lava', 'drops', 'smoke', 'glitter', 'film'] as const;
 
 export type SubstanceId = (typeof SUBSTANCES)[number];
 

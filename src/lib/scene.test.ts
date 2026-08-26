@@ -8,10 +8,11 @@ import {
   DEPTH_OVERLAP,
   drawChamber,
   pieceRadius,
+  type Scene,
   SHARD_KINDS,
   updateScene,
 } from './scene';
-import { DEFAULT_SETTINGS } from './settings';
+import { DEFAULT_SETTINGS, SUBSTANCES, type SubstanceId } from './settings';
 
 // jsdom has no canvas backend, so chip sprites are rendered onto recorders
 // instead. They still come back as drawable images, which is all drawCell needs
@@ -197,16 +198,26 @@ describe('a cell of substance', () => {
     expect(scene.substance).toBe('lava');
   });
 
+  // One of them and only one, whichever it is: switching what the cell holds
+  // costs a rebuild of the one being switched to and nothing else.
   it('builds only the substance it was asked for', () => {
-    const lamp = createScene('one', 40, { holds: 'substance', substance: 'lava' });
-    const cloud = createScene('one', 40, { holds: 'substance', substance: 'smoke' });
-    const flakes = createScene('one', 40, { holds: 'substance', substance: 'glitter' });
+    const held: Record<SubstanceId, (scene: Scene) => unknown> = {
+      lava: (scene) => scene.lava,
+      drops: (scene) => scene.drops,
+      smoke: (scene) => scene.smoke,
+      glitter: (scene) => scene.flakes,
+      film: (scene) => scene.film,
+    };
 
-    expect([lamp.lava, lamp.smoke, lamp.flakes].filter(Boolean)).toHaveLength(1);
-    expect(cloud.smoke).not.toBeNull();
-    expect(cloud.lava).toBeNull();
-    expect(flakes.flakes).not.toBeNull();
-    expect(flakes.smoke).toBeNull();
+    for (const substance of SUBSTANCES) {
+      const scene = createScene('one', 40, { holds: 'substance', substance });
+
+      expect(held[substance](scene), substance).not.toBeNull();
+      expect(
+        SUBSTANCES.filter((other) => held[other](scene) !== null),
+        substance,
+      ).toEqual([substance]);
+    }
   });
 
   it('leaves a cell of glass with no substance in it', () => {
@@ -214,8 +225,10 @@ describe('a cell of substance', () => {
 
     expect(scene.substance).toBeNull();
     expect(scene.lava).toBeNull();
+    expect(scene.drops).toBeNull();
     expect(scene.smoke).toBeNull();
     expect(scene.flakes).toBeNull();
+    expect(scene.film).toBeNull();
     expect(scene.shards.length).toBeGreaterThan(0);
   });
 
