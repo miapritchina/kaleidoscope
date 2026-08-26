@@ -285,6 +285,39 @@ picture is clipped off-canvas around it and the figure goes black. It needs
 the media given somewhere on the surface to be drawn around. A grid photograph
 shows the fault immediately and is the test to use.
 
+### ~~The chamber came up with no glass in it~~ — fixed
+
+Reported as the shard physics having degraded after the liquid-cell merge. It
+had not: the classic solver's trace over 600 steps, 90 pieces on real traced
+shapes, in air and in liquid, on two seeds, is bit for bit identical either side
+of that merge, and side-by-side renders of the reported seed show no difference.
+The merge touched `chamber.ts` only to export `GRAVITY` for the Rapier spike,
+and `shape.ts` only to add a convex hull the classic solver never reads.
+
+What was wrong is one line older than the merge, in `useImageUrls`. The pictures
+the glass is cut from are loaded once and cached by url, and the `load` listener
+was attached **only on the effect run that started the load**. That listener
+closes over a `live` flag its own cleanup sets false. So an effect torn down and
+set up again — which is every effect in StrictMode, and any change of the chosen
+mix — left the dead listener as the only one on a picture still in flight, and
+skipped attaching a live one because the cache already held the element. The
+picture landed to nobody, the ready list stayed empty, and the chamber sat there
+asking to be filled with glass it had already fetched.
+
+A race, so it presented as intermittent: whether the decode beat the remount. In
+a headless run on this machine it lost **8 times out of 8**; with the listener
+attached on every run of the effect, 0 out of 8. Two of the five tests in
+`useImageUrls.test.tsx` fail on the old code.
+
+It is worth knowing what an empty chamber does to the pile rather than only to
+the picture. `applyCutShape` gives every piece `ROUND` when no set has loaded,
+so the pile settles as a heap of discs; when a picture does land, every piece's
+collision shape is swapped for its real one under a pile that has already come
+to rest, and the solver pushes the new overlaps apart. One set of two failing to
+load does the same thing halfway, and redistributes which piece is cut from
+which set as well. That is the shape of "the physics went wrong" without the
+physics having changed at all.
+
 ### Two things that were tried and did not work
 
 Both were proposed off the back of the WebGL move, on the reasoning that
