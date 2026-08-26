@@ -56,12 +56,35 @@ export interface Drop {
   vy: number;
   /** How warm it is: 0 cold and sinking, 1 warm and climbing. */
   heat: number;
-  /** Which of the {@link TINTS} its wax is cut from. */
-  tint: number;
+  /**
+   * What colour its wax is, as red, green and blue.
+   *
+   * Carried rather than looked up, and it spreads between touching drops the
+   * way heat does — see {@link blend}. A palette index would speckle: a body
+   * of wax is a few dozen drops that have drifted in from wherever, and drawn
+   * from their own indices it comes out mottled pink and orange rather than
+   * being *a colour*. The old build carried a colour per blob for exactly this
+   * reason and averaged it on a merge; this is the same thing said
+   * continuously, and it is what makes two clumps running together blend over
+   * a second or so instead of interleaving into speckle.
+   */
+  red: number;
+  green: number;
+  blue: number;
+  /**
+   * Which of the {@link TINTS} its wax actually is, which never changes.
+   *
+   * The shown colour above drifts towards its neighbours' and is drawn slowly
+   * back to this — see {@link TINT_HOLD}. Two kinds of wax interleaving is not
+   * two kinds of wax *dissolving*: what mixes is what you see.
+   */
+  readonly wax: readonly [number, number, number];
 }
 
 export interface Lava {
   drops: Drop[];
+  /** Seconds banked since the last step of the wax. See {@link RATE}. */
+  due: number;
   /**
    * How far each drop's field reaches, in cell units. One size for the whole
    * cell: the wax is one substance, and uniform particles are what lets the
@@ -109,12 +132,15 @@ const SLOPE_STEP = GRID / 128;
 /**
  * Where the surface is, as a sum of the drops' fields.
  *
- * A drop's own field peaks at 1 in its middle. A lone drop barely crests
- * this, so a stray particle reads as a droplet; a clump crosses it well
- * outside any one member, which is what makes a dozen particles read as one
- * body of wax with a surface.
+ * A drop's own field peaks at 1 in its middle, so this is above what any one
+ * of them can reach on its own: it takes two overlapping to cross it, and a
+ * clump crosses it well outside any one member. That is what makes a few dozen
+ * particles read as one body of wax with a surface rather than as the
+ * particles — and it is deliberately higher than it was, against a drawn reach
+ * that is deliberately wider, because the pair is what decides how *fat* and
+ * how smooth a body comes out. See {@link DRAWN}.
  */
-const SURFACE = 0.72;
+const SURFACE = 1.15;
 
 /**
  * How much of the cell the wax covers.
@@ -132,8 +158,18 @@ const MOST = 104;
 /** Downward acceleration, matched to the chamber's own. */
 const GRAVITY = 6;
 
-/** How hard the heat cycle drives, as a share of gravity. */
-const BUOYANCY = 0.55;
+/**
+ * How hard the heat cycle drives, as a share of gravity.
+ *
+ * More than twice what it was, and with {@link DRAG} it is half of why the
+ * cell holds several bodies of wax rather than one. Surface tension always
+ * wins in a small cell left alone — the wax has one lowest-energy shape and it
+ * is a single blob — so what keeps a lamp looking like a lamp is that the
+ * circulation tears bodies apart about as fast as they run together. Under a
+ * gentle drive it does not, and every cell ended as one sausage circling the
+ * tube.
+ */
+const BUOYANCY = 1.3;
 
 /**
  * How fast a drop takes the temperature of the end of the cell it is at.
@@ -150,14 +186,71 @@ const EXCHANGE = 0.8;
  */
 const ENDS = 0.35;
 
-/** How fast heat spreads between touching drops, per second. */
-const DIFFUSE = 1.6;
+/**
+ * How fast heat spreads between touching drops, per second.
+ *
+ * Nought, and that is a finding rather than an omission. It was 1.6, on the
+ * reasoning that a warm patch should rise as one plume rather than as loose
+ * particles — which it does, and the cost is the whole substance. Heat that
+ * spreads through a body makes every drop in it the same temperature, a body
+ * at one temperature rises or sinks as a rigid lump, and a lump that is never
+ * sheared is never stretched and never pinches. Every cell ended as one
+ * sausage of wax circling the tube, which is not a lava lamp and is not what
+ * the first build looked like.
+ *
+ * The *difference* in temperature across a body is what a lamp runs on: the
+ * end of a blob that has reached the cool glass sinks while the rest of it is
+ * still climbing, the blob stretches, and where it thins the field drops below
+ * the surface and it comes apart. That is the Rayleigh-Plateau break-up the
+ * module note promises, and it only happens if the drops are allowed to
+ * disagree about how hot they are.
+ *
+ * Kept as a constant, with the plumbing intact, because it is a real knob and
+ * a small amount of it may yet be wanted — see ROADMAP.md.
+ */
+const HEAT_SPREAD = 0;
+
+/**
+ * How fast colour spreads between touching drops, per second.
+ *
+ * What heat used to do, applied to the thing that actually wanted it. A body
+ * of wax is a few dozen drops that have drifted together from wherever, so
+ * drawn from their own colours it comes out mottled rather than being *a*
+ * colour; spread between touching drops, a body settles to one colour within a
+ * second or two and two bodies running together blend into the mixture, which
+ * is the thing worth watching and is what the first build did on a merge.
+ */
+const TINT_SPREAD = 0.15;
+
+/**
+ * How fast a drop's shown colour is drawn back to its own wax, per second.
+ *
+ * Spreading colour between touching drops is what makes a body *a* colour, and
+ * left on its own it has one end: everything in the cell touches everything
+ * else eventually, every mixture is a mixture of mixtures, and after a few
+ * minutes the whole cell is the average of the four — the puddle the palette
+ * note warns about, arrived at by a different road. This is the wax being wax
+ * rather than dye. It is far slower than the spreading, so a body still reads
+ * as one colour and two bodies running together still visibly blend; what it
+ * stops is the blend being permanent, and it is why the cell still holds four
+ * colours of wax after ten minutes.
+ */
+const TINT_HOLD = 0.09;
 
 /** How much stiffer stone-cold wax is than running-hot wax. */
 const COLD_STIFF = 1.4;
 
-/** Speed lost per second by hot wax in thin fluid, before either scales it. */
-const DRAG = 2.4;
+/**
+ * Speed lost per second by hot wax in thin fluid, before either scales it.
+ *
+ * A quarter of what it was, which is the other half of the break-up above: it
+ * is the *terminal* speed a drop reaches under the heat cycle that has to beat
+ * the cohesion holding a body together, and at the old drag that speed was
+ * about a third of a cell width a second — under half what it takes to stretch
+ * a body until it necks. The Thickness slider still multiplies this by up to
+ * {@link THICKEST}, so a gel cell still hangs.
+ */
+const DRAG = 0.6;
 
 /** How much thicker the far end of the Thickness slider is. */
 const THICKEST = 4;
@@ -173,14 +266,66 @@ const THICKEST = 4;
  * side, by construction: crowding can pull, but closeness only pushes.
  */
 const REST = 2.6;
-const STIFF = 0.008;
+const STIFF = 0.004;
 const STIFF_NEAR = 0.02;
 
 /** Neighbour radius, in multiples of a drop's drawn reach. */
 const NEIGHBOURHOOD = 1.8;
 
+/**
+ * How far a drop's *drawn* field reaches, in multiples of the same.
+ *
+ * Wider than the physics, and much wider than it was. The drawn field decides
+ * the shape of the body, not the arithmetic that moves the particles, so this
+ * is the knob that says how fat and how smooth a clump of drops comes out —
+ * and at 1.55, against a surface a single drop could cross on its own, a body
+ * came out as the lumpy union of its members, every particle a bump on the
+ * surface and every gap a crease for the light to catch. Widened, with
+ * {@link SURFACE} raised to match so the wax covers the same ground, the same
+ * particles read as one smooth body with a rounded edge. Nothing about how the
+ * wax *moves* changed with it.
+ */
+const DRAWN = 2.2;
+
 /** Fastest the wax moves, in cell units per second. Wax oozes; it does not dart. */
 const FASTEST = 1.6;
+
+/**
+ * Steps of the wax per second, and the most of them one frame may run.
+ *
+ * A *fixed* step, banked, rather than whatever the frame happened to be —
+ * which is not a nicety here. The relaxation is a position solver: it moves a
+ * drop by the pressure times the square of the step, so its strength grows as
+ * the square of a slow frame and its stability falls the same way. At sixty
+ * frames a second it is exactly as tuned; at twenty, which is all the clamp
+ * used to allow, every displacement is *nine times* what these constants mean
+ * and the wax blows itself apart into a spray of separate droplets. That is a
+ * substance that looks like a different substance on a phone under load, and
+ * it is not something a viewer can be expected to understand.
+ *
+ * Banked and fixed, a slow frame runs the wax two or three times instead of
+ * once and it looks the same everywhere; below about twenty frames a second
+ * the cap takes over and the wax runs slow rather than wrong, which is the
+ * right way round. The fluids in `lib/flow.ts` bank on the same reasoning.
+ */
+const RATE = 60;
+const MOST_STEPS = 3;
+
+/**
+ * The light on the wax: what a surface facing away still gets, how much more
+ * one facing the light gets, and how bright the specular is.
+ *
+ * All three much softer than they were. The lighting is there so the wax reads
+ * as a body with a surface rather than as a flat sticker, and at the old
+ * numbers it read as neither: a shaded side at 0.62 turns the orange wax brown,
+ * and a specular of 190 through a twenty-fourth power draws a hard white streak
+ * along every ridge, which on a lumpy surface is every few pixels. What is
+ * wanted is the *rounding* — a rim that falls away and a soft sheen — and that
+ * is a few per cent of shading, not forty.
+ */
+const AMBIENT = 0.88;
+const THROW = 0.22;
+const GLEAM = 45;
 
 /**
  * What the wax is coloured with.
@@ -216,7 +361,7 @@ export function createLava(seed: number, amount: number, scale = 1): Lava {
       x: Math.cos(angle) * distance,
       y: Math.sin(angle) * distance,
       heat: rng(),
-      tint: Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length)),
+      tint: TINTS[Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length))]!,
     };
   });
 
@@ -233,11 +378,14 @@ export function createLava(seed: number, amount: number, scale = 1): Lava {
       // The clump's own warmth, spread a little, so the cell opens with
       // risers and sinkers rather than everything waiting at the bottom.
       heat: clamp(home.heat + randomBetween(rng, -0.15, 0.15)),
-      tint: home.tint,
+      red: home.tint[0],
+      green: home.tint[1],
+      blue: home.tint[2],
+      wax: home.tint,
     });
   }
 
-  return { drops, reach, seed };
+  return { drops, reach, seed, due: 0 };
 }
 
 function clampWall(value: number, reach: number): number {
@@ -265,20 +413,40 @@ const nearDensity = new Float32Array(MOST);
 const previousX = new Float32Array(MOST);
 const previousY = new Float32Array(MOST);
 const warmed = new Float32Array(MOST);
+const reddened = new Float32Array(MOST);
+const greened = new Float32Array(MOST);
+const blued = new Float32Array(MOST);
 
 /**
  * Advances the wax in place: forces, then the relaxation, then the wall —
  * and velocity read back off how far each drop actually travelled, which is
  * the same position-based ledger the glass chamber keeps.
  */
-export function updateLava(lava: Lava, { dt, thickness, swirl, angle, stir }: LavaUpdate): void {
-  const { drops, reach } = lava;
-
-  if (dt <= 0 || drops.length === 0) {
+export function updateLava(lava: Lava, update: LavaUpdate): void {
+  if (!(update.dt > 0) || lava.drops.length === 0) {
     return;
   }
 
-  const step = Math.min(dt, 1 / 20);
+  const step = 1 / RATE;
+
+  lava.due += update.dt;
+
+  // Banked, and never more than a few at once: a tab that has been in the
+  // background for a minute comes back to a cell that has moved on a little,
+  // not to one that has run a minute of wax in a single frame.
+  for (let run = 0; run < MOST_STEPS && lava.due >= step; run += 1) {
+    lava.due -= step;
+    stepLava(lava, update, step);
+  }
+
+  if (lava.due > MOST_STEPS * step) {
+    lava.due = MOST_STEPS * step;
+  }
+}
+
+/** One fixed step of the wax. See {@link updateLava}, which banks the time. */
+function stepLava(lava: Lava, { thickness, swirl, angle, stir }: LavaUpdate, step: number): void {
+  const { drops, reach } = lava;
   const downX = Math.sin(angle);
   const downY = Math.cos(angle);
   const thick = 1 + THICKEST * clamp(thickness);
@@ -324,7 +492,7 @@ export function updateLava(lava: Lava, { dt, thickness, swirl, angle, stir }: La
   }
 
   relax(lava, h, step);
-  diffuseHeat(lava, h, step);
+  blend(lava, h, step);
 
   for (let i = 0; i < drops.length; i += 1) {
     const drop = drops[i]!;
@@ -420,18 +588,27 @@ function relax(lava: Lava, h: number, step: number): void {
 }
 
 /**
- * Heat spreading between touching drops.
+ * Colour — and, if it is ever turned back up, heat — spreading between
+ * touching drops.
  *
- * What turns loose warm particles into a *plume*: a drop about to rise warms
- * its neighbours, so the clump goes up together and the field draws it as one
- * climbing blob rather than as a spray.
+ * One pass over the pairs for both, because they want the same pairs and the
+ * pair loop is the cost. See {@link TINT_SPREAD} and {@link HEAT_SPREAD} for
+ * what each is for and why one of them is nought.
  */
-function diffuseHeat(lava: Lava, h: number, step: number): void {
+function blend(lava: Lava, h: number, step: number): void {
   const { drops } = lava;
-  const rate = Math.min(0.5, DIFFUSE * step);
+  const warmRate = Math.min(0.5, HEAT_SPREAD * step);
+  const tintRate = Math.min(0.5, TINT_SPREAD * step);
+
+  if (warmRate <= 0 && tintRate <= 0) {
+    return;
+  }
 
   for (let i = 0; i < drops.length; i += 1) {
     warmed[i] = 0;
+    reddened[i] = 0;
+    greened[i] = 0;
+    blued[i] = 0;
   }
 
   for (let i = 0; i < drops.length; i += 1) {
@@ -446,15 +623,45 @@ function diffuseHeat(lava: Lava, h: number, step: number): void {
       }
 
       const q = 1 - apart / h;
-      const trade = (b.heat - a.heat) * q * rate;
 
-      warmed[i] = warmed[i]! + trade;
-      warmed[j] = warmed[j]! - trade;
+      if (warmRate > 0) {
+        const trade = (b.heat - a.heat) * q * warmRate;
+
+        warmed[i] = warmed[i]! + trade;
+        warmed[j] = warmed[j]! - trade;
+      }
+
+      const share = q * tintRate;
+      const red = (b.red - a.red) * share;
+      const green = (b.green - a.green) * share;
+      const blue = (b.blue - a.blue) * share;
+
+      reddened[i] = reddened[i]! + red;
+      reddened[j] = reddened[j]! - red;
+      greened[i] = greened[i]! + green;
+      greened[j] = greened[j]! - green;
+      blued[i] = blued[i]! + blue;
+      blued[j] = blued[j]! - blue;
     }
   }
 
+  const hold = Math.min(0.5, TINT_HOLD * step);
+
   for (let i = 0; i < drops.length; i += 1) {
-    drops[i]!.heat = clamp(drops[i]!.heat + warmed[i]!);
+    const drop = drops[i]!;
+
+    drop.heat = clamp(drop.heat + warmed[i]!);
+    drop.red = drop.red + reddened[i]!;
+    drop.green = drop.green + greened[i]!;
+    drop.blue = drop.blue + blued[i]!;
+
+    if (hold > 0) {
+      const wax = drop.wax;
+
+      drop.red += (wax[0] - drop.red) * hold;
+      drop.green += (wax[1] - drop.green) * hold;
+      drop.blue += (wax[2] - drop.blue) * hold;
+    }
   }
 }
 
@@ -501,9 +708,8 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
   const { canvas, ctx, image } = surface;
   const pixels = image.data;
   const width = (2 * CHAMBER_RADIUS) / GRID;
-  // The drawn field reaches a little past the interaction radius, so a clump
-  // reads as one body rather than as its members.
-  const drawn = lava.reach * 1.55;
+  // The drawn field reaches well past the interaction radius — see DRAWN.
+  const drawn = lava.reach * DRAWN;
   const span = drawn * drawn;
   // Cleared in full, in one pass each. Clearing only the rows the wax reaches
   // was tried and taken out: two drops with a gap of empty rows between them
@@ -518,7 +724,7 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
   let highest = -1;
 
   for (const drop of lava.drops) {
-    const [red, green, blue] = TINTS[drop.tint]!;
+    const { red, green, blue } = drop;
     const from = Math.max(0, Math.floor((drop.x - drawn + CHAMBER_RADIUS) / width));
     const to = Math.min(GRID - 1, Math.ceil((drop.x + drawn + CHAMBER_RADIUS) / width));
     const start = Math.max(0, Math.floor((drop.y - drawn + CHAMBER_RADIUS) / width));
@@ -613,13 +819,13 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
       // Light up and to the left, a little towards the eye.
       const facing = (slopeX * 0.42 + slopeY * 0.62 + 0.594) / length;
       const lit = facing > 0 ? facing : 0;
-      const diffuse = 0.62 + 0.5 * lit;
+      const diffuse = AMBIENT + THROW * lit;
       // The twenty-fourth power, as five multiplications. `** 24` calls out to
       // a general pow, which for a whole exponent this small is pure overhead.
       const lit2 = lit * lit;
       const lit4 = lit2 * lit2;
       const lit8 = lit4 * lit4;
-      const gleam = lit8 * lit8 * lit8 * 190;
+      const gleam = lit8 * lit8 * lit8 * GLEAM;
 
       red = red * diffuse + gleam;
       green = green * diffuse + gleam;

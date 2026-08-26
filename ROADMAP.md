@@ -661,6 +661,91 @@ the normal does not. Differencing across four cells instead of one spans what
 the old grid's own neighbours spanned, so the light falls where it always fell
 and only the edge gets the finer grid.
 
+### ~~The rebuilt wax was one shiny sausage~~ — fixed, and the reason is worth keeping
+
+Reported as "lava looks like poo, not like lava — I liked the visual of the old
+version more", and that was fair. Four separate things, none of them the
+particle simulation itself:
+
+**Every cell ended as one lump.** Which this file predicted, in the paragraph
+above about the first build: _"anything that grows past a fraction of the cell
+is pulled into two, because merging only runs one way and without that every
+cell ends as one lump."_ The rebuild dropped the explicit split in favour of
+emergent topology and walked straight into it. Surface tension has one lowest
+shape in a small cell and it is a single blob; what keeps a lamp looking like a
+lamp is that the circulation tears bodies apart about as fast as they run
+together.
+
+What was stopping the tearing was **the heat diffusion**, which was the
+rebuild's own new idea. Heat that spreads through a body makes every drop in it
+the same temperature; a body at one temperature rises or sinks rigidly; a rigid
+body is never sheared, never stretched, and never pinches. The stretching a
+lamp runs on is precisely the _disagreement_ — the end of a blob that has
+reached the cool glass sinking while the rest of it is still climbing. It is
+nought now, and the plumbing is kept.
+
+That alone was not enough, and the rest was found by search rather than
+argument: three seeds, three moments each, counting separate bodies of wax after
+ninety seconds. Mean bodies, shipped settings: **1.0**. The knob that matters is
+`STIFF`, and it has a window — too much and the cell is one sausage, too little
+and it is a lace of tendrils and spatter, which looks worse than the sausage.
+Landed on buoyancy 1.3 (was 0.55), drag 0.6 (was 2.4) and `STIFF` 0.004 (was
+0.008): **2.8 bodies**, fat and rounded rather than ragged.
+
+**The bodies were lumpy, and lit like plastic.** Two things, and neither is the
+physics. The drawn field reached 1.55 of a drop's interaction radius against a
+surface a single drop could cross on its own, so a body came out as the lumpy
+union of its members — every particle a bump, every gap a crease. Widened to
+2.2 with the surface raised to 1.15 to match, the same particles read as one
+smooth body. And the light was far too strong for a surface that can now be
+seen: a shaded side at 0.62 turns orange wax brown, and a specular of 190
+through a twenty-fourth power draws a hard white streak along every ridge.
+0.88 / 0.22 / 45 gives the rounding without the plastic.
+
+**The colour was speckle.** Each drop carried an index into the four-colour
+palette, and a body is a few dozen drops that have drifted in from wherever, so
+bodies came out mottled pink and orange rather than being _a_ colour. Colour is
+carried per drop now and spreads between touching drops the way heat used to —
+which is what actually wanted diffusing. A body settles to one colour in a
+second or two and two bodies running together blend, which is what the first
+build did on a merge. Spreading alone ends in the mud the palette note warns
+about by a different road, so each drop is also drawn slowly back to its own
+wax: the cell still holds four colours after ten minutes, and a fresh blend
+still shows.
+
+**And it looked different on every device.** The relaxation moves a drop by the
+pressure times the _square_ of the step, and the step was whatever the frame
+was, clamped at 1/20. At sixty frames a second it is exactly as tuned; at
+twenty, every displacement is nine times what the constants mean and the wax
+blows itself apart into a spray of separate droplets. This is not hypothetical:
+the headless browser these screenshots are taken in runs at a median of 135 ms a
+frame, and every "before" picture of the rebuilt lava taken here shows the spray
+rather than the sausage a phone shows. The wax banks time and steps at a fixed
+sixty a second now, at most three steps a frame, so below about twenty frames a
+second it runs slow rather than wrong. `lib/flow.ts` banks for the same reason.
+
+Cost, measured in one browser process, `paintLava` per call at the two ends of
+the Amount slider:
+
+|                           | 63 drops | 104 drops |
+| ------------------------- | -------- | --------- |
+| shipped, grid 128         | 0.78 ms  | 0.80 ms   |
+| grid 256, rewritten paint | 1.20 ms  | 1.27 ms   |
+| and the wider drawn field | 2.04 ms  | 2.23 ms   |
+
+The last row is the price of the look: the accumulation is
+`DRAWN^2 x COVER x GRID^2 / 4` texels and is otherwise **independent of the drop
+count**, so widening the field from 1.55 to 2.2 is exactly twice the work and
+fewer, larger drops would not have been cheaper. `updateLava` is 0.16 / 0.40 ms
+and did not move.
+
+**Tried and taken out: the colour on a quarter grid.** Only the contour needs
+the fine grid — colour within a body is constant by construction and crosses
+over many cells where two bodies meet — so summing it at 64 across and reading
+it back bilinearly should have been a sixteenth of the colour work. It measured
+**2.11 / 2.25 ms**, which is no change at all: what the accumulation saves, the
+bilinear read spends again, once per lit pixel. The fine grid stays.
+
 ### ~~The hexagon in the middle of the view was never dimmed~~ — fixed
 
 Every hexagon is dimmed a little against its neighbours (`cellNoise` in
