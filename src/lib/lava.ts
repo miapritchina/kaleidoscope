@@ -139,8 +139,13 @@ const SLOPE_STEP = GRID / 128;
  * particles — and it is deliberately higher than it was, against a drawn reach
  * that is deliberately wider, because the pair is what decides how *fat* and
  * how smooth a body comes out. See {@link DRAWN}.
+ *
+ * It moves with {@link DRAWN} and it has to: the summed field goes as the area
+ * of a drop's kernel, so widening the reach without raising this fills the
+ * cell with one connected sheet of wax. The two were raised together, in
+ * proportion to the square of the reach, and the wax covers what it covered.
  */
-const SURFACE = 1.15;
+const SURFACE = 1.5;
 
 /**
  * How much of the cell the wax covers.
@@ -284,8 +289,15 @@ const NEIGHBOURHOOD = 1.8;
  * {@link SURFACE} raised to match so the wax covers the same ground, the same
  * particles read as one smooth body with a rounded edge. Nothing about how the
  * wax *moves* changed with it.
+ *
+ * Widened again since, for the last of the same fault: at 2.2 the edge of a
+ * body still carried a fine scalloping — a ripple at the spacing of the
+ * particles under it — which is invisible at the default zoom and plain at the
+ * top of the slider, where a cell is drawn three times the size. The kernel is
+ * what smooths the particles into a field, so the cure for a lumpy contour is
+ * a wider kernel and not a finer grid.
  */
-const DRAWN = 2.2;
+const DRAWN = 2.5;
 
 /** Fastest the wax moves, in cell units per second. Wax oozes; it does not dart. */
 const FASTEST = 1.6;
@@ -315,17 +327,23 @@ const MOST_STEPS = 3;
  * The light on the wax: what a surface facing away still gets, how much more
  * one facing the light gets, and how bright the specular is.
  *
- * All three much softer than they were. The lighting is there so the wax reads
- * as a body with a surface rather than as a flat sticker, and at the old
- * numbers it read as neither: a shaded side at 0.62 turns the orange wax brown,
- * and a specular of 190 through a twenty-fourth power draws a hard white streak
- * along every ridge, which on a lumpy surface is every few pixels. What is
- * wanted is the *rounding* — a rim that falls away and a soft sheen — and that
- * is a few per cent of shading, not forty.
+ * Much softer than the first go, which had a shaded side at 0.62 — dark enough
+ * to turn the orange wax brown — and a specular of 190 through a
+ * twenty-fourth power, which draws a hard white streak along every ridge and,
+ * on the lumpy surface that build had, along every few pixels. What is wanted
+ * is the *rounding*: a rim that falls away and a soft sheen.
+ *
+ * They are up again from where that correction left them, because it went one
+ * stop too far the other way: at a shading of 0.88 against a throw of 0.22 the
+ * wax had no roundness left at all, and a screenshot at any zoom showed flat
+ * pink shapes with a coloured edge. The surface is smooth now — see
+ * {@link DRAWN} — so a stronger light has nothing to catch on, and what it
+ * does instead is the thing it is for: the wax comes forward in the middle and
+ * turns away at the rim.
  */
-const AMBIENT = 0.88;
-const THROW = 0.22;
-const GLEAM = 45;
+const AMBIENT = 0.8;
+const THROW = 0.34;
+const GLEAM = 95;
 
 /**
  * What the wax is coloured with.
@@ -741,8 +759,21 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
     for (let j = start; j <= end; j += 1) {
       const y = -CHAMBER_RADIUS + (j + 0.5) * width - drop.y;
       const row = j * GRID;
+      // Where this row enters and leaves the drop's own circle. The square its
+      // field is bounded by is a quarter larger than the circle inside it, and
+      // at this reach that is a quarter of the whole paint spent on cells that
+      // are about to be skipped.
+      const half = span - y * y;
 
-      for (let i = from; i <= to; i += 1) {
+      if (half <= 0) {
+        continue;
+      }
+
+      const reach = Math.sqrt(half);
+      const left = Math.max(from, Math.ceil((drop.x - reach + CHAMBER_RADIUS) / width - 0.5));
+      const right = Math.min(to, Math.floor((drop.x + reach + CHAMBER_RADIUS) / width - 0.5));
+
+      for (let i = left; i <= right; i += 1) {
         const x = -CHAMBER_RADIUS + (i + 0.5) * width - drop.x;
         const away = (x * x + y * y) / span;
 
@@ -769,7 +800,7 @@ export function paintLava(lava: Lava): HTMLCanvasElement | null {
 
   // The surface: where the sum crosses SURFACE, softened over a little either
   // side so the edge is a liquid's and not a cut-out's.
-  const edge = 0.1;
+  const edge = 0.14;
   const low = SURFACE - edge;
   const high = SURFACE + edge;
   // The normal's two samples, in cells across and in cells down — see

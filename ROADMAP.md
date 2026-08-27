@@ -915,11 +915,12 @@ row of horizontal teeth down its side. Nothing numeric complained. Smoke's own
 scalloping is the same artefact at a strength somebody decided was worth
 paying.
 
-### Two things the fluid does that nobody had measured
+### ~~Two things the fluid does that nobody had measured~~ — both fixed, and a third one found under them
 
-Both were found while building the Ink cell, both are in `lib/flow.ts` and
-`lib/smoke.ts` rather than in the new code, and neither is fixed for smoke —
-they are recorded here so the next person does not have to find them again.
+Both were found while building the Ink cell, both were in `lib/flow.ts` and
+`lib/smoke.ts` rather than in the new code, and neither was fixed for smoke at
+the time. Both are fixed now — see "The liquid cell, looked at" below, which
+also has the third fault the two of them were standing on.
 
 **A cell left alone empties itself.** Tracing backwards is a gather: a cell
 reads what was upstream and cannot read more than was upstream, so wherever the
@@ -949,6 +950,131 @@ second in twenty seconds and holds nothing but NaN by thirty**. The Ink cell
 carries no confinement at all and floors its own thickness at 0.12 besides, so
 it is a number at every setting of the slider — measured, and tested. Smoke
 does neither.
+
+### ~~The liquid cell, looked at~~ — done, and most of it was not what it looked like
+
+A visual review of all six substances, prompted by photographs off a phone:
+some looked bad because of colour, some were visibly pixelated, and some did
+not do what they are documented to do. Every one of those turned out to be a
+real fault with a number attached, and three of them were in the shared fluid
+rather than in any substance.
+
+**The round wall was a hole.** The one that mattered, and the one underneath the
+two entries above. `projectFlow` measures divergence against the neighbouring
+cells, and beyond the wall there is no neighbour — so it used what the asking
+cell already held. That is the right answer for a pressure and the wrong one for
+a velocity: a cell against the glass whose neighbour agrees with it has no
+divergence, so the solve was told nothing was flowing out and let the fluid
+through. Measured on a cell with **nothing pushing on it at all** — no dye, no
+turning, the confinement off — the field fell to a thousandth of its opening
+swirl in three seconds and then **grew back to the speed limit by ten**, fed by
+the staircase the round wall makes on a square grid. The same code in a square
+box, with no wall to speak of, decayed to 10^-25. The wall reflects the normal
+component now, which is what a free-slip wall is, and the round cell measures
+exactly like the square one. `flow.test.ts` holds it.
+
+**The Thickness slider was a turntable.** The wall's grip was applied at full
+strength to every cell, pulling the whole field towards rigid rotation, and a
+separate drag pulled every cell towards rest. An eddy lost about a quarter of
+itself _per step_. What is left of a stirred eddy after a given time, before and
+after — the slider only became a slider with the second row of each pair:
+
+| Thickness    | 1 s  | 3 s | 6 s  | 12 s | 30 s |
+| ------------ | ---- | --- | ---- | ---- | ---- |
+| thin, was    | 37%  | 6%  | 0.4% | 0%   | 0%   |
+| thin, is     | 83%  | 61% | 42%  | 24%  | 6%   |
+| default, was | 5%   | 0%  | 0%   | 0%   | 0%   |
+| default, is  | 72%  | 42% | 22%  | 7%   | 0.2% |
+| gel, was     | 0.1% | 0%  | 0%   | 0%   | 0%   |
+| gel, is      | 56%  | 22% | 6%   | 0.5% | 0%   |
+
+The wall grips what is against it over a boundary layer; the cell as a whole is
+brought round to the tube's rate as **one number** — its own angular rate — so
+nothing that is a departure from turning as a body is touched by it; and the
+dissipation is viscosity in the shape viscosity has, a five-point blend, which
+kills the smallest swirls first. A turn now shears the cell: at a tube held at
+3 rad/s the rim settles at 1.9 / 2.6 / 3.0 and the middle at 1.0 / 1.3 / 1.5
+across the slider.
+
+**The confinement had no ceiling**, which is the second entry above. The curl it
+reads is clamped now — well over twice what a healthy cell shows — which keeps
+the correction and takes the runaway, and also takes out the wall's own curl
+spike (87 rad/s against the body's 5 while turning), which was the strongest
+push in the cell and pointed by the grid. Under everything there is a speed cap
+that nothing real reaches, so no combination of slider, frame time and swipe can
+put a NaN on the screen.
+
+**The dye and the oil both drained**, which is the first entry above. Smoke held
+82% of its dye after ten seconds, 33% after a minute, 18% after two; the oil
+film was worse, at a fifth of what it was poured after a minute — which reads
+not as an empty cell but as a slick shrinking to a few rings on a black ground.
+`conserveScalar` was already written for the ink and is now on both: **100% at
+ten seconds, a minute and two minutes**, at every setting of the slider. Both
+fields were given headroom above what they are poured at, because a field
+clamped at exactly its fill level cannot take back what the conservation hands
+it, and the smoke's dye strength came down to match — the old one was partly
+standing in for the leak.
+
+Then the four faults that were each a substance's own:
+
+- **Smoke's dyes were printer's primaries.** Dye _d_ was written into channel
+  _d_, so the cell was cyan, magenta and yellow at full chroma. Each dye carries
+  a transmittance per channel now and the light is multiplied through all three
+  (Beer-Lambert, off a small table so it costs no `pow`), in a triad an
+  ink-maker would sell.
+- **The oil film's interference was sampled at three wavelengths.** A cone
+  answers to a band, and what a band does to a fringe pattern is average it;
+  sampled at three points every fringe survives at full contrast however tightly
+  packed, which is where the hard neon rings came from. It is a spectral
+  integral against the CIE colour-matching functions now (the analytic fit of
+  Wyman, Sloan and Shirley, JCGT 2013), so the high orders wash out to pearl the
+  way a real slick does.
+- **Glitter read as a night sky.** Eighteen hundred specks of three to seven
+  device pixels is a texture, and a texture folded six times is static. Four
+  hundred cut hexagons, turned and foreshortened, in six foils; a flash with
+  rays on it rather than a soft bulb; each flake rocking at its own slow rate and
+  the fluid given the smoke's curl-noise breeze, so a cell nobody is touching
+  twinkles; and a lit gradient behind them, because a flat dark fill is a sheet
+  of paper with specks on it.
+- **The liquid timer's pairs were two mid-tones.** The light liquid is most of
+  the cell and it was a butter or a sky; the mirrors take a few per cent per
+  bounce and lean green as they go, so the figure went to olive and brick at the
+  rim. The light one of every pair is nearly white now.
+
+And the two that were literally pixels:
+
+- **The film's colour bands staircased**, because interference colour is
+  violently non-linear in thickness and the bands are all edge. It is painted
+  three pixels to a cell off an eased reconstruction of the field.
+- **The timer's pool surfaces staircased**, and that one was resolution thrown
+  away rather than resolution missing: where a surface is was already arithmetic,
+  not a field, so it is worked out at the pixel now, two to a cell.
+- **The wax carried a fine scalloping** at the top of the zoom, a ripple at the
+  spacing of the particles under it. The kernel is the smoothing, so it was
+  widened with the surface threshold raised in proportion to the square of the
+  reach — the coverage is unchanged and the contour is smooth at any size.
+
+**What it costs.** Node 22 via Vitest, one process, same machine, before against
+after; a step is one step of the fluid at 30 Hz and a paint is one rendered
+frame. The absolute numbers are two to three times what the browser measures —
+they are here to be compared with each other.
+
+|             | before   | after    |
+| ----------- | -------- | -------- |
+| smoke step  | 12.41 ms | 12.94 ms |
+| smoke paint | 0.45 ms  | 0.75 ms  |
+| film step   | 8.11 ms  | 9.23 ms  |
+| film paint  | 0.22 ms  | 2.58 ms  |
+| drops paint | 1.71 ms  | 4.84 ms  |
+| lava paint  | 6.22 ms  | 7.94 ms  |
+| ink paint   | 1.19 ms  | 0.93 ms  |
+
+The two that moved most are the two that bought resolution — the film at nine
+times the pixels and the timer at four — and both are on substances whose step
+costs nothing (the timer's is 0.008 ms). The fluid steps are within the noise of
+this machine, which is about a tenth: the viscosity pass is a five-point blend
+with a fast path for the nine cells in ten that have all four neighbours inside
+the wall.
 
 ### Polarised mode
 

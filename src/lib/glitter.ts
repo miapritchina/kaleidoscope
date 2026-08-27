@@ -40,6 +40,21 @@ export interface Flake {
   lean: number;
   /** Which way it faces. */
   turn: number;
+  /**
+   * How fast it rocks over on its own, in radians a second.
+   *
+   * A flake of foil in a liquid is never quite still: it is a few microns
+   * thick, it is not neutrally buoyant, and it drifts and rocks for as long as
+   * it is in there. Without this the only thing that moves a flake through
+   * alignment is the fluid turning or the phone tilting — so on a cell left
+   * alone, with no gravity reading to sweep the light across, the flashes were
+   * *frozen*: the same few hundred specks alight in the same places for as
+   * long as anybody looked, which read as a photograph of glitter rather than
+   * as glitter. Given its own slow rock, each flake comes through alignment on
+   * its own schedule and the cell twinkles all the time, without anything
+   * having to be done to it.
+   */
+  rock: number;
   /** How big it is drawn, in cell units. */
   size: number;
   /** Which of the {@link TINTS} it is cut from. */
@@ -49,22 +64,33 @@ export interface Flake {
 /**
  * How many flakes a cell holds at the two ends of the Amount slider.
  *
- * A cell of glitter and nothing else wants a great many more than a sprinkle
- * over glass did, and they are cheap: a flake is four numbers to advance and a
- * sprite to stamp.
+ * Far fewer than the eighteen hundred this once held, and the count is half of
+ * why that cell read as a night sky rather than as glitter. Eighteen hundred
+ * specks in a cell an inch across is not a suspension of flakes, it is a
+ * *texture* — and a texture folded six times by the mirrors is static, because
+ * the figure a kaleidoscope makes is only legible when the eye can pick out
+ * the thing being repeated. Four hundred flakes, each of them large enough to
+ * be an object, repeat into a figure. They are cheap either way: a flake is
+ * four numbers to advance and a sprite to stamp.
  */
-const FEWEST = 300;
-export const MOST_FLAKES = 1800;
+const FEWEST = 110;
+export const MOST_FLAKES = 700;
 
 /**
- * How big a flake is, in cell units. Small: a speck, not a sequin.
+ * How big a flake is, in cell units. A speck, not a sequin — but a speck you
+ * can see.
  *
- * Bigger was tried, to make them easier to see, and reads as confetti stuck to
- * the picture. What makes them read is being solid rather than being large —
- * see {@link BODY}.
+ * Bigger still was tried once and reads as confetti stuck to the picture, and
+ * the note that came out of it — that what makes a flake read is being solid
+ * rather than being large — is right and was taken too far. At the sizes it
+ * left, a flake was between three and seven device pixels across on a phone,
+ * which is a *speckle* and not an object: the cell came out looking like a
+ * photograph of a night sky, and no amount of flashing rescues something the
+ * eye reads as noise. Half again as large, and with the range opened up so the
+ * cell holds obvious flakes as well as fine ones, they read as cut foil.
  */
-const FLAKE_SMALLEST = 0.007;
-const FLAKE_LARGEST = 0.016;
+const FLAKE_SMALLEST = 0.014;
+const FLAKE_LARGEST = 0.042;
 
 /**
  * How much of the fluid's push a flake takes per second, in a thin fluid.
@@ -93,17 +119,52 @@ const GRAVITY = 6;
 /**
  * What glitter is cut from.
  *
- * Foil, and foil has a colour even in shadow: silver, gold, and the pink that
- * craft glitter is full of. It matters because a flake is not only a flash —
- * see {@link BODY}.
+ * Foil, and foil has a colour even in shadow, which matters because a flake is
+ * not only a flash — see {@link BODY}. A jar of craft glitter is not one
+ * colour and it is not three: it is silver and gold and rose and a green and a
+ * blue, and the mixture is most of why a jar of it is worth looking at. The
+ * tints are held bright, because foil is a mirror and a mirror in a lit cell
+ * is pale whatever it is made of; the colour is a lean and not a paint.
  */
-const TINTS = ['rgb(232,238,246)', 'rgb(246,222,170)', 'rgb(246,206,222)'];
+const TINTS = [
+  'rgb(236,242,250)',
+  'rgb(250,226,168)',
+  'rgb(250,206,220)',
+  'rgb(186,238,226)',
+  'rgb(198,214,250)',
+  'rgb(238,206,250)',
+];
 
 /** How solid a flake is when nothing is lighting it. */
-const BODY = 0.62;
+const BODY = 0.72;
 
 /** How much more solid it looks once it is catching the light. */
-const BODY_LIT = 0.38;
+const BODY_LIT = 0.28;
+
+/**
+ * The fastest a flake rocks over on its own, in radians a second.
+ *
+ * Slow enough that a flake is plainly a flake drifting rather than a light
+ * being switched on and off, and fast enough that the cell is never the same
+ * twice: at this rate a flake passes through alignment every few seconds, so
+ * at any moment a different handful of the cell's several hundred is alight.
+ */
+const ROCK = 0.55;
+
+/**
+ * The breeze the flakes' own fluid is given.
+ *
+ * Every other substance in the cell pushes on the fluid it hangs in — the dye
+ * and the oil are heavier than what carries them, the wax is driven by its own
+ * heat — and a cell of glitter is the one that pushes on nothing at all: foil
+ * is carried and does not carry. So left alone its fluid comes to rest, and a
+ * cell at rest is a cell where the flakes hang exactly where they are for as
+ * long as anyone looks. A slow wandering draught, weak enough that nothing in
+ * the cell appears to be blown about, is what keeps the flakes drifting
+ * through each other and the flashes travelling. See `breatheFlow` in
+ * `lib/flow.ts` for what it is.
+ */
+export const GLITTER_BREEZE = { strength: 0.28, grain: 2.2, tempo: 0.16 } as const;
 
 /** Builds a cell of glitter, deterministically. */
 export function createGlitter(seed: number, amount: number, scale = 1): Flake[] {
@@ -128,7 +189,16 @@ export function createGlitter(seed: number, amount: number, scale = 1): Flake[] 
       // them ever line up and the whole thing is invisible.
       lean: rng() * rng() * 1.1,
       turn: rng() * Math.PI * 2,
-      size: randomBetween(rng, FLAKE_SMALLEST, FLAKE_LARGEST) * Math.max(0.2, scale),
+      // Its own slow rock, either way, and a wide spread of rates: all of them
+      // at one rate is a cell that flashes in time with itself. See Flake.rock.
+      rock: randomBetween(rng, -1, 1) * ROCK,
+      // Cut in a range rather than evenly: a jar of glitter is mostly fine
+      // stuff with a few large flakes through it, and the large ones are what
+      // the eye finds first.
+      size:
+        randomBetween(rng, FLAKE_SMALLEST, FLAKE_LARGEST) *
+        (rng() < 0.12 ? 1.5 : 1) *
+        Math.max(0.2, scale),
       tint: Math.min(TINTS.length - 1, Math.floor(rng() * TINTS.length)),
     });
   }
@@ -207,6 +277,10 @@ export function updateGlitter(
       flake.turn += swirl * step;
     }
 
+    // And its own rocking, which is what keeps a cell nobody is touching
+    // twinkling. See Flake.rock.
+    flake.lean += flake.rock * step;
+
     const flowX = carried.x;
     const flowY = carried.y;
 
@@ -267,6 +341,19 @@ const SPECULAR = 90;
 
 /** Below this a flake's flash would not be seen, so it is not drawn. */
 const TOO_DIM = 0.02;
+
+/**
+ * The smallest a flake is ever drawn, in device pixels of half-width.
+ *
+ * The one place this substance is allowed to stop being to scale. A wide
+ * mirror triangle draws the cell small — at the top of the **Mirror size**
+ * slider it is about a third of what the default draws — and a flake scaled
+ * faithfully with it is a pixel and a half across, which is not a flake, it is
+ * noise: the whole cell went back to reading as a dark grainy field at exactly
+ * the setting that shows the most repeats of it. Below this the flake is drawn
+ * at this size instead, so what the mirrors repeat is still an object.
+ */
+const SMALLEST_DRAWN = 3.5;
 
 /** How brightly each flake is lit this frame, worked out once and drawn twice. */
 let alight = new Float32Array(MOST_FLAKES);
@@ -329,14 +416,20 @@ export function drawGlitter(
       continue;
     }
 
-    const reach = flake.size * scale;
-    // Foreshortened: a flake leaning over shows its edge, and at these sizes
-    // the thinning is what lets the eye see it turning. The axis is not
-    // drawn — a speck this small has no legible axis — only the width.
-    const across = reach * (0.35 + 0.65 * Math.abs(Math.cos(flake.lean)));
+    const reach = Math.max(SMALLEST_DRAWN, flake.size * scale);
+    // Foreshortened: a flake leaning over shows its edge, and the thinning is
+    // what lets the eye see it turning. Turned as well as thinned, because a
+    // cut flake has corners and a field of them all squared to the screen
+    // reads as a printed texture — which is what a sprite stamped without a
+    // rotation is.
+    const across = reach * (0.22 + 0.78 * Math.abs(Math.cos(flake.lean)));
 
     ctx.globalAlpha = Math.min(1, BODY + BODY_LIT * alight[i]!);
-    ctx.drawImage(foil, flake.x * scale - across, flake.y * scale - reach, across * 2, reach * 2);
+    ctx.save();
+    ctx.translate(flake.x * scale, flake.y * scale);
+    ctx.rotate(flake.turn);
+    ctx.drawImage(foil, -across, -reach, across * 2, reach * 2);
+    ctx.restore();
   }
 
   // And the flash, over the top and added rather than laid on: two flakes on
@@ -352,7 +445,7 @@ export function drawGlitter(
     }
 
     const flake = flakes[i]!;
-    const reach = flake.size * scale * 3;
+    const reach = Math.max(SMALLEST_DRAWN, flake.size * scale) * 3;
 
     ctx.globalAlpha = Math.min(1, lit);
     ctx.drawImage(flash, flake.x * scale - reach, flake.y * scale - reach, reach * 2, reach * 2);
@@ -391,6 +484,17 @@ export function createFlakeSprites(options: FlakeSpriteOptions = {}): FlakeSprit
 
   const cut = (tint: number) => ((Math.round(tint) % TINTS.length) + TINTS.length) % TINTS.length;
 
+  /**
+   * One flake of foil: a cut hexagon, edge to edge, with a sheen across it.
+   *
+   * It was a soft round dot, and a soft round dot is *dust*. Craft glitter is
+   * die-cut — hexagons, squares, stars — and the corner is the whole of what
+   * says so: a field of round specks reads as grain in a photograph however
+   * bright it is made, and the same field with corners on it reads as cut
+   * foil. The sheen across the face is what a bent flake does with the light
+   * it is not flashing back, and it is what keeps a flake from being a flat
+   * sticker in the frames where it is not alight.
+   */
   const speck = (colour: string): HTMLCanvasElement | null => {
     const canvas = create();
     canvas.width = size;
@@ -403,34 +507,110 @@ export function createFlakeSprites(options: FlakeSpriteOptions = {}): FlakeSprit
     }
 
     const middle = size / 2;
-    const glow = ctx.createRadialGradient(middle, middle, 0, middle, middle, middle);
+    // A whisker inside the sprite, so the cut edge has a pixel to be
+    // antialiased into rather than being clipped by the sprite's own square.
+    const reach = middle * 0.94;
     const body = colour.replace('rgb(', 'rgba(').replace(')', ',');
+    const sheen = ctx.createLinearGradient(0, 0, size, size);
 
-    glow.addColorStop(0, `${body}1)`);
-    glow.addColorStop(0.5, `${body}0.92)`);
-    glow.addColorStop(1, `${body}0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, size, size);
+    sheen.addColorStop(0, `${body}1)`);
+    sheen.addColorStop(0.45, `${body}0.86)`);
+    sheen.addColorStop(1, `${body}0.62)`);
+    ctx.fillStyle = sheen;
+    ctx.beginPath();
+
+    for (let corner = 0; corner < 6; corner += 1) {
+      const at = (corner / 6) * Math.PI * 2 + Math.PI / 6;
+      const x = middle + Math.cos(at) * reach;
+      const y = middle + Math.sin(at) * reach;
+
+      if (corner === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+
+    ctx.closePath();
+    ctx.fill();
 
     return canvas;
   };
 
-  const cached = (key: number, colour: string) => {
+  /**
+   * The flash: a bright core with four rays off it.
+   *
+   * A round glow is a *bulb*, and a bulb is what a lit flake looked like — a
+   * soft dot brightening and dimming, which is the one shape that says
+   * "sparkle" to nobody. What the eye reads as a glint is the star, and the
+   * star is not in the world: it is what a lens or an eyelash does to a small
+   * bright thing, which is exactly the case a lit flake is. So the flash has
+   * rays, and they are what turns a lit speck into a sparkle.
+   */
+  const star = (): HTMLCanvasElement | null => {
+    const canvas = create();
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      return null;
+    }
+
+    const middle = size / 2;
+    const glow = ctx.createRadialGradient(middle, middle, 0, middle, middle, middle);
+
+    glow.addColorStop(0, 'rgba(255,255,255,1)');
+    glow.addColorStop(0.18, 'rgba(255,255,255,0.62)');
+    glow.addColorStop(0.55, 'rgba(255,255,255,0.1)');
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, size, size);
+
+    // Four rays, each a soft bar fading out from the middle. Drawn as a
+    // gradient along the bar so the ray has no end to it, and added rather
+    // than laid on, since this whole sprite is light.
+    ctx.globalCompositeOperation = 'lighter';
+
+    for (const across of [true, false]) {
+      const ray = across
+        ? ctx.createLinearGradient(0, 0, size, 0)
+        : ctx.createLinearGradient(0, 0, 0, size);
+
+      ray.addColorStop(0, 'rgba(255,255,255,0)');
+      ray.addColorStop(0.5, 'rgba(255,255,255,0.85)');
+      ray.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = ray;
+
+      const thin = Math.max(1, size * 0.07);
+
+      if (across) {
+        ctx.fillRect(0, middle - thin / 2, size, thin);
+      } else {
+        ctx.fillRect(middle - thin / 2, 0, thin, size);
+      }
+    }
+
+    return canvas;
+  };
+
+  const cached = (key: number, make: () => HTMLCanvasElement | null) => {
     const found = cache.get(key);
 
     if (found !== undefined) {
       return found;
     }
 
-    const made = speck(colour);
+    const made = make();
     cache.set(key, made);
 
     return made;
   };
 
   return {
-    body: (tint) => cached(cut(tint), TINTS[cut(tint)]!),
-    flash: () => cached(TINTS.length, 'rgb(255,255,255)'),
+    body: (tint) => cached(cut(tint), () => speck(TINTS[cut(tint)]!)),
+    flash: () => cached(TINTS.length, star),
   };
 }
 

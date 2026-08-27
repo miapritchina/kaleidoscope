@@ -2,9 +2,11 @@ import { CHAMBER_RADIUS } from './chamber';
 import {
   advectField,
   breatheFlow,
+  capFlow,
   carryFlow,
   carryScalar,
   confineFlow,
+  conserveScalar,
   createFlow,
   driveFlow,
   positionOf as flowPositionOf,
@@ -106,6 +108,26 @@ const GRAVITY = 6;
 const THICKEST = 6;
 
 /**
+ * The thinnest the fluid is ever taken to be, for the dye's weight.
+ *
+ * `lib/ink.ts` floors its own the same way and for the same reason: at a
+ * literal nought there is nothing at all to spend the falling on, and a cell
+ * that accelerates without limit is not a thin fluid, it is a missing one. It
+ * is low enough that the thin end of the slider still reads as thin.
+ */
+const THINNEST = 0.12;
+
+/**
+ * The most dye one cell's water is taken to be carrying, for its weight.
+ *
+ * See {@link fall}. Sinking crowds and crowding is heavier, so uncapped the
+ * weight is a feedback loop with the fluid's drag for its only brake — and at
+ * the thin end there is hardly any. `lib/ink.ts` calls the same number
+ * `SOAKED`.
+ */
+const SOAKED = 2;
+
+/**
  * How strongly the dye takes its colour out of the light.
  *
  * Above one, and deliberately. Advection conserves the dye but spreads it, so
@@ -113,8 +135,61 @@ const THICKEST = 6;
  * started saturated is a pale wash a minute later even though every drop of it
  * is still in there. A strong dye is the honest fix: real ink is strong enough
  * that a tenth of a cell's worth still colours what is behind it.
+ *
+ * Lower than it was, because the cell no longer leaks: the old 1.9 was partly
+ * standing in for the dye the trace was losing, and with the total conserved
+ * the same number came out as three slabs of saturated colour with nothing to
+ * see through.
  */
-const STRENGTH = 1.9;
+const STRENGTH = 1.35;
+
+/**
+ * The most dye one cell may hold, in cloud-fulls.
+ *
+ * Headroom above the one a cloud is poured at, and it is what lets the cell be
+ * sealed. Where the flow crowds, dye piles up — that is what crowding is — and
+ * a field clamped at exactly what it was filled to cannot take the pile: the
+ * conservation hands the loss back and the clamp throws it straight away
+ * again, which is a leak with an extra step in it. With room above, a crowded
+ * cell simply holds more, and a fold where two ribbons stack reads darker than
+ * either, which is what stacked dye does. `lib/ink.ts` carries the same number
+ * for the same reason.
+ */
+export const HOLD = 2.5;
+
+/**
+ * What the three dyes are, as the share of each primary that gets through a
+ * unit depth of the dye at full strength.
+ *
+ * The first version was not a colour at all: dye *d* was written straight into
+ * channel *d*, so the three were a printer's cyan, magenta and yellow at full
+ * chroma and the cell came out looking like a test page — a red so pure it has
+ * no red in the ground it is over, a cyan the eye cannot find a name for. Real
+ * dye does not take out a primary, it takes out a *band*: a rose ink leaves
+ * plenty of blue and a little green, which is why two of them folded together
+ * make a colour a painter would recognise instead of one of six corners of the
+ * cube.
+ *
+ * So each dye carries a transmittance per channel and the light is multiplied
+ * through all three — Beer and Lambert, exactly as the liquid timer's beads
+ * are shaded: what comes through a depth `d` is the tint raised to `d`, so a
+ * ribbon is dark where it is thick and shows its own hue where it is drawn out
+ * thin. Nothing chooses what an overlap looks like; ink over ink is the
+ * product, which is what two transparent things in front of each other do.
+ *
+ * The three are a **triad an ink-maker would sell**: a peacock blue-green, a
+ * quinacridone rose and a turmeric gold. They are far enough apart on the
+ * wheel to make a full range between them and none of them sits on a primary,
+ * so no pair of them can mix to the flat mud a pair of opposites gives.
+ */
+const DYE_TINTS: readonly (readonly [number, number, number])[] = [
+  // Peacock: keeps its green, loses most of its red.
+  [0.1, 0.62, 0.72],
+  // Rose: keeps red, keeps a good deal of blue, loses green.
+  [0.95, 0.16, 0.5],
+  // Turmeric: keeps red and green, loses blue almost entirely.
+  [0.98, 0.7, 0.06],
+];
 
 /**
  * How much of the trace's own error is corrected, 0 to 1.
@@ -325,6 +400,7 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
   projectFlow(smoke);
   carryFlow(smoke, step);
   projectFlow(smoke);
+  capFlow(smoke);
 
   // The warmth rides the same fluid as the dye. A plain trace is enough: heat
   // is a force, not a picture, and a slightly blurred force is still a force.
@@ -339,7 +415,14 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
     const from = smoke.dye[d]!;
     const into = smoke.dye0[d]!;
 
-    carryScalar(smoke, from, into, { step, correct: CORRECT });
+    carryScalar(smoke, from, into, { step, correct: CORRECT, high: HOLD });
+    // A sealed cell keeps its dye. Tracing backwards does not know that — see
+    // `conserveScalar` — and a cell of smoke was quietly evaporating: 82% of
+    // it left after ten seconds, 33% after a minute, 18% after two. It was
+    // documented in ROADMAP.md and left alone because the look had been tuned
+    // around the fading; the look is being re-cut here anyway, and a cell that
+    // empties itself is not a look, it is a leak.
+    conserveScalar(smoke, from, into, HOLD);
     smoke.dye[d] = into;
     smoke.dye0[d] = from;
   }
@@ -349,36 +432,68 @@ export function updateSmoke(smoke: Smoke, { dt, thickness, swirl, angle }: Smoke
  * The dye falling and the warmth lifting, through the fluid that carries
  * both. See {@link INK_WEIGHT} and {@link FIRE}: the two pull opposite ways
  * along the same axis, and the shear where they disagree is the folding.
+ *
+ * Two things about how it is weighed matter more than either constant, and
+ * both were wrong here while `lib/ink.ts` — which is the same fluid with paint
+ * on it instead of dye — had them right from the day it was written.
+ *
+ * **It is weighed against the cell's own average**, which is the Boussinesq
+ * way of putting it: water is heavy only *compared with the water beside it*.
+ * Take the average out and what is left is the overturning, which is a plume;
+ * leave it in and every cell holding dye is pushed at once, which is the whole
+ * body of it sliding to the floor.
+ *
+ * **And the load is capped**, because sinking is a feedback loop — heavy fluid
+ * sinks, sinking fluid crowds, crowded fluid is heavier — and at the thin end
+ * of the Thickness slider there is almost no drag to spend the energy on.
+ * Measured before this: a cell of smoke at Thickness 0 held a median speed of
+ * 156 cell units a second after five, and NaN by thirty. Water saturated with
+ * dye is not much heavier for holding more of it.
  */
 function fall(smoke: Smoke, step: number, thickness: number, angle: number): void {
   const { u, v, inside } = smoke;
-  const thick = 1 + THICKEST * Math.min(1, Math.max(0, thickness));
+  const thick = 1 + THICKEST * Math.max(THINNEST, Math.min(1, Math.max(0, thickness)));
   const drop = (GRAVITY * INK_WEIGHT * step) / thick;
-  const lift = (GRAVITY * FIRE * step) / thick;
+  // Warmth enters as a *negative* load, at its own strength against the dye's,
+  // so that the two are weighed against the same average.
+  const warmth = FIRE / INK_WEIGHT;
   const downX = Math.sin(angle);
   const downY = Math.cos(angle);
+  let carried = 0;
+  let cells = 0;
 
-  for (let j = 0; j < GRID; j += 1) {
-    for (let i = 0; i < GRID; i += 1) {
-      const k = i + j * GRID;
-
-      if (!inside[k]) {
-        continue;
-      }
-
-      let dyed = 0;
-
-      for (let d = 0; d < DYES; d += 1) {
-        dyed += smoke.dye[d]![k]!;
-      }
-
-      const pull = drop * dyed - lift * smoke.heat[k]!;
-
-      u[k] = u[k]! + downX * pull;
-      v[k] = v[k]! + downY * pull;
+  for (let k = 0; k < GRID * GRID; k += 1) {
+    if (!inside[k]) {
+      continue;
     }
+
+    let dyed = 0;
+
+    for (let d = 0; d < DYES; d += 1) {
+      dyed += smoke.dye[d]![k]!;
+    }
+
+    loads[k] = Math.min(SOAKED, dyed) - smoke.heat[k]! * warmth;
+    carried += loads[k]!;
+    cells += 1;
+  }
+
+  const even = cells > 0 ? carried / cells : 0;
+
+  for (let k = 0; k < GRID * GRID; k += 1) {
+    if (!inside[k]) {
+      continue;
+    }
+
+    const pull = drop * (loads[k]! - even);
+
+    u[k] = u[k]! + downX * pull;
+    v[k] = v[k]! + downY * pull;
   }
 }
+
+/** How much dye and warmth each cell's water is carrying, for its weight. */
+const loads = new Float32Array(GRID * GRID);
 
 /**
  * Paints the ink onto a small canvas, one pixel per cell.
@@ -402,21 +517,80 @@ export function paintSmoke(smoke: Smoke, strength = STRENGTH): HTMLCanvasElement
   const { canvas, ctx, image } = surface;
   const pixels = image.data;
 
+  shadeFor(strength);
+
   for (let k = 0; k < GRID * GRID; k += 1) {
     const at = k * 4;
+    let red = 1;
+    let green = 1;
+    let blue = 1;
 
     for (let d = 0; d < DYES; d += 1) {
-      const taken = Math.min(1, Math.max(0, smoke.dye[d]![k]! * strength));
+      const held = smoke.dye[d]![k]!;
 
-      pixels[at + d] = Math.round(255 * (1 - taken));
+      if (held <= 0) {
+        continue;
+      }
+
+      // Beer and Lambert, read off the table: each unit of dye passes a fixed
+      // share of what reaches it, so the depth is an exponent and not a scale.
+      // See DYE_TINTS and {@link shades}.
+      const deep = held >= HOLD ? SHADES - 1 : Math.round((held / HOLD) * (SHADES - 1));
+      const shade = (d * SHADES + deep) * 3;
+
+      red *= shades[shade]!;
+      green *= shades[shade + 1]!;
+      blue *= shades[shade + 2]!;
     }
 
+    pixels[at] = Math.round(255 * red);
+    pixels[at + 1] = Math.round(255 * green);
+    pixels[at + 2] = Math.round(255 * blue);
     pixels[at + 3] = 255;
   }
 
   ctx.putImageData(image, 0, 0);
 
   return canvas;
+}
+
+/**
+ * Steps in each dye's depth table.
+ *
+ * The exponential a dye's depth wants is a `pow` per channel per dye per cell,
+ * which is eighty thousand of them for one frame of a cell this size. The
+ * answer depends on nothing but how much of that one dye is here, so it is
+ * solved once for each representable amount and read back — the same trick the
+ * paint's colour table and the film's interference table are.
+ */
+const SHADES = 129;
+
+/** What each dye passes at each depth, per channel. See {@link shadeFor}. */
+const shades = new Float32Array(DYES * SHADES * 3);
+
+/** Which strength {@link shades} currently holds. */
+let shadedAt = -1;
+
+/** Fills {@link shades} for a dye strength, if it is not already filled. */
+function shadeFor(strength: number): void {
+  if (shadedAt === strength) {
+    return;
+  }
+
+  shadedAt = strength;
+
+  for (let d = 0; d < DYES; d += 1) {
+    const tint = DYE_TINTS[d]!;
+
+    for (let k = 0; k < SHADES; k += 1) {
+      const held = (k / (SHADES - 1)) * HOLD * strength;
+      const at = (d * SHADES + k) * 3;
+
+      shades[at] = tint[0] ** held;
+      shades[at + 1] = tint[1] ** held;
+      shades[at + 2] = tint[2] ** held;
+    }
+  }
 }
 
 /** The one surface the ink is drawn on, built once. */

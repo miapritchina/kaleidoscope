@@ -136,6 +136,127 @@ describe('the wall', () => {
   });
 });
 
+describe('the wall, as a wall', () => {
+  /** The fastest anything in the cell is going, in cell units a second. */
+  function fastestOf(flow: Flow): number {
+    let most = 0;
+
+    for (let k = 0; k < flow.u.length; k += 1) {
+      const speed = Math.hypot(flow.u[k]!, flow.v[k]!);
+
+      if (Number.isNaN(speed)) {
+        return NaN;
+      }
+
+      most = Math.max(most, speed);
+    }
+
+    return most;
+  }
+
+  /** One smooth swirl in the middle of the cell, and nothing else. */
+  function swirled(): Flow {
+    const flow = createFlow(GRID);
+
+    for (let j = 0; j < GRID; j += 1) {
+      for (let i = 0; i < GRID; i += 1) {
+        const k = i + j * GRID;
+
+        if (!flow.inside[k]) {
+          continue;
+        }
+
+        const x = positionOf(GRID, i);
+        const y = positionOf(GRID, j);
+        const much = Math.exp((-(x * x + y * y) / (CHAMBER_RADIUS * 0.4) ** 2) * 2);
+
+        flow.u[k] = -y * 1.6 * much;
+        flow.v[k] = x * 1.6 * much;
+      }
+    }
+
+    projectFlow(flow);
+
+    return flow;
+  }
+
+  // The one that mattered. The round wall is a staircase on a square grid, and
+  // the divergence used to be measured against a neighbour that agreed with
+  // the cell asking — which is not a wall, it is a hole: the solve was told
+  // nothing was flowing out and let the fluid through the glass. A cell with
+  // *nothing pushing on it* then fed itself off the staircase and ran away to
+  // the speed limit within ten seconds, which is where the thin end of the
+  // Thickness slider went to NaN.
+  it('does not feed a cell that nothing is pushing', () => {
+    const flow = swirled();
+    const opened = fastestOf(flow);
+
+    for (let frame = 0; frame < 30 * 30; frame += 1) {
+      stepFlow(flow, { dt: 1 / 30, thickness: 0, swirl: 0, confine: 6 });
+    }
+
+    expect(fastestOf(flow)).toBeLessThan(opened);
+  }, 20000);
+
+  it('holds every setting of the slider to a speed, and to a number', () => {
+    for (const thickness of [0, 0.35, 1]) {
+      const flow = swirled();
+
+      for (let frame = 0; frame < 30 * 12; frame += 1) {
+        stepFlow(flow, { dt: 1 / 30, thickness, swirl: 4, confine: 6 });
+      }
+
+      const fastest = fastestOf(flow);
+
+      expect(Number.isFinite(fastest)).toBe(true);
+      // The wall itself is dragged round at swirl x radius; nothing in the
+      // cell has any business going much faster than that.
+      expect(fastest).toBeLessThan(4 * CHAMBER_RADIUS * 3);
+    }
+  }, 20000);
+});
+
+describe('viscosity', () => {
+  /** How much of a stirred eddy is left after some seconds. */
+  function eddyAfter(thickness: number, seconds: number): number {
+    const flow = createFlow(GRID);
+
+    stirFlow(flow, { x: 0.4, y: 0, vx: 0, vy: 2, reach: 0.3 });
+    stepFlow(flow, { dt: 1 / 30, thickness, swirl: 0 });
+
+    let opened = 0;
+
+    for (let k = 0; k < flow.u.length; k += 1) {
+      opened += Math.hypot(flow.u[k]!, flow.v[k]!);
+    }
+
+    for (let frame = 0; frame < seconds * 30; frame += 1) {
+      stepFlow(flow, { dt: 1 / 30, thickness, swirl: 0 });
+    }
+
+    let left = 0;
+
+    for (let k = 0; k < flow.u.length; k += 1) {
+      left += Math.hypot(flow.u[k]!, flow.v[k]!);
+    }
+
+    return opened > 0 ? left / opened : 0;
+  }
+
+  // What the Thickness slider is *for*, and what it did not do: the wall's
+  // grip used to be applied at full strength to every cell, so an eddy lost a
+  // quarter of itself per step at any setting and a stir was gone in a tenth
+  // of a second. Now the slider is the viscosity, and the viscosity is what
+  // decides how long the finger's wake lives.
+  it('lets a thin cell hold a stir far longer than a gel does', () => {
+    const thin = eddyAfter(0, 4);
+    const gel = eddyAfter(1, 4);
+
+    expect(thin).toBeGreaterThan(0.35);
+    expect(gel).toBeLessThan(thin * 0.6);
+  });
+});
+
 describe('glitter in a real fluid', () => {
   const still = { dt: 1 / 60, thickness: 0.35, swirl: 0, angle: 0 };
 

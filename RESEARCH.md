@@ -8,6 +8,61 @@ ROADMAP.md's style of record and leave the research here.
 
 ---
 
+## 2026-08-26 — The liquid substances, looked at on a phone
+
+The plan below was built in full, and this is what the pictures said about it.
+Six substances reviewed against photographs off a phone and against headless
+screenshots at every setting of both sliders, at the default mirror angle and
+off it, still and mid-spin. The record of what was found and what it cost is in
+ROADMAP.md, "The liquid cell, looked at"; what is worth keeping _here_ is the
+shape of the mistakes, because four of them are the same mistake.
+
+**Three of the six faults were in the shared fluid, not in any substance.** The
+critique below said the honest physics is one cell of fluid with different
+things carried in it, and extracting `lib/flow.ts` was right — but it also
+means a fault in the fluid wears six different costumes. The smoke's fading,
+the film's shrinking slick, the thin end of the Thickness slider going to NaN
+and the finger's wake dying in a tenth of a second were four symptoms of two
+faults: a wall that the velocity solve could see straight through, and a wall
+grip applied to every cell rather than to the fluid against the wall.
+
+**The one to remember: a boundary condition is not a default.** `neighbour()`
+hands back what the asking cell holds wherever there is no neighbour, and that
+is exactly right for a pressure (zero gradient), for a dye (nothing crosses)
+and for anything carried. Reused for the velocity the divergence is measured
+from, the same helper says "nothing is flowing out of this cell", which is a
+hole rather than a wall. It had been there since the solver was written, it
+never once threw, and what it did was feed energy into a cell that nothing was
+pushing.
+
+**Four of them were the same colour mistake.** Smoke's dyes, the film's
+interference, the liquid timer's pairs and (further back) the lava's palette
+were each _sampled_ where they should have been _integrated_ — three
+wavelengths for a spectrum, one primary for a dye, a mid-tone for the medium
+most of the cell is made of. Every one of them came out reading as a test
+pattern rather than as a material, and in every case the fix was to model the
+physics one step less coarsely rather than to pick nicer numbers. The oil film
+is the clearest: three wavelengths give hard neon rings at every order, and the
+same arithmetic integrated against the eye's colour-matching functions gives the
+gold-magenta-pearl sequence of a real slick, because the washing-out of the high
+orders _is_ the averaging the eye does.
+
+**And two were resolution thrown away rather than resolution missing.** The oil
+film's bands and the timer's pool surfaces both staircased, and in both cases
+the underlying quantity was available at any resolution — the film's field
+interpolates, and where a pool's surface lies is a chord and a meniscus worked
+out per pixel. Painting one pixel per simulation cell had thrown that away. The
+rule that came out of it: **paint at the resolution of the sharpest thing in the
+picture, not at the resolution of the field.** A smooth field with a sharp
+mapping over it (interference colour, a metaball contour, a straight surface) is
+a sharp picture.
+
+What is still open from the plan below is unchanged: the stir-versus-turn
+direction fork (owner's call, and no screenshot settles it), and the Rapier
+adoption question for the dry chamber.
+
+---
+
 ## 2026-08-25 — The liquid substances, third-party libraries, and the plan
 
 ### Owner decisions this session
