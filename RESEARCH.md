@@ -72,6 +72,25 @@ makes a watercolour read as one rather than as an airbrush. Dropping the whole
 of a rejected model is tidy and it is how the second claim went out with the
 first.
 
+**And the tooth then went out three times too loud, which is the clearest
+"look at the picture" this repo has.** Every test passed, the wash conserved
+its paint, the palettes had no grey mixture in them — and a photograph off a
+phone at the top of the zoom slider was a field of specks with a wash somewhere
+underneath. The lesson is about _attribution_, not about the number: painting
+the same cell once with the tooth switched off and once with the flocculation
+switched off settled in two screenshots what an afternoon of reasoning would
+not have. The flocs contributed almost nothing, because by twenty seconds in
+the fluid has carried and blurred that field into something very smooth, and
+the whole of the fault was in the one thing that does not move.
+
+The general form, worth keeping: **a texture that is not attached to anything
+is dirt.** What made this one read as dirt was that it modulated brightness by
+a fixed share everywhere, so it broke mid-tones into a light half and a dark
+half — and a mid green broken in half is olive. Tying it to a _hump_ against
+wash depth rather than a ramp is what turned it back into paper: the tooth is
+what a wash sits in while it is still thin enough to sit in anything, and a
+wash near its mass tone has filled the pits and the peaks alike.
+
 Two smaller things fell out of building it. `lib/noise.ts` documents its own
 lattice-aligned vice as harmless, and it is, everywhere it is used — buried in a
 fluid and differentiated first. Read directly and magnified it is a dither

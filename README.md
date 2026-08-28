@@ -1084,8 +1084,35 @@ the thing a digital wash is always missing, and it is the one thing paper does t
 in a single frame. Two separate numbers, because they are two separate effects: how much more
 pigment the pits hold than the peaks, which only shows where there is paint, and the shading
 of the **bare sheet**, which is why the white of this cell is a white _sheet_ rather than a
-flat 255. The second has to be a whisper — the fold repeats the same square dozens of times,
-so anything loud enough to notice once is a pattern the second time.
+flat 255. Both have to be a whisper — the fold repeats the same square dozens of times, so
+anything loud enough to notice once is a pattern the second time.
+
+**And a first go at it was three times too loud, which was worse than having none.** At a bite
+of a fifth of the brightness, a photograph off a phone at the top of the zoom slider was a
+field of hard-edged specks with a wash somewhere underneath it. Painting the same cell with
+the tooth switched off showed what had been lost — a clean wash of sage and teal — so what the
+tooth was doing was not texture, it was **dirt**: a tenth either way, at that scale, breaks
+every mid-tone into a light half and a dark half, and a mid green broken in half reads as
+olive. The rule that came out of it is that _the tooth is something you notice about a wash,
+not something you see instead of one_. Three things were wrong and all three mattered:
+
+- **The amplitude**, now a third of what it was. Measured against the same wash on a
+  hot-pressed sheet, the tooth adds about 3 of spread out of 255 to a middling wash.
+- **The scale.** Most of the energy was in the two coarse octaves, which at the top of the
+  zoom slider are blobs thirty screen pixels across; blobs that size are not a texture the eye
+  reads as paper, they are marks on the picture. The sizes halved and the weight moved onto
+  the finest of the three.
+- **The shape of the field.** The noise was being stretched to fill its range, so it spent most
+  of its time _at_ the ends: the sheet grew plateaus of solid pit and solid peak with hard
+  edges between them, which is a speckle and not a tooth. Left unstretched, the deepest pit is
+  nowhere near the deepest the arithmetic allows — which is also true of paper.
+
+There is a fourth, and it is the one that made the difference to the darks: **the tooth is a
+hump against depth rather than a ramp.** A wash deep enough to be near its mass tone has
+filled the pits and the peaks alike, and there is nothing left for the tooth to separate. On a
+ramp the deepest greens in the cell were the most speckled part of the picture, which is the
+wrong way round; on a hump the tooth adds 2.9 of spread to a wash at a quarter depth and 0.1
+to one at five times that.
 
 It costs a rewrite of how the cell is painted, and the rewrite is the interesting part. The
 fluid has no detail finer than a grid cell and the paper has nothing but, so the two want

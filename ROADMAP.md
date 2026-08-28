@@ -1179,6 +1179,45 @@ default settings afterwards: ink 6.3 ms, smoke 5.0, film 4.6, lava 4.4, drops
 3.9. (Measured differently from the table in the entry above, which timed the
 step and the paint separately; the two sets are not comparable to each other.)
 
+### ~~The paper tooth was dirt~~ — fixed, and it is the clearest "look at the picture" this repo has
+
+The entry above added a tooth to the ink and it went out three times too loud.
+A photograph off a phone at the top of the zoom slider was a field of
+hard-edged specks with a wash somewhere underneath it, and the mid-greens had
+gone olive. Painting the same cell with the tooth switched off settled the
+attribution in one screenshot: the wash underneath was clean sage and teal, and
+the flocculation — the other candidate — turned out to contribute almost
+nothing, because by the time a cell has run for twenty seconds the fluid has
+carried and blurred the floc field into something very smooth.
+
+Four things wrong, and the measurements after each:
+
+|                                 | was       | is         |
+| ------------------------------- | --------- | ---------- |
+| bite, as a share of brightness  | 0.2       | 0.06       |
+| bare-sheet shading              | 0.028     | 0.014      |
+| octave sizes, in painted pixels | 5, 11, 24 | 2.2, 5, 11 |
+| weight on the finest octave     | 0.48      | 0.55       |
+
+The fourth is not a number in that table and it is the one that fixed the
+darks. The bite was **ramped** against how much paint a pixel holds, so the
+deepest part of the cell was the most speckled part of the picture. It is a
+**hump** now: a wash deep enough to be near its mass tone has filled the pits
+and the peaks alike and there is nothing left for the tooth to separate.
+Measured as spread added over the same wash on a hot-pressed sheet, using the
+palette's weakest paint so the load is the depth asked for:
+
+| wash depth                        | 0.1 | 0.25 | 0.5 | 0.8 | 1.2 |
+| --------------------------------- | --- | ---- | --- | --- | --- |
+| spread the sheet adds, out of 255 | 4.0 | 2.9  | 1.1 | 0.3 | 0.1 |
+
+And one more, which is why the specks had hard edges: the noise was being
+stretched by a gain of 1.35 and clamped, so three octaves that sit near the
+middle spent most of their time _at_ the ends. The sheet grew plateaus of solid
+pit and solid peak with hard edges between them. Left unstretched the field is
+smooth, and the deepest pit is nowhere near the deepest the arithmetic allows —
+which is also true of paper.
+
 ### Polarised mode
 
 Polarising film plus cellophane is how real kaleidoscopes get those electric
