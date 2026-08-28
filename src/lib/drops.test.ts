@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { CHAMBER_RADIUS } from './chamber';
-import { chordFor, createDrops, paintDrops, updateDrops, type Drops } from './drops';
+import { chordFor, createDrops, paintDrops, surfacesOf, updateDrops, type Drops } from './drops';
 
 const still = { dt: 1 / 60, thickness: 0.35, swirl: 0, angle: 0 };
+
+/** How much liquid the tube holds altogether. */
+const FULL = Math.PI * CHAMBER_RADIUS * CHAMBER_RADIUS;
 
 function run(drops: Drops, seconds: number, over = still) {
   for (let frame = 0; frame < seconds * 60; frame += 1) {
@@ -11,11 +14,29 @@ function run(drops: Drops, seconds: number, over = still) {
   }
 }
 
-/** How much heavy liquid there is, wherever it happens to be. */
-const liquid = (drops: Drops) =>
-  drops.overhead +
-  drops.floor +
-  drops.beads.reduce((sum, bead) => sum + (bead.rising ? 0 : bead.area), 0);
+/** How much of each liquid there is, wherever in the column it happens to be. */
+function held(drops: Drops): number[] {
+  const each = [0, 0, 0];
+
+  for (const band of drops.bands) {
+    each[band.liquid] = each[band.liquid]! + band.area;
+  }
+
+  return each;
+}
+
+/** Whether the column is layered heaviest-first, which is what it settles to. */
+const sorted = (drops: Drops) =>
+  drops.bands.every((band, at) => at === 0 || drops.bands[at - 1]!.liquid > band.liquid);
+
+/** Where every surface is, top of the cell first. */
+function edgesOf(drops: Drops): number[] {
+  const edges: number[] = [];
+
+  surfacesOf(drops, edges);
+
+  return edges;
+}
 
 describe('createDrops', () => {
   it('is the same cell for the same seed', () => {
@@ -25,107 +46,176 @@ describe('createDrops', () => {
 
   // mulberry32's opening draws sit close together for seeds that sit close
   // together, so a cell that chose its liquids off the first one came out the
-  // same colour for a run of seeds. Nothing else in the cell would have shown
+  // same colours for a run of seeds. Nothing else in the cell would have shown
   // it: every other number is drawn later.
-  it('does not fill a run of nearby seeds with the same pair of liquids', () => {
-    const pairs = new Set([1, 2, 3, 4, 5, 6].map((seed) => createDrops(seed, 0.5).tints[1][0]));
+  it('does not fill a run of nearby seeds with the same liquids', () => {
+    const sets = new Set([1, 2, 3, 4, 5, 6].map((seed) => createDrops(seed, 0.5).tints[1]![0]));
 
-    expect(pairs.size).toBeGreaterThan(1);
+    expect(sets.size).toBeGreaterThan(1);
   });
 
-  it('pours more in when more is asked for', () => {
-    expect(createDrops(1, 1).heavy).toBeGreaterThan(createDrops(1, 0).heavy * 1.5);
+  it('holds three liquids and fills the tube exactly', () => {
+    for (const amount of [0, 0.35, 0.55, 1]) {
+      const drops = createDrops(2, amount);
+
+      expect(drops.tints).toHaveLength(3);
+      expect(drops.bands).toHaveLength(3);
+      expect(held(drops).reduce((sum, one) => sum + one, 0)).toBeCloseTo(FULL, 9);
+
+      for (const one of held(drops)) {
+        expect(one).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  // A sealed tube is always full, so Amount cannot ask for more liquid. What it
+  // asks for is a deeper layer of one of them against the other two.
+  it('lays the layers more unevenly when more is asked for', () => {
+    const evenness = (amount: number) => {
+      const each = held(createDrops(1, amount));
+
+      return Math.max(...each) - Math.min(...each);
+    };
+
+    expect(evenness(0)).toBeCloseTo(0, 6);
+    expect(evenness(1)).toBeGreaterThan(FULL * 0.1);
+
+    // And never so uneven that a layer stops reaching into what the mirrors
+    // fold. See SPREAD.
+    for (const amount of [0, 0.5, 1]) {
+      for (const one of held(createDrops(1, amount))) {
+        expect(one).toBeGreaterThan(FULL * 0.26);
+      }
+    }
   });
 
   // Which is how the toy is handed to you, and there is nothing to catch this
   // one mid-motion: the motion *is* the run, and it starts at the start.
-  it('opens turned over, with all of it overhead', () => {
+  it('opens upside down, with every layer in the wrong place', () => {
     const drops = createDrops(2, 0.6);
 
-    expect(drops.overhead).toBe(drops.heavy);
-    expect(drops.floor).toBe(0);
+    expect(drops.bands.map((band) => band.liquid)).toEqual([0, 1, 2]);
+    expect(sorted(drops)).toBe(false);
   });
 });
 
 describe('the run down', () => {
-  it('carries every last bit of it from one end to the other', () => {
+  it('sorts itself into layers, heaviest lowest, and then stops', () => {
     const drops = createDrops(3, 0.55);
 
-    run(drops, 200);
+    run(drops, 400);
 
-    expect(drops.overhead).toBe(0);
+    expect(drops.bands.map((band) => band.liquid)).toEqual([2, 1, 0]);
+    expect(drops.swap).toBeNull();
     expect(drops.beads).toHaveLength(0);
-    expect(drops.floor).toBeCloseTo(drops.heavy, 9);
   });
 
-  // The one thing a bookkeeping model of a liquid has to get right, and the one
-  // thing it is easy to get wrong: the bump a bead starts as was liquid that
-  // had to come out of the pool, and the first version of this conjured it.
-  it('never has more or less of it than it started with', () => {
+  // The one thing a bookkeeping model of a liquid has to get right. Every band
+  // is somebody's liquid and the tube is sealed, so the three totals are the
+  // three it was filled with, on every frame of the whole run.
+  it('never has more or less of any of them than it started with', () => {
     const drops = createDrops(9, 0.7);
+    const poured = held(drops);
 
-    for (let frame = 0; frame < 60 * 90; frame += 1) {
+    for (let frame = 0; frame < 60 * 200; frame += 1) {
       updateDrops(drops, still);
-      expect(liquid(drops)).toBeCloseTo(drops.heavy, 9);
+
+      const now = held(drops);
+
+      expect(now[0]).toBeCloseTo(poured[0]!, 9);
+      expect(now[1]).toBeCloseTo(poured[1]!, 9);
+      expect(now[2]).toBeCloseTo(poured[2]!, 9);
+      expect(now[0]! + now[1]! + now[2]!).toBeCloseTo(FULL, 9);
     }
   });
 
   // Not a fudge for the sake of a slow ending: a drip runs on the head of
   // liquid above it, which is why the real ones are still letting the odd bead
-  // go minutes after the bulk of it has gone down.
-  it('takes longer over the second half than the first', () => {
+  // go minutes after the bulk of it has gone across.
+  it('takes longer over the second half of an exchange than the first', () => {
     const drops = createDrops(5, 0.55);
     let half = 0;
-    let all = 0;
+    let most = 0;
 
-    for (let frame = 0; frame < 60 * 300; frame += 1) {
+    // Measured to nine tenths rather than to the end: the frame an exchange
+    // finishes on is the frame the next one starts on, so a run that watched
+    // for a progress of one would never see it.
+    for (let frame = 0; frame < 60 * 200 && !most; frame += 1) {
       updateDrops(drops, still);
 
-      if (!half && drops.overhead <= drops.heavy / 2) {
+      const progress = drops.swap?.progress ?? 0;
+
+      if (!half && progress >= 0.45) {
         half = frame;
       }
 
-      if (!all && drops.overhead === 0) {
-        all = frame;
+      if (half && progress >= 0.9) {
+        most = frame;
       }
     }
 
     expect(half).toBeGreaterThan(0);
-    expect(all - half).toBeGreaterThan(half);
+    expect(most - half).toBeGreaterThan(half);
   });
 
   it('runs slower through a gel than through a thin oil', () => {
-    const spent = (thickness: number) => {
+    const gone = (thickness: number) => {
       const drops = createDrops(6, 0.55);
-      let frames = 0;
 
-      while (drops.overhead > 0 && frames < 60 * 600) {
-        updateDrops(drops, { ...still, thickness });
-        frames += 1;
-      }
+      run(drops, 40, { ...still, thickness });
 
-      return frames;
+      return drops.swap?.progress ?? 1;
     };
 
-    expect(spent(1)).toBeGreaterThan(spent(0) * 2);
+    expect(gone(0)).toBeGreaterThan(gone(1) * 2);
   });
 
   // Sampled at a run of instants, a surface that is flat between beads is flat
-  // in nearly every one of them — so the wait is spent gathering the next one
-  // rather than waiting for it, and the underside of the pool is never bare for
-  // more than the single frame it takes to start the next.
-  it('always has a bead gathering while there is anything left to gather', () => {
+  // in nearly every one of them — so the wait is spent gathering the next pair
+  // rather than waiting for it, and the exchange surface is never bare for more
+  // than the single frame it takes to start the next.
+  it('always has a bead gathering while an exchange is running', () => {
     const drops = createDrops(8, 0.55);
     let bare = 0;
     let longest = 0;
 
-    while (drops.overhead > 0) {
+    for (let frame = 0; frame < 60 * 120; frame += 1) {
       updateDrops(drops, still);
+
+      if (!drops.swap) {
+        continue;
+      }
+
       bare = drops.beads.some((bead) => bead.filling > 0) ? 0 : bare + 1;
       longest = Math.max(longest, bare);
     }
 
     expect(longest).toBeLessThanOrEqual(1);
+  });
+
+  // The thing three liquids can do that two could not, and the reason the
+  // substance was rebuilt: the heavy one cannot get down past the light one
+  // unless the light one comes up past it at the same moment, because there is
+  // nowhere else in a sealed tube for either of them to go.
+  it('sends a bead down and a bubble up out of the same surface at once', () => {
+    const drops = createDrops(12, 0.55);
+    let together = 0;
+
+    for (let frame = 0; frame < 60 * 60; frame += 1) {
+      updateDrops(drops, still);
+
+      const going = drops.beads.filter((bead) => bead.filling <= 0 && !bead.landing);
+      const down = going.find((bead) => !bead.rising);
+      const up = going.find((bead) => bead.rising);
+
+      if (down && up) {
+        // And they are made of different liquids, or it is not an exchange.
+        expect(down.liquid).not.toBe(up.liquid);
+        together += 1;
+      }
+    }
+
+    expect(together).toBeGreaterThan(60 * 10);
   });
 
   it('keeps every bead inside the wall', () => {
@@ -144,20 +234,34 @@ describe('where the surfaces lie', () => {
     CHAMBER_RADIUS * CHAMBER_RADIUS * (Math.acos(chord) - chord * Math.sqrt(1 - chord * chord));
 
   it('puts a surface where that much liquid would put it', () => {
-    const full = Math.PI * CHAMBER_RADIUS * CHAMBER_RADIUS;
-
     for (const share of [0.05, 0.25, 0.5, 0.75, 0.95]) {
-      expect(beyond(chordFor(full * share))).toBeCloseTo(full * share, 6);
+      expect(beyond(chordFor(FULL * share))).toBeCloseTo(FULL * share, 6);
     }
   });
 
-  it('has nowhere for an empty pool and everywhere for a full one', () => {
+  it('has nowhere for an empty layer and everywhere for a full one', () => {
     expect(chordFor(0)).toBe(1);
-    expect(chordFor(Math.PI * CHAMBER_RADIUS * CHAMBER_RADIUS)).toBe(-1);
+    expect(chordFor(FULL)).toBe(-1);
+  });
+
+  it('runs from the floor of the cell to its ceiling, in order', () => {
+    const drops = createDrops(19, 0.55);
+
+    run(drops, 25);
+
+    const edges = edgesOf(drops);
+
+    expect(edges).toHaveLength(drops.bands.length + 1);
+    expect(edges[0]).toBeCloseTo(CHAMBER_RADIUS, 6);
+    expect(edges[edges.length - 1]).toBeCloseTo(-CHAMBER_RADIUS, 6);
+
+    for (let at = 1; at < edges.length; at += 1) {
+      expect(edges[at]).toBeLessThanOrEqual(edges[at - 1]!);
+    }
   });
 
   /**
-   * How much of the mirror triangle a pool with its surface here would cover.
+   * How much of the mirror triangle a surface here would have below it.
    *
    * The cell is the disc the triangle is inscribed in, so the triangle's edges
    * lie at half the radius: the fold never sees the outer half of the cell.
@@ -199,23 +303,33 @@ describe('where the surfaces lie', () => {
   // number checked out, and the figure came out as a lattice of little
   // rosettes. The rosettes *were* the pool — a settled pool is a cap at the
   // rim, the fold only samples the middle of the cell, and what reached far
-  // enough in was three corners of it.
-  it('rests with its surface where the mirrors can see it', () => {
-    const drops = createDrops(31, 0.55);
+  // enough in was three corners of it. Two surfaces rather than one is a
+  // stronger answer than moving one was: with three layers of comparable
+  // depth, neither of them can be at the rim.
+  it('rests with both its surfaces where the mirrors can see them', () => {
+    for (const amount of [0, 0.55, 1]) {
+      const drops = createDrops(31, amount);
 
-    run(drops, 250);
+      run(drops, 400);
 
-    expect(drops.overhead).toBe(0);
-    // Within a twentieth of the middle of the cell, and better than a third of
-    // what is folded. At the rim it measured 0.11.
-    expect(Math.abs(drops.floorAt)).toBeLessThan(CHAMBER_RADIUS * 0.06);
-    expect(folded(drops.floorAt)).toBeGreaterThan(0.33);
+      expect(sorted(drops)).toBe(true);
+
+      const [, lower, upper] = edgesOf(drops);
+
+      for (const surface of [lower!, upper!]) {
+        expect(Math.abs(surface)).toBeLessThan(CHAMBER_RADIUS * 0.5);
+        // Neither of them cuts off less than a sixth of what is folded, which
+        // is what "the mirrors can see it" means. At the rim it measured 0.11.
+        expect(folded(surface)).toBeGreaterThan(0.15);
+        expect(folded(surface)).toBeLessThan(0.85);
+      }
+    }
   });
 
   it('lies across whichever way is down', () => {
     const drops = createDrops(12, 0.55);
 
-    run(drops, 200, { ...still, angle: Math.PI / 2 });
+    run(drops, 300, { ...still, angle: Math.PI / 2 });
 
     // Down the screen is +y at an angle of nought; a quarter turn puts it at +x.
     expect(drops.downX).toBeCloseTo(1, 6);
@@ -224,74 +338,74 @@ describe('where the surfaces lie', () => {
 });
 
 describe('turning it over', () => {
-  const drained = (seed: number) => {
+  const settled = (seed: number) => {
     const drops = createDrops(seed, 0.55);
 
-    run(drops, 200);
+    run(drops, 400);
 
     return drops;
   };
 
-  it('sets the whole thing going again when it is turned over briskly', () => {
-    const drops = drained(13);
-    const settled = drops.floor;
+  it('turns the whole column upside down when it is turned over briskly', () => {
+    const drops = settled(13);
+    const poured = held(drops);
 
     // Half a turn in half a second, which is what a hand does to one of these.
     for (let frame = 0; frame < 30; frame += 1) {
       updateDrops(drops, { ...still, angle: (frame / 30) * Math.PI });
     }
 
-    // All of it, less whatever the bead that started gathering on the way has
-    // already taken out of the pool.
-    expect(drops.overhead).toBeGreaterThan(settled * 0.95);
-    expect(liquid(drops)).toBeCloseTo(settled, 9);
-    expect(drops.floor).toBe(0);
+    expect(sorted(drops)).toBe(false);
+    expect(held(drops)[0]).toBeCloseTo(poured[0]!, 9);
+    expect(held(drops)[2]).toBeCloseTo(poured[2]!, 9);
   });
 
   // Because the liquid can follow. Tipping a real one gently on its side runs
   // it to the low side and leaves it there; it does not set it off.
   it('is not set off by a slow turn', () => {
-    const drops = drained(14);
-    const settled = drops.floor;
+    const drops = settled(14);
 
     for (let frame = 0; frame < 60 * 8; frame += 1) {
       updateDrops(drops, { ...still, angle: (frame / (60 * 8)) * Math.PI });
     }
 
-    expect(drops.floor).toBeCloseTo(settled, 6);
-    expect(drops.overhead).toBe(0);
+    expect(sorted(drops)).toBe(true);
+    expect(drops.swap).toBeNull();
   });
 
-  it('runs again once it has been turned', () => {
-    const drops = drained(15);
+  it('runs again once it has been turned, and sorts itself out again', () => {
+    const drops = settled(15);
 
     for (let frame = 0; frame < 30; frame += 1) {
       updateDrops(drops, { ...still, angle: (frame / 30) * Math.PI });
     }
 
     run(drops, 30, { ...still, angle: Math.PI });
+    expect(drops.swap).not.toBeNull();
 
-    expect(drops.floor).toBeGreaterThan(0);
-    expect(drops.overhead).toBeGreaterThan(0);
+    run(drops, 400, { ...still, angle: Math.PI });
+    expect(sorted(drops)).toBe(true);
   });
 });
 
 describe('a finger in the cell', () => {
+  const drifting = (drops: Drops) =>
+    drops.beads.find((bead) => bead.filling <= 0 && !bead.landing && !bead.rising);
+
   it('carries a bead along with it', () => {
     const drops = createDrops(21, 0.55);
 
-    run(drops, 12);
+    for (let frame = 0; frame < 60 * 60 && !drifting(drops); frame += 1) {
+      updateDrops(drops, still);
+    }
 
-    const bead = drops.beads.find((one) => !one.rising && one.filling === 0);
+    const bead = drifting(drops);
 
     expect(bead).toBeDefined();
 
     const across = bead!.vx;
 
-    updateDrops(drops, {
-      ...still,
-      stir: { x: bead!.x, y: bead!.y, vx: 1.5, vy: 0 },
-    });
+    updateDrops(drops, { ...still, stir: { x: bead!.x, y: bead!.y, vx: 1.5, vy: 0 } });
 
     expect(bead!.vx).toBeGreaterThan(across + 0.5);
   });
@@ -299,9 +413,11 @@ describe('a finger in the cell', () => {
   it('leaves a bead the other side of the cell alone', () => {
     const drops = createDrops(21, 0.55);
 
-    run(drops, 12);
+    for (let frame = 0; frame < 60 * 60 && !drifting(drops); frame += 1) {
+      updateDrops(drops, still);
+    }
 
-    const bead = drops.beads.find((one) => !one.rising && one.filling === 0);
+    const bead = drifting(drops);
     const across = bead!.vx;
 
     updateDrops(drops, {
@@ -314,10 +430,10 @@ describe('a finger in the cell', () => {
 
   // The one thing in this instrument a finger can push on that pushes back
   // where you are not touching.
-  it('tips the whole surface when it is swept along one', () => {
+  it('tips the whole column when it is swept along a surface', () => {
     const drops = createDrops(22, 0.55);
 
-    run(drops, 200);
+    run(drops, 400);
 
     expect(drops.lean).toBeCloseTo(0, 3);
 
@@ -330,7 +446,7 @@ describe('a finger in the cell', () => {
 });
 
 describe('the slosh', () => {
-  it('tips the surface when the tube is turned and levels it when it stops', () => {
+  it('tips the surfaces when the tube is turned and levels them when it stops', () => {
     const drops = createDrops(16, 0.55);
 
     run(drops, 3);
@@ -350,16 +466,15 @@ describe('the slosh', () => {
 /**
  * What is drawn, on a coarse grid, without needing a canvas.
  *
- * The pools and the beads summed the way `paintDrops` sums them, and then
- * thresholded — so this is the picture and not the state, which is the only
- * thing the test below can be asked about.
+ * Which liquid is in the way at each point, as a number: the layers summed the
+ * way `paintDrops` sums them, with the beads over them. So this is the picture
+ * and not the state, which is the only thing the test below can be asked about.
  */
 function picture(drops: Drops, n = 48): Float32Array {
   const out = new Float32Array(n * n);
   const width = (2 * CHAMBER_RADIUS) / n;
-  const ceiling = drops.overhead > 0 ? drops.overheadAt - 0.041 : -Infinity;
-  const bed = drops.floor > 0 ? drops.floorAt + 0.041 : Infinity;
-  const pool = (past: number) => (past >= 0 ? 1 : past <= -0.14 ? 0 : (1 + past / 0.14) ** 2);
+  const edges = edgesOf(drops);
+  const ease = (at: number) => (at <= 0 ? 0 : at >= 1 ? 1 : at * at * (3 - 2 * at));
 
   for (let j = 0; j < n; j += 1) {
     const y = -CHAMBER_RADIUS + (j + 0.5) * width;
@@ -372,19 +487,39 @@ function picture(drops: Drops, n = 48): Float32Array {
       }
 
       const along = x * drops.downX + y * drops.downY;
-      let total = Math.max(pool(ceiling - along), pool(along - bed));
+      const layers = [0, 0, 0];
 
-      for (const bead of drops.beads) {
-        const away = ((x - bead.x) ** 2 + (y - bead.y) ** 2) / (bead.reach * bead.reach);
+      for (let band = 0; band < drops.bands.length; band += 1) {
+        const liquid = drops.bands[band]!.liquid;
 
-        if (away < 1) {
-          total += (bead.rising ? -1 : 1) * (1 - away) * (1 - away);
-        }
+        layers[liquid] =
+          layers[liquid]! +
+          (ease((along - edges[band + 1]!) / 0.055 + 0.5) -
+            ease((along - edges[band]!) / 0.055 + 0.5));
       }
 
-      const at = (total - 0.38) / 0.24;
+      const beads = [0, 0, 0];
+      let total = 0;
 
-      out[i + j * n] = at <= 0 ? 0 : at >= 1 ? 1 : at * at * (3 - 2 * at);
+      for (const bead of drops.beads) {
+        const span = bead.reach * bead.reach;
+        const away = span > 0 ? ((x - bead.x) ** 2 + (y - bead.y) ** 2) / span : 2;
+        const sum = away < 1 ? (1 - away) * (1 - away) : 0;
+        const much = ease((sum - 0.5) / 0.24 + 0.5);
+
+        beads[bead.liquid] = beads[bead.liquid]! + much;
+        total += much;
+      }
+
+      const rest = total > 1 ? 0 : 1 - total;
+      const scale = total > 1 ? 1 / total : 1;
+      let value = 0;
+
+      for (let liquid = 0; liquid < 3; liquid += 1) {
+        value += liquid * (beads[liquid]! * scale + layers[liquid]! * rest);
+      }
+
+      out[i + j * n] = value;
     }
   }
 
@@ -396,9 +531,9 @@ function picture(drops: Drops, n = 48): Float32Array {
 // flipping between two pictures sixty times a second, and the only thing that
 // would have caught it is looking at what is drawn from one frame to the next.
 //
-// Two things in here are discontinuous by nature — a bead lets go of one pool
-// and is taken into another — and both are deliberately spread over time rather
-// than done on a frame. This is what says so.
+// Two things in here are discontinuous by nature — a bead lets go of a surface,
+// and a pair of layers stops exchanging — and both are deliberately spread over
+// time rather than done on a frame. This is what says so.
 describe('the picture from one frame to the next', () => {
   it('has no frame that throws it about', () => {
     for (const seed of [2, 17, 40]) {
@@ -406,7 +541,7 @@ describe('the picture from one frame to the next', () => {
       const changes: number[] = [];
       let previous = picture(drops);
 
-      for (let frame = 0; frame < 60 * 60; frame += 1) {
+      for (let frame = 0; frame < 60 * 120; frame += 1) {
         updateDrops(drops, still);
 
         const now = picture(drops);
@@ -424,11 +559,11 @@ describe('the picture from one frame to the next', () => {
 
       const median = changes[Math.floor(changes.length / 2)]!;
 
-      // A bead being poured into the pool is the busiest thing that happens,
-      // and it is worth a few dozen ordinary frames rather than a few hundred.
+      // A bead letting go is the busiest thing that happens, and it is worth a
+      // few dozen ordinary frames rather than a few hundred.
       expect(changes[changes.length - 1]! / median, `seed ${String(seed)}`).toBeLessThan(60);
     }
-  });
+  }, 60000);
 });
 
 describe('paintDrops', () => {

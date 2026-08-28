@@ -1076,6 +1076,109 @@ this machine, which is about a tenth: the viscosity pass is a five-point blend
 with a fast path for the nine cells in ten that have all four neighbours inside
 the wall.
 
+### ~~The liquid cell, looked at again~~ — done: a lamp that ran too fast, a timer with nothing to look at, and a wash with no paper under it
+
+The second pass over the same photographs, on the three the owner still did not
+like. All three turned out to be design faults rather than tuning ones.
+
+**The lava's Thickness slider was not a slider.** Every drop of wax rides its
+speed cap nearly all the time — the heat cycle drives at several times the speed
+the drag can spend, so the terminal speed is over the cap at _both_ ends of the
+slider. Measured as path length walked over twenty seconds, with the break-up
+counted alongside it as bodies of wax on a 72-cell field:
+
+| Thickness | was                      | is                       |
+| --------- | ------------------------ | ------------------------ |
+| thin      | 1.17 cells/s, 2–7 bodies | 0.62 cells/s, 1–4 bodies |
+| default   | 0.89 cells/s, 1–7 bodies | 0.42 cells/s, 1–3 bodies |
+| gel       | 0.53 cells/s, 1–3 bodies | 0.15 cells/s, 1–4 bodies |
+
+A gel that ran at half the speed of a thin oil and crossed the whole cell in
+four seconds. Nothing that changes a force fixes it and this file already
+records why twice — on `DRAG` and on `HEAT_SPREAD` — so the slider **dilates
+time** instead: sixty steps a second still, each advancing between 0.55 and 0.26
+of a second of the wax's own time. The wax is unchanged in its own frame, which
+is what the body counts above say.
+
+Two things reach the wax from outside its clock and they are not the same. The
+wall's turning is divided through by the pace, because a rigid turn cannot
+deform anything and has to be right on the clock. A finger is not: quoted in
+real seconds it is, in the wax's frame, a shear four times what the constants
+were tuned against, and four flicks at the top of the slider tore a cell into a
+spray of droplets — the failure mode the fixed step exists to prevent, arriving
+by another road. The finger's reach also widens with thickness, which is what
+viscosity is: a narrow push through a gel is a hole cut in it.
+
+**The liquid timer was two flat colours and some dots**, and no amount of tuning
+was going to change that, because two liquids is one surface, one colour of bead
+and one direction of travel. It is a **density column** now: three liquids, two
+surfaces at rest, and a bubble sort that exchanges whichever adjacent pair is
+lowest and out of order — so a tube turned right over runs three exchanges, with
+beads leaving each exchange surface downwards and bubbles leaving it upwards at
+the same moment. Two parallel straight lines fold into a figure one cannot
+reach, and the "one going up while the other goes down" is not a decoration: it
+is the only way a sealed tube can sort itself.
+
+The book-keeping had to be turned inside out for it. Each bead carrying its own
+volume works with one pool and fails with layers: the column is not full while a
+bead is in flight, and a column that is not full has a gap in it that has to be
+given to somebody. So the areas move on a clock and the beads are the visible
+carriers. The column is exactly full and each liquid's total is exactly constant
+on every frame, which is what the test checks.
+
+Depth of layer against what the mirrors see, measured on the triangle the fold
+samples — this is the same table the old single pool failed at 0.11:
+
+| layer is this much of the tube | 0.20 | 0.25 | 0.28 | 0.33 | 0.40 | 0.50 |
+| ------------------------------ | ---- | ---- | ---- | ---- | ---- | ---- |
+| share of the fold it covers    | 0.10 | 0.16 | 0.19 | 0.24 | 0.32 | 0.44 |
+
+So Amount — which cannot ask a sealed tube for more liquid — asks for a deeper
+layer of one of the three, bounded so none of them goes under about a quarter.
+
+**The ink was muddy because the palettes were triads.** Three primaries spread
+round the wheel is the right palette for a painter choosing two at a time and
+the worst one for a sealed cell that folds: a few minutes of drifting puts a
+little of all three into most of the cell, and a little of all three of a triad
+is by construction the grey in the middle. On a phone a triad cell settled to a
+green-grey wash in forty seconds. Taking chroma as the spread between a colour's
+strongest and weakest channels, over the lattice of every mixture of every
+palette:
+
+| palettes  | grey mixtures | dullest chroma |
+| --------- | ------------- | -------------- |
+| triads    | 20            | 2.8            |
+| analogous | 0             | 26             |
+
+A New Gamboge was added to the paint box for it, because all three of the
+existing yellows lean green and so do the mirrors, and a pale cool yellow
+arrives at the eye as khaki. The magnetite black lost its palette, being the
+best granulator in the box and having no hue at all.
+
+**And the ink had no paper under it.** The module note said there is no paper in
+an object cell and threw the whole of it away, which is right about deposition,
+lifting, drying and backruns — nothing dries in a sealed cell — and wrong about
+the **tooth**, which is not a process and is there in a single frame. A wash on
+a cold-pressed sheet is not flat, and a watercolour with that taken out reads as
+an airbrush. The cell is painted three pixels to a grid cell now, with
+Kubelka-Munk still solved on the fluid's own 96×96 and the sheet laid over it:
+
+| pixels per grid cell | 1       | 2       | 3       |
+| -------------------- | ------- | ------- | ------- |
+| cost to paint        | 0.95 ms | 1.60 ms | 2.69 ms |
+
+The tooth is three octaves of value noise read along three different axes.
+Stacked in register they agreed about where `lib/noise.ts`'s lattice squares
+were and the sheet came out as a dither pattern, plain at the top of the zoom
+slider. That vice is documented in `noise.ts` as harmless, and it is — everywhere
+it is buried in a fluid and differentiated first. Looked at directly and
+magnified, it is not.
+
+Stepping and painting, per rendered frame, all five in one process at the
+default settings afterwards: ink 6.3 ms, smoke 5.0, film 4.6, lava 4.4, drops
+3.9. (Measured differently from the table in the entry above, which timed the
+step and the paint separately; the two sets are not comparable to each other.)
+
 ### Polarised mode
 
 Polarising film plus cellophane is how real kaleidoscopes get those electric

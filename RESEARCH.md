@@ -8,6 +8,86 @@ ROADMAP.md's style of record and leave the research here.
 
 ---
 
+## 2026-08-28 — Three that were still wrong, and none of them was a number
+
+The same photographs, a second pass, on the three the owner still did not like:
+the lava ran too fast at every setting, the liquid timer was "slightly ugly",
+and the ink was muddy and had no paper texture. The record of what was built and
+what it cost is in ROADMAP.md, "The liquid cell, looked at again". What is worth
+keeping here is that **all three were the wrong model rather than the wrong
+constant**, and each of them had a plausible tuning fix that would not have
+worked.
+
+**A slider that changes a force cannot always be the slider you want.** The
+lava's Thickness ran into a wall that this repo had already hit twice from other
+directions: raise the drag and the wax stops breaking up, because what tears a
+body apart is its terminal speed against its own cohesion. Both findings are in
+`lava.ts` on `DRAG` and `HEAT_SPREAD`, and both say the same thing — the wax has
+one speed at which it looks like wax. So the slider was moved off force and onto
+**time**: run the same simulation, in slow motion. The general form is worth
+remembering, because a position-based solver makes it nearly free — displacement
+goes as the square of the step, so the relaxation is already an acceleration and
+already step-invariant, and dilating time changes nothing but the clock.
+
+Two traps in it, both found by looking. Take the dilation as _fewer steps_ rather
+than _smaller steps_ and the motion judders — six steps a second is six steps a
+second however smooth the physics is. And anything that reaches the simulation
+from outside its clock has to be classified: a **rigid** input (the wall's
+turning) must be converted to real seconds or the contents lag the container,
+and a **shearing** input (a finger) must not, or it arrives in the slowed frame
+as a violence the constants were never tuned for.
+
+**A substance can be tuned as far as it goes and still be the wrong substance.**
+The liquid timer was two liquids, and two liquids is one surface, one colour of
+bead and one direction of travel. Every fault in the screenshot — flat blocks of
+colour, dots round an edge, nothing to watch between drips — was downstream of
+that, and none of it was reachable by tuning. Three liquids is two surfaces, a
+bubble sort with three acts in it, and beads and bubbles leaving the same
+surface in opposite directions, which is not decoration but the only way a
+sealed tube can sort itself. **When a substance has one of everything, the fault
+to look for is the one.**
+
+The book-keeping lesson underneath it: conserving a quantity by moving it with
+the visible object is the obvious design and it stops working the moment the
+container has to stay _full_. A gap where a bead is in flight has to be given to
+somebody. Moving the totals on a clock and letting the beads be carriers keeps
+both invariants — full column, constant totals — exactly, on every frame.
+
+**A palette is a property of the whole cell's life, not of a pour.** The ink used
+triads, which is what a painter sets out, and it is exactly wrong for a sealed
+cell that folds: a painter chooses two of three at a time, a mixing cell ends up
+with a little of all three everywhere, and a little of all three of a triad is
+the grey in the middle of the wheel by construction. The lava's own palette note
+records arriving at the same conclusion from the other direction — averaging
+across the wheel gives mud, neighbours on the wheel average to neighbours — and
+the lesson had simply not been carried across the two files. **Test the mixture
+space, not the palette**: the check that now stands walks the whole lattice of
+mixtures and asks whether any of them has lost its hue.
+
+**And "there is no paper in an object cell" was two claims wearing one coat.**
+Everything paper does as a _process_ — deposition, lifting, staining, drying,
+backruns — genuinely has nothing to act on in a sealed cell. The tooth is not a
+process. It is a texture, it is there in a single frame, and it is most of what
+makes a watercolour read as one rather than as an airbrush. Dropping the whole
+of a rejected model is tidy and it is how the second claim went out with the
+first.
+
+Two smaller things fell out of building it. `lib/noise.ts` documents its own
+lattice-aligned vice as harmless, and it is, everywhere it is used — buried in a
+fluid and differentiated first. Read directly and magnified it is a dither
+pattern, and three octaves of it stacked in register agree about where the
+squares are; reading each octave along its own axis is the whole fix. And the
+rule from the last session — paint at the resolution of the sharpest thing in
+the picture — applied again, twice: the paper wants three pixels to a fluid
+cell, and Kubelka-Munk still wants one, so the wash is solved coarse and laid
+fine.
+
+What is still open is unchanged: the stir-versus-turn direction fork (owner's
+call, and no screenshot settles it), and the Rapier adoption question for the
+dry chamber.
+
+---
+
 ## 2026-08-26 — The liquid substances, looked at on a phone
 
 The plan below was built in full, and this is what the pictures said about it.

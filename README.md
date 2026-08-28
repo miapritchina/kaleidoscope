@@ -773,93 +773,148 @@ with a smooth surface the light has nothing to catch on, so the shading is back 
 an earlier correction had left it: at the numbers before this, a screenshot at any zoom showed
 flat pink shapes with a coloured edge, which is a sticker and not a body of wax.
 
-### Drops, which is a timer rather than a cycle
+**The Thickness slider is a clock, and that is the second thing it had to become.** Every drop
+of wax rides its speed cap nearly all the time: the heat cycle drives at several times the
+speed the drag can spend, so the terminal speed is above the cap at _both_ ends of the slider
+and what is left of the difference is only the cold wax hanging. Measured over twenty seconds,
+the wax walked **1.17 cell widths a second at the thin end and 0.53 at the gel** — a gel that
+ran at half the speed of a thin oil and crossed the whole cell in four seconds, which is not
+what a lamp does.
+
+Nothing that changes a _force_ fixes it, and the file records two separate findings that say
+why: turn the drag up and the terminal speed falls under what it takes to stretch a body until
+it necks, and the cell ends as one sausage circling the tube. So the slider dilates **time**
+instead. The wax still steps sixty times a second, and each of those steps advances between
+0.55 and 0.26 of a second of the wax's own time. Nothing about the wax changes: it reaches the
+same speeds in its own frame, breaks up in the same places, holds the same number of bodies.
+A second of watching just buys less of it. Measured the same way afterwards: **0.62 cell widths
+a second at the thin end, 0.42 at the default and 0.15 at the gel**, where a body of wax takes
+a quarter of a minute to cross the cell.
+
+Two things reach the wax from outside its own clock and they are treated differently, which is
+the whole subtlety of doing it this way. The **wall's turning** is quoted in real seconds and
+divided through by the pace: a rigid turn cannot deform anything, so it has to be right on the
+clock or the wax visibly lags the tube it is sealed in. A **finger** is not, because a finger
+is a local shear — quoted in real seconds it becomes, in the wax's own frame, a shear four
+times anything the constants were tuned against, and four flicks at the top of the slider tore
+a cell of wax into a spray of separate droplets. Left in the wax's own time, a gel follows a
+finger slowly, which is what a gel does. The finger's reach widens with the slider for the same
+reason, and it is what viscosity _is_: how far momentum spreads sideways before the drag has
+spent it. A narrow push through a gel is a hole cut in it; a wide one takes a body of wax along
+with it.
+
+### Drops, which is a density column rather than a cycle
 
 `lib/drops.ts`, and it is the [liquid motion
-timer](https://www.amazon.ca/Floating-Illusion-Liquid-Motion-27/dp/B01LZNKDNU) off a desk: a
-sealed tube of two liquids that will not mix, one a shade heavier than the other. Turn it
-over and the heavy one, now on top, has to get back down — and it cannot go as a slab,
-because the light one has to come up past it at the same time. So it goes as beads. They
-gather on the underside of the pool overhead, hang, stretch, let go, drift down, and are
-drawn into the pool growing on the floor.
+timer](https://www.amazon.ca/Floating-Illusion-Liquid-Motion-27/dp/B01LZNKDNU) off a desk and
+the density column next to it in a science museum: a sealed tube of liquids that will not mix,
+each a shade heavier than the last. Left alone they lie in **layers**, heaviest at the bottom,
+with a flat surface between every pair. Turn it over and every layer is in the wrong place —
+and the tube can only put that right by letting the heavy liquid down _through_ the light one
+while the light one comes up through the heavy at the same moment, because there is nowhere
+else in a sealed tube for either of them to go. So the sorting happens as **beads**: they
+gather on the underside of the surface, hang, stretch, let go, and drift down through the
+layer below, while bubbles of the lighter liquid leave the same surface going the other way.
 
-**It is the opposite of the lava lamp next to it, and that is the reason to have it.** Lava
-is a cycle: heat drives it and it never settles. This runs _down_. It is a timer — measured,
-a bit over two minutes at the middle of Thickness, a bit over one at the thin end and four in
-the gel — and what starts it is the hand.
+**It is the opposite of the lava lamp next to it, and that is the reason to have it.** Lava is
+a cycle: heat drives it and it never settles. This runs _down_. It is a timer — measured, about
+a minute and a half per exchange at the middle of Thickness, and three of them to sort a
+column that has been turned right over — and what starts it is the hand.
 
-**Turning the instrument over runs it again.** The pool keeps its own idea of down and
+**It has three liquids where it had two, and that is what the rebuild was.** Two liquids is
+one surface, one colour of bead and one direction of travel, and on a phone it looked like
+exactly that: a flat disc of colour with dots round its edge. Three is
+
+- **layers, and layers that stack.** A settled column has two straight surfaces rather than
+  one, and six mirrors fold two parallel straight lines into a figure a single one cannot
+  reach. Nothing else in this instrument has a surface at all.
+- **three colours, none of which is chosen.** Each liquid is transparent and the tube is looked
+  _through_, so what a pixel comes out as is the product of however much of each liquid is in
+  the way. Beer and Lambert, three deep: a bead crossing a layer is its own colour times the
+  layer's, and that is not a colour anybody picked.
+- **two directions at once.** Beads leave the exchange surface downwards and bubbles leave it
+  upwards, from the same place at the same moment. It is the plainest thing in the cell to
+  watch, and it is the thing two liquids could not do.
+
+**The sorting is a bubble sort and nothing cleverer.** Whichever _adjacent_ pair is out of
+order lowest in the tube is the pair that exchanges; when it finishes the next one starts. A
+column of three turned right over is fully reversed, which is three exchanges — a long run with
+three distinct acts in it. And it is not a shortcut: in a fully reversed column the two
+out-of-order pairs _overlap_, sharing their middle layer, so there is never more than one
+exchange that could be running anyway. A flip halfway through leaves a half-sorted column with
+four or five layers in it, and it simply carries on from wherever it now is.
+
+**Turning the instrument over runs it again.** The column keeps its own idea of down and
 re-levels towards gravity at a limited rate, so a slow turn is followed and nothing happens,
 which is right: tipping a real one gently on its side runs it to the low side and leaves it
-there. A deliberate half-turn outruns it, and everything on the floor is overhead again. A
-shake reseeds the chamber, which for this cell is the same gesture with the same result.
+there. A deliberate half-turn outruns it, the whole column is upside down, and every layer is
+in the wrong place again. A shake reseeds the chamber, which for this cell is the same gesture
+with the same result.
 
-**A surface.** Nothing else in this instrument has one, and it is most of what makes this
-cell look unlike any other setting of it. A pool at rest is flat and perpendicular to
-gravity, so it cuts the round cell along a chord — and six mirrors fold one straight line
-into a hexagram. Where the pools are is arithmetic and not animation: the area of a disc
-beyond a chord at `u·R` is `R²(acos u − u√(1−u²))`, which has no inverse worth writing down,
-so it is bisected twice a frame. What is stored is how much liquid is at each end, and the
-surfaces follow from that. Nothing can drift out of step with anything, and the total is
-conserved exactly.
+**Where a surface is, is arithmetic and not animation.** The area of a disc beyond a chord at
+`u·R` is `R²(acos u − u√(1−u²))`, which has no inverse worth writing down, so it is bisected —
+once per layer, a handful of times a frame. What is stored is how much of each liquid is in
+each layer, and every surface follows from the running total. Nothing can drift out of step
+with anything.
 
-**Two colours, and neither of them is the one you see most of.** The tube is deep, so there
-is always some of the light liquid in front of whatever you are looking at: the beads are not
-their own colour, they are their colour _seen through_ the other one. That is the whole of
-the "floating colour mix illusion" the toys are sold on, and it is why this is composited
-with `multiply` — nothing anywhere chooses what a bead looks like, it falls out of two
-liquids being transparent. Cream and rose make a crimson; ice and cobalt an ink blue; frost
-and violet an orchid. The light one of each pair is **nearly white**, and that is a
-correction and not a preference: it used to be a butter or a sky, a light colour but a
-colour, and it is most of the cell — so the figure came out as two mid-tones against each
-other, which is the one thing a kaleidoscope cannot carry. The mirrors take a few per cent of
-the light at every bounce and lean it green as they go, so a picture with no light in it goes
-to olive and brick at the rim, which is exactly what a screenshot of the old pairs showed.
-The same arithmetic shades a bead: Beer and Lambert say each
-unit of liquid passes a fixed _share_ of what reaches it, so what comes through a depth `d`
-is the tint raised to `d` rather than scaled by it — and since the metaball field _is_ how
-much liquid is in the way, a bead comes out dark in the middle and light at its rim without
-being told to be round.
+**The areas move on a clock and the beads are the visible carriers**, which is the way round
+the first build did not do it. Book-keeping each bead's own volume out of one pool and into
+another is the obvious design and it works with one pool; with layers it does not, because the
+column is then not _full_ while a bead is in flight, and a column that is not full has a gap in
+it that has to be given to somebody. So the two draining layers hand their areas to the two
+filling ones continuously, at a rate that falls away with what is left — which is why the real
+ones have a long tail — and the beads are spawned against the same clock. The column is exactly
+full at every instant and each liquid's total never changes, on every frame of the whole run.
 
-**Metaballs**, borrowed wholesale from the lava and pointed at a different problem. The pools
-lay down a field either side of their own surfaces and the beads lay down fields of their
-own, so a bead about to let go necks off the pool above it and a bead landing is drawn down
-into the pool below it. Neither of those is animated anywhere.
+**Almost every pixel of the picture is layer and nothing else**, and that is what pays for the
+rest. The layers are flat and perpendicular to down, so what liquid is where depends on one
+number — how far down the cell the pixel is — and that is a _curve_, not a picture. It is
+solved once a frame into a table a few hundred long, and a pixel no bead reaches is three
+table reads and an interpolation. A cell of the bead field is marked when a bead lays into it,
+so the nine table lookups and three interpolated fields the full path costs are spent on the
+tenth of the picture that needs them.
 
-**And the picture is painted two pixels to a cell of that field**, with the pools worked out
-at each of them rather than read off the grid. A pool's surface is the one edge in this whole
-instrument that the eye _measures_ — it is straight, and a straight line laid down a cell at a
-time is a staircase, plain in a screenshot at anything past the default zoom while the same
-quantisation in the edge of a bead goes unnoticed. Where the surface is was already arithmetic
-rather than a field, so painting it one pixel per cell was throwing away resolution the cell
-already had.
+**The picture is painted two pixels to a cell of the bead field**, with the column evaluated at
+each of them. A surface is the one edge in this whole instrument that the eye _measures_ — it is
+straight, and a straight line laid down a cell at a time is a staircase, plain in a screenshot
+at anything past the default zoom while the same quantisation in the edge of a bead goes
+unnoticed. And every surface gets a **meniscus**: the heavier liquid of any pair wets the
+glass, so near the wall it stands a little higher than the level says. It is a small thing to
+measure and a large one to look at — a chord across a round cell is a straight line, and six
+mirrors turn a straight line into a hexagon with corners you could cut yourself on, where the
+same fold of a curved one is a rosette.
+
+**How deep a layer is allowed to be was decided by the mirrors, not by the liquid.** The cell is
+the disc the mirror triangle is inscribed in, so the triangle's edges lie at half the radius
+and the fold never sees the outer half of the cell at all. A thin layer's surface is a cap out
+at the rim, and a cap at the rim reaches the triangle only at its three corners: the first
+build had one surface and one pool, the pool settled as exactly that, and the figure came out
+as a lattice of little rosettes that _were_ the pool — 11% of what is folded, all of it in the
+corners. Measured against the triangle, a bottom layer covers 0.10 of the fold at a fifth of
+the tube, 0.16 at a quarter and a half, 0.19 at 0.28 and 0.24 at a third. A sealed tube is
+always full, so Amount cannot ask for more liquid; what it asks for is a deeper layer of one
+of the three against the other two, and it is bounded so no layer ever goes under about a
+quarter.
 
 **It is the one substance that does not ride `lib/flow.ts`**, and that is on purpose: a
-bubbler's liquid is nearly still. What moves is the beads, under weight and drag, and where
-the liquid _is_ falls out of an area and a chord rather than out of a grid. It does take the
-finger — a drag pushes the beads it reaches, the same rule the wax is pushed with, and sweeping
-across a pool tips the whole of it, because a surface is a single object however wide it is.
+bubbler's liquid is nearly still. What moves is the beads, under weight and drag. It does take
+the finger — a drag pushes the beads it reaches, the same rule the wax is pushed with, and
+sweeping across a surface tips the whole column, because a surface is a single object however
+wide it is.
 
 Three things were got wrong first, and the first two are the same mistake:
 
 - **A bead that appears is not a drip.** A drip is liquid running down into a pendant drop
   until the drop is heavy enough to break its own neck. The first version waited on a timer
-  and then put a bead on the surface — and sampled at any given instant the underside of the
-  pool was flat, because the waiting was most of the cycle. The wait is spent gathering now,
-  so there is always one hanging there, and the neck is the metaballs doing what they do.
-- **A bead that vanishes is not a landing.** Same at the other end: deleting it took a bite
-  out of the picture on one frame. It is poured in over a third of a second instead, and the
-  surface rises to meet it.
-- **The bump a bead starts as is liquid, and it has to come out of the pool.** It did not,
-  and the cell quietly made about a sixth more liquid than it was filled with. Nothing looked
-  wrong; the test that adds up what is in the two pools and what is in flight, every frame,
-  is the only thing that saw it. The same test caught the other half of it, which is that a
-  pool that only ever gives away a _share_ of what is in it is never empty — so the last of
-  it comes down as one dribble, and the cell is allowed to finish.
-
-It is also the cheapest substance in the cell: **0.65 ms per rendered frame** against the
-lava's 1.27, the oil film's 3.07 and the smoke's 4.58, measured in one process on the same
-machine.
+  and then put a bead on the surface — and sampled at any given instant the surface was flat,
+  because the waiting was most of the cycle. The wait is spent gathering now, so there is
+  always a pair hanging there, and the neck is the metaballs doing what they do.
+- **A bead that vanishes is not a landing.** Same at the other end: deleting it took a bite out
+  of the picture on one frame. It shrinks into the surface over a third of a second instead,
+  with the surface already there to meet it.
+- **An exchange that ends leaves beads behind.** The pair still gathering when the last of a
+  layer crossed had no surface left to gather off, and hung on a settled column for ever. They
+  let go and are drawn back into whatever they are in.
 
 ### Smoke, which is a fluid rather than things in one
 
@@ -941,13 +996,14 @@ Everything here follows from that.
 
 The model is lifted from **paintwheel**, a wet-watercolour simulator, which is built on
 Curtis, Anderson, Seims, Fleischer and Salesin, _Computer-Generated Watercolor_ (SIGGRAPH
-1997). Everything that model does with _paper_ — deposition, lifting, staining, drying,
-backruns, the tooth granulation settles into — is gone, because there is no paper in an
-object cell. There is a round glass wall and water, and paint that stays in suspension for
-as long as anyone is watching. That is the one case a watercolour model never has to work
-for, and the only case this one does.
+1997). Everything that model does with paper as a _process_ — deposition, lifting, staining,
+drying, backruns — is gone, because nothing dries in a sealed cell and none of it has anything
+to act on. There is a round glass wall and water, and paint that stays in suspension for as
+long as anyone is watching. That is the one case a watercolour model never has to work for,
+and the only case this one does. The paper's **tooth** is the exception, and it is an
+exception because it is not a process: it is there in a single frame.
 
-Four things came across, and every one of them is a thing paint does that a coloured fluid
+Five things came across, and every one of them is a thing paint does that a coloured fluid
 does not.
 
 **They mix as paint, not as light.** Smoke's three dyes each take one primary out of the
@@ -956,9 +1012,33 @@ take red out with one and blue out with the other and what is left is a grey. Pa
 solved differently: each pigment both absorbs light (**K**) and throws it back (**S**) at
 its own rate per wavelength, the mixture's K and S add, and the whole layer is solved over
 the white behind it as one. Real paints, by Colour Index number, with K and S inverted from
-each one's measured mass tone and undertone. So ultramarine and a green-gold yellow give a
-green, that green over quinacridone gives the grey a painter would mix, and no pair of them
-ever gives the flat mud that averaging colours gives.
+each one's measured mass tone and undertone. So a green-gold yellow and a turquoise give a
+green, a stainer glazes where an earth covers, and no pair of them ever gives the flat mud
+that averaging colours gives.
+
+**And that was not enough on its own, which is the correction this substance most needed.**
+The paints in any one cell are now _neighbours on the colour wheel_ — the three sit inside
+about a third of it — where they used to be **triads**, three primaries spread evenly round.
+A triad is the right palette for a painter, who chooses two of the three at a time and can
+reach every colour there is between them. It is the worst possible one for a sealed cell that
+folds, because a few minutes of drifting puts a little of all three into most of the cell, and
+a little of all three of a triad is by construction the grey in the middle of the wheel.
+Measured on a phone, a triad cell settled to a green-grey wash with two ribbons of colour left
+in it inside forty seconds. Every mixture of every palette is checked now: taking chroma as
+the plainest thing it could be, the spread between a colour's strongest and weakest channels,
+the old set had **twenty** grey mixtures on its lattice and its dullest came out at a chroma of
+2.8 — a grey to three parts in 255. The set that replaced it has none, and its dullest is 26.
+What is given up is the reach of any one cell, which is what the seed is for: the reach is
+across the six of them. The same lesson is recorded on the lava's own palette, arrived at
+there from the other direction.
+
+One paint had to be added and one dropped for it. The added one is a **New Gamboge**, because
+the box had three yellows and every one of them leaned green — and so does the instrument, since
+the mirrors take a few per cent of the light at every bounce and tint what is left as they go,
+so a pale cool yellow arrives at the eye as khaki. It is the one place a palette of real paints
+had to answer to the optics rather than to the paint box. The dropped one is the magnetite
+black, which is the best granulator there is and has no hue at all: half a cell of it is a grey
+whatever it is standing next to.
 
 Solving that needs an exponential per channel per pixel, which is a millisecond and a half a
 frame — as much as the whole fluid step. But the answer only depends on how much of each of
@@ -994,6 +1074,36 @@ sealed cell, so it is drawn rather than deposited: darken by how fast the amount
 changing, at two cells' radius so the clumping does not itself read as an edge. It costs four
 reads a pixel and it is what makes a ribbon read as a shape with an edge instead of as a
 smear.
+
+**They sit in a tooth.** A sheet of cold-pressed watercolour paper is a felted mat of fibres
+pressed between blankets, and what that leaves is a landscape of pits and peaks about a fifth
+of a millimetre across. A wash floods it, the water drains into the pits, and the pigment goes
+with the water: a flat wash on a rough sheet is not flat, it is a field of little dark hollows
+and little pale ridges. That texture is most of what makes a watercolour look like one, it is
+the thing a digital wash is always missing, and it is the one thing paper does that shows up
+in a single frame. Two separate numbers, because they are two separate effects: how much more
+pigment the pits hold than the peaks, which only shows where there is paint, and the shading
+of the **bare sheet**, which is why the white of this cell is a white _sheet_ rather than a
+flat 255. The second has to be a whisper — the fold repeats the same square dozens of times,
+so anything loud enough to notice once is a pattern the second time.
+
+It costs a rewrite of how the cell is painted, and the rewrite is the interesting part. The
+fluid has no detail finer than a grid cell and the paper has nothing but, so the two want
+different resolutions: Kubelka-Munk is the expensive half and is solved on the fluid's own
+96×96, and the wash is then laid onto a sheet **three times finer** where the tooth lives — a
+tooth quantised to the fluid's grid is not a tooth, it is a chequerboard. Painting the whole
+thing costs 0.95 ms at one pixel a cell, 1.60 at two and 2.69 at three, measured over two
+hundred frames of a filled cell; the fluid under it steps thirty times a second and not sixty,
+which is where the room for it comes from.
+
+The tooth itself is three octaves of value noise, and each is read along **its own axis**.
+`lib/noise.ts` is value noise, which is smooth but lattice-aligned: it has a faint square grid
+in it, harmless everywhere else in the app because it is buried inside a fluid and
+differentiated first, and not harmless at all here where the field is looked at directly and
+magnified. Stacked in register, three octaves of it agreed about where their squares were and
+the sheet came out as a dither pattern rather than as paper — plainly so at the top of the
+zoom slider, which is where a texture gets looked at hardest. Turned against each other, there
+is no shared lattice left to see.
 
 Two more things had to be got right, and both were got wrong first.
 
@@ -1033,8 +1143,10 @@ decided by the grid. Every plume grew a row of horizontal teeth down its side �
 screenshot at any strength that did anything at all, and gone entirely at none. It is a good
 example of why the pictures get looked at and not only the tests: nothing numeric complained.
 
-Measured against the smoke it shares a fluid with: **7% more per step**, and 0.66 ms to
-paint against the dye's tenth of that, most of which is the colour table's interpolation.
+Measured against the smoke it shares a fluid with, it is the dearest cell there is: **6.3 ms**
+of stepping and painting per rendered frame against the smoke's 5.0, the oil film's 4.6, the
+lava's 4.4 and the drops' 3.9, all five in one process on the same machine at the default
+settings. Most of the difference is the sheet — see the tooth above.
 
 ### Glitter, which is flashes and also matter
 

@@ -14,10 +14,12 @@ import { createNoise, type Noise } from './noise';
 import {
   createFlocs,
   createPalette,
+  createPaper,
   paintPigment,
   stirFlocs,
   type Flocs,
   type Palette,
+  type Paper,
 } from './pigment';
 import { mulberry32 } from './random';
 
@@ -39,10 +41,12 @@ import { mulberry32 } from './random';
  * their pigments do:
  *
  * - **They mix as paint, not as light.** Kubelka-Munk over the whole mixture
- *   rather than three primaries subtracted one each, so ultramarine and a
- *   green-gold yellow give a green, that green over quinacridone gives the grey
- *   a painter would mix, and no pair of them ever gives the flat mud that
- *   averaging colours gives. See `lib/pigment.ts`.
+ *   rather than three primaries subtracted one each, so a green-gold yellow and
+ *   a turquoise give a green, a stainer glazes where an earth covers, and no
+ *   pair of them ever gives the flat mud that averaging colours gives. The
+ *   three in any one cell are *neighbours on the wheel* as well, which is a
+ *   second and separate defence against mud and is the harder-won of the two.
+ *   See `lib/pigment.ts`.
  * - **They come apart.** Each paint falls through the water at its own rate —
  *   quinacridone is milled to a fraction of a micron and magnetite black is a
  *   coarse grit, better than five to one between them — so a mixture does not
@@ -55,15 +59,20 @@ import { mulberry32 } from './random';
  * - **They have edges.** Where a wash's boundary sits, pigment gathers along
  *   it and dries as a dark line. Nothing dries in a sealed cell, so the rim is
  *   drawn rather than deposited — the same shortcut paintwheel takes.
+ * - **They sit in a tooth.** The cell is painted on a sheet of cold-pressed
+ *   paper: the pits hold the water and therefore the pigment, the peaks are
+ *   skipped, and a wash is a field of colour with a texture in it rather than a
+ *   flat one. See {@link Paper} in `lib/pigment.ts`.
  *
  * Lifted from `paintwheel`, a wet-watercolour simulator built on Curtis,
  * Anderson, Seims, Fleischer and Salesin, _Computer-Generated Watercolor_
- * (SIGGRAPH 1997). Everything that model does with *paper* — deposition,
- * lifting, staining, drying, backruns, the tooth that granulation settles into
- * — is gone, because there is no paper in an object cell. There is a round
- * glass wall and water, and paint that stays in suspension for as long as
+ * (SIGGRAPH 1997). Everything that model does with paper as a *process* —
+ * deposition, lifting, staining, drying, backruns — is gone, because nothing
+ * dries in a sealed cell and none of it has anything to act on. There is a
+ * round glass wall and water, and paint that stays in suspension for as long as
  * anyone is watching. That is the one case a watercolour model never has to
- * work for and the only case this one does.
+ * work for and the only case this one does. The tooth is the exception, and it
+ * is an exception because it is not a process: it is there in a single frame.
  */
 
 /**
@@ -76,6 +85,25 @@ import { mulberry32 } from './random';
  * simulated and what is shown never shows.
  */
 export const GRID = 96;
+
+/**
+ * How many pixels the sheet is painted at, per cell of the fluid.
+ *
+ * The fluid has no detail finer than a cell and the paper has nothing but. So
+ * the wash is solved on the grid and laid onto a sheet three times finer, which
+ * is where the tooth lives — see {@link Paper} in `lib/pigment.ts`.
+ *
+ * Three rather than two because of what the tooth costs at the top of the zoom
+ * slider, where a cell is drawn three times the size it is at the default: the
+ * finest octave of the tooth is about five painted pixels across, and at two it
+ * would be a hair over three grid cells — near enough the size of the wash's
+ * own detail that the two read as one confused texture. At three they separate.
+ * Measured over two hundred frames of a filled cell, painting the whole thing
+ * costs 0.95 ms at one pixel a cell, 1.60 at two and 2.69 at three; the fluid
+ * under it steps thirty times a second and not sixty, which is where the room
+ * for it comes from.
+ */
+const FINE = 3;
 
 /** How many paints are in the cell. A limited palette, and `lib/pigment.ts` says why. */
 export const PAINTS = 3;
@@ -133,8 +161,16 @@ const THINNEST = 0.12;
  * "down" is the cell's own down: turning the tube sweeps gravity round the
  * cell, and what has settled is dragged back up the wall and shed into the
  * body of the water again.
+ *
+ * Half again what it was, and the reason is that it was being outrun. The
+ * palettes are analogous now — see `lib/pigment.ts` — and neighbours on the
+ * wheel are closer in weight than opposites are, so the *slowest* pair in the
+ * paint box got slower. Measured on a mixed cloud, the gap the heavy paint
+ * opened over the light one in twenty-five seconds was under a tenth of a cell
+ * width for two of the six, which the fluid's own churn swamps: the separation
+ * was still happening and it was no longer the thing being watched.
  */
-const SETTLE = 0.55;
+const SETTLE = 0.82;
 
 /** How much of the trace's own error is corrected, 0 to 1. See `carryScalar`. */
 const CORRECT = 0.9;
@@ -183,6 +219,8 @@ export interface Ink extends Flow {
   palette: Palette;
   /** Where the pigment has clumped, carried by the water like everything else. */
   flocs: Flocs;
+  /** The sheet it is painted on. Cut once, and it never moves. */
+  paper: Paper;
   /** Seconds the cell has been alive, for the breeze and the clumping. */
   elapsed: number;
   /** The cell's own draught. */
@@ -204,6 +242,7 @@ export function createInk(seed: number, amount = 1): Ink {
     paint0: Array.from({ length: PAINTS }, () => new Float32Array(GRID * GRID)),
     palette,
     flocs: createFlocs(GRID, seed),
+    paper: createPaper(GRID * FINE, seed),
     elapsed: 0,
     draught: createNoise(seed),
   };
@@ -289,12 +328,16 @@ export function createInk(seed: number, amount = 1): Ink {
 /**
  * What one cloud is mixed from: a share of each paint, adding to one.
  *
- * One, two or all three, because a palette is used all three ways — a wash of
- * one colour, a mixture of two, and the neutral all three together make. Adding
- * to one rather than each at full strength keeps a mixed cloud the same depth
- * as a plain one; two paints both at full strength is a layer deep enough to be
- * black whatever it is mixed from, which is Kubelka-Munk telling the truth
- * about a mistake.
+ * One or two, and never all three. Adding to one rather than each at full
+ * strength keeps a mixed cloud the same depth as a plain one; two paints both
+ * at full strength is a layer deep enough to be black whatever it is mixed
+ * from, which is Kubelka-Munk telling the truth about a mistake.
+ *
+ * Three was allowed at one in seven and it is gone, along with the triads it
+ * was written for. The cell is sealed and it folds: whatever is poured in, a
+ * few minutes of drifting puts some of everything into most of it, so the
+ * three-paint mixture is somewhere the cell arrives at on its own and it never
+ * needs pouring. What pouring it did instead was start the cell there.
  */
 function mix(rng: () => number): number[] {
   const recipe = [0, 0, 0];
@@ -308,10 +351,9 @@ function mix(rng: () => number): number[] {
     order[swap] = held;
   }
 
-  // Two paints more often than one or three: a mixture is what there is to
-  // watch, and three of them is the grey they make between them.
-  const roll = rng();
-  const parts = roll < 0.35 ? 1 : roll < 0.86 ? 2 : 3;
+  // Two paints more often than one: a mixture is what there is to watch, and a
+  // cell of plain washes is a cell where nothing comes apart.
+  const parts = rng() < 0.32 ? 1 : 2;
   // And leaning rather than level. A mixture of equal parts is the dullest one
   // there is — equal parts of two paints from opposite sides of the wheel is
   // the grey between them, and equal parts of three always is — where a wash
@@ -505,12 +547,13 @@ function thicken(thickness: number): number {
 }
 
 /**
- * Paints the cell onto a small canvas, one pixel per cell.
+ * Paints the cell onto a small canvas, {@link FINE} pixels per cell.
  *
  * Subtractive, like the smoke's and for the same reason: the paint does not add
- * colour to a lit cell, it decides what gets through it. The canvas is white
- * where the cell is clear and it is drawn with `multiply`, which is also what
- * makes the chamber's white ground the paper the Kubelka-Munk layer sits over.
+ * colour to a lit cell, it decides what gets through it. The canvas is the
+ * white of the sheet where the cell is clear and it is drawn with `multiply`,
+ * which is also what makes the chamber's own ground the light behind the
+ * Kubelka-Munk layer.
  *
  * @param strength How strong the paint is. See {@link STRENGTH}.
  * @returns The canvas, or null where there is no canvas to be had.
@@ -524,7 +567,7 @@ export function paintInk(ink: Ink, strength = STRENGTH): HTMLCanvasElement | nul
 
   const { canvas, ctx, image } = surface;
 
-  paintPigment(ink.palette, ink.paint, ink.flocs, strength, image.data);
+  paintPigment(ink.palette, ink.paint, ink.flocs, ink.paper, strength, image.data);
   ctx.putImageData(image, 0, 0);
 
   return canvas;
@@ -547,8 +590,8 @@ function paintSurface() {
   }
 
   const canvas = document.createElement('canvas');
-  canvas.width = GRID;
-  canvas.height = GRID;
+  canvas.width = GRID * FINE;
+  canvas.height = GRID * FINE;
 
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
@@ -556,7 +599,7 @@ function paintSurface() {
     return null;
   }
 
-  const image = ctx.createImageData(GRID, GRID);
+  const image = ctx.createImageData(GRID * FINE, GRID * FINE);
 
   if (!image.data.length) {
     return null;

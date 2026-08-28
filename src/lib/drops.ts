@@ -2,42 +2,50 @@ import { CHAMBER_RADIUS } from './chamber';
 import { mulberry32, randomBetween } from './random';
 
 /**
- * A liquid motion timer in the object cell.
+ * A density column in the object cell.
  *
- * The desk toy: a sealed tube of two liquids that will not mix, one a shade
- * heavier than the other. Turn it over and the heavy one, now on top, has to
- * get back down — and it cannot go as a slab, because the light one has to come
- * up past it at the same time. So it goes as **beads**. They gather on the
- * underside of the pool overhead, hang, stretch, let go, drift down through the
- * other liquid, and are drawn into the pool that is growing on the floor. A few
- * minutes later it is all at the bottom, level, and still — until it is turned
- * over again.
+ * The desk toy, and the science-museum demonstration next to it: a sealed tube
+ * of liquids that will not mix, each a shade heavier than the last. Left alone
+ * they lie in **layers**, heaviest at the bottom, with a flat surface between
+ * every pair. Turn it over and every one of those layers is in the wrong place,
+ * and the tube has to sort itself out again — which it can only do by letting
+ * the heavy liquid down *through* the light one while the light one comes up
+ * through the heavy at the same time. So the sorting happens as **beads**: they
+ * gather on the underside of the surface, hang, stretch, let go, and drift down
+ * through the layer below, while bubbles of the lighter liquid leave the same
+ * surface going the other way. A few minutes later that pair has changed
+ * places, the next pair out of order starts, and when the last of them is done
+ * the tube is layered again and still — until it is turned over.
  *
  * It is a different thing from the lava lamp next to it, and the difference is
  * the point. Lava is a *cycle*: heat drives it and it never settles. This runs
  * **down**. It is a timer, and what starts it is the hand.
  *
- * Three things make the picture, and only the first is obvious.
+ * This build has three liquids where the first had two, and that is the whole
+ * of what changed. Two liquids is one surface, one colour of bead, and one
+ * direction of travel, and it looked like what it was: a flat disc of colour
+ * with dots on its edge. Three is
  *
- * **A surface.** Nothing else in this instrument has one. A pool of liquid at
- * rest is flat, perpendicular to gravity, and cuts the round cell along a
- * chord — and six mirrors fold one straight line into a hexagram. That figure
- * is not available from any pile of glass, at any setting, ever.
+ * - **layers, and layers that stack.** A settled column has two straight
+ *   surfaces rather than one, at about a third and two thirds of the way up,
+ *   and six mirrors fold two parallel straight lines into a figure a single one
+ *   cannot reach. Nothing else in this instrument has a surface at all.
+ * - **three colours, none of which is chosen.** Each liquid is transparent and
+ *   the tube is looked *through*, so what a pixel comes out as is the product
+ *   of however much of each liquid is in the way — Beer and Lambert over the
+ *   three. A bead crossing a layer is its own colour times the layer's, and
+ *   that is not a colour anybody picked. See {@link shadeFor}.
+ * - **two directions at once.** The pair being sorted exchanges across one
+ *   surface, so beads leave it downwards and bubbles leave it upwards from the
+ *   same place at the same moment. It is the plainest thing in the cell to
+ *   watch and it was the thing two liquids could not do.
  *
- * **Two colours, and neither of them is the one you see most of.** The tube is
- * deep, so there is always some of the light liquid in front of whatever you
- * are looking at: the beads are not their own colour, they are their colour
- * *seen through* the other one. That is the whole of the "colour mix illusion"
- * the toys are sold on, and it is why this is composited with `multiply` — the
- * mixed colour is not chosen anywhere, it falls out of two liquids being
- * transparent.
- *
- * **Metaballs**, borrowed wholesale from `lib/lava.ts` and pointed at a
- * different problem. The pools lay down a field either side of their own
- * surfaces, the beads lay down fields of their own, and everything is drawn
- * where the sum crosses {@link SURFACE}. So a bead about to let go necks off
- * the pool above it, a bead landing is drawn down into the pool below it, and
- * neither of those is animated anywhere — they are what summing fields does.
+ * The sorting is a bubble sort and nothing cleverer: whichever *adjacent* pair
+ * is out of order lowest in the tube is the pair that exchanges, and when it is
+ * done the next one starts. A column of three turned over is fully reversed,
+ * which is three exchanges — a long run with three distinct acts in it, and a
+ * flip halfway through leaves a half-sorted column that simply carries on from
+ * wherever it now is.
  *
  * Coordinates are in cell units, centred on the chamber, and gravity arrives in
  * the cell's own frame.
@@ -49,81 +57,119 @@ export interface Bead {
   /** How fast, in cell units per second. */
   vx: number;
   vy: number;
-  /**
-   * How much liquid it is, as an area in cell units.
-   *
-   * Area rather than a radius because it is the thing that is conserved: what
-   * a bead weighs is taken out of the pool it hangs off and given to the pool
-   * it lands in, and the sum of the two pools and everything in flight between
-   * them does not change.
-   */
-  area: number;
-  /** How far its field reaches. Derived from {@link Bead.area}. */
+  /** Which liquid it is made of: an index into {@link Drops.tints}. */
+  liquid: number;
+  /** How far its field reaches, in cell units. */
   reach: number;
-  /**
-   * How big it lets go at, as an area. Only meaningful while it is filling.
-   */
-  want: number;
   /** Where along the surface it hangs from, in cell units either side. */
   across: number;
   /**
-   * Seconds left of filling from the pool above before it lets go.
+   * Seconds left of gathering at the surface before it lets go.
    *
    * A drip is not a bead that appears — it is liquid running down into a
-   * pendant drop until it is heavy enough to break its own neck. So the
-   * next bead is *always* gathering: it is born as the bump the last pinch left
-   * behind, grows in place drawing what it grows by out of the pool overhead,
-   * hangs lower as it fills, and lets go. The wait between beads is spent
-   * hanging rather than spent on a flat surface, which is both what a slow drip
-   * looks like and the only way anybody ever sees the drip happen — sampled at
-   * a run of instants, a surface that is flat between beads is flat in nearly
-   * every one of them.
+   * pendant drop until it is heavy enough to break its own neck. So the next
+   * bead is *always* gathering: it starts as the bump the last pinch left
+   * behind, grows in place, hangs further from the surface as it fills, and
+   * lets go. The wait between beads is spent hanging rather than spent on a
+   * flat surface, which is both what a slow drip looks like and the only way
+   * anybody ever sees the drip happen — sampled at a run of instants, a surface
+   * that is flat between beads is flat in nearly every one of them.
    */
   filling: number;
+  /** How big it will be when it lets go, as a reach. Only while filling. */
+  wants: number;
   /**
-   * Seconds left of being drawn into the pool below; 0 until it has landed.
+   * Whether it has arrived and is being drawn into the layer it reached.
    *
-   * The counterpart, and it exists for the same reason. A bead that reached the
-   * floor and was simply deleted would take a visible bite out of the picture
-   * on one frame — see the frame-to-frame test in `drops.test.ts`, which is in
-   * this repo because exactly that kind of fault got all the way to a phone
-   * once already.
+   * The counterpart of the gathering, and it exists for the same reason. A bead
+   * that reached its layer and was simply deleted would take a visible bite out
+   * of the picture on one frame — see the frame-to-frame test in
+   * `drops.test.ts`, which is in this repo because exactly that kind of fault
+   * got all the way to a phone once already. So it shrinks into the surface
+   * over {@link SINK} instead, with the surface already there to meet it.
    */
-  sinking: number;
-  /**
-   * A bubble of the light liquid rather than a bead of the heavy one.
-   *
-   * It carries a *negative* field, which is the whole of what it needs: inside
-   * the heavy pool the sum drops below the surface and the pool is drawn with a
-   * hole in it, and outside the pool it makes no difference at all — which is
-   * right, because a bead of the clear liquid adrift in the clear liquid is not
-   * a thing anybody can see.
-   */
+  landing: boolean;
+  /** Going up rather than down: a bubble of the lighter liquid. */
   rising: boolean;
   /** Where in its sideways wander it is, radians. */
   wander: number;
 }
 
+/**
+ * One layer of the column: a liquid, and how much of it is lying here.
+ *
+ * Bottom first, so `bands[0]` rests on the floor of the cell. A settled column
+ * has them in descending order of weight — which, since the liquids are
+ * numbered lightest first, means descending order of index.
+ */
+export interface Band {
+  /** Which liquid: an index into {@link Drops.tints}. */
+  liquid: number;
+  /** How much of it is in this layer, as an area in cell units. */
+  area: number;
+}
+
+/**
+ * A pair of layers changing places.
+ *
+ * Four bands, and they are all four in {@link Drops.bands}, in this order from
+ * the bottom: `fell`, `light`, `heavy`, `rose`. The two in the middle are the
+ * pair that was out of order and they drain; the two outside them are where
+ * their liquid is going and they fill. When the drain is done the middle two
+ * are dropped and what is left is the same two layers, swapped.
+ *
+ * The areas are moved by {@link Swap.progress} rather than by the beads, and
+ * that is deliberate. A bookkeeping model where each bead carries its own
+ * volume out of one pool and into another is the obvious way round and it was
+ * the first build's; it means the column is not full while a bead is in flight,
+ * and with layers rather than one pool an unfull column has a *gap* in it that
+ * has to be given to somebody. Moving the areas continuously and letting the
+ * beads be the visible carriers keeps the column exactly full at every instant,
+ * and the drip is still what sets the pace — see {@link gather}, which spawns
+ * beads against the same clock.
+ */
+export interface Swap {
+  /** Where the heavy liquid is going: the band below the pair. */
+  fell: Band;
+  /** The lighter layer, which is underneath and draining upward. */
+  light: Band;
+  /** The heavier layer, which is on top and draining downward. */
+  heavy: Band;
+  /** Where the light liquid is going: the band above the pair. */
+  rose: Band;
+  /** How far through, 0 to 1. */
+  progress: number;
+  /** What the two draining bands held when it started. */
+  heavyWas: number;
+  lightWas: number;
+  /** The surface the exchange happens across, in cell units along down. */
+  at: number;
+  /** Where a bead has arrived, and where a bubble has. */
+  sink: number;
+  climb: number;
+}
+
 export interface Drops {
   /** What the cell was cut from. */
   readonly seed: number;
-  /** How much heavy liquid there is altogether, as an area in cell units. */
-  readonly heavy: number;
-  /** How wide a bead is drawn, in cell units. The pinch is allowed to set it. */
+  /** How wide a bead is drawn, in cell units. Surface tension picks one size. */
   readonly beadAcross: number;
-  /** The light liquid's tint, and the heavy one's. Both transparent. */
-  readonly tints: readonly [[number, number, number], [number, number, number]];
-  /** Beads on their way down, and bubbles on their way up. */
+  /**
+   * The liquids, lightest first, each as the colour a full depth of it passes.
+   *
+   * Lightest first is also topmost first once the column has settled, and it is
+   * the order the whole module is written in: a band's `liquid` is an index
+   * into this, and one index being lower than another *is* the statement that
+   * it floats on it.
+   */
+  readonly tints: readonly (readonly [number, number, number])[];
+  /** The column, bottom first. */
+  bands: Band[];
+  /** The pair currently changing places, if any. */
+  swap: Swap | null;
+  /** Beads and bubbles in flight. */
   beads: Bead[];
-  /** Heavy liquid still in the pool overhead, as an area. */
-  overhead: number;
-  /** Heavy liquid that has reached the floor, as an area. */
-  floor: number;
-  /** How far down the cell the overhead pool's underside is, in cell units. */
-  overheadAt: number;
-  /** How far down the cell the floor pool's surface is, in cell units. */
-  floorAt: number;
-  /** Which way the surfaces lie: down, plus however far the pool is sloshing. */
+  /** Which way the surfaces lie: down, plus however far the column is sloshing. */
   downX: number;
   downY: number;
   /** How far the surfaces are off level, radians, and how fast that is moving. */
@@ -137,7 +183,7 @@ export interface Drops {
   /**
    * How many beads have been cast so far.
    *
-   * Where a bead lets go of the pool and how big it comes out are the only
+   * Where a bead lets go of the surface and how big it comes out are the only
    * things in here that are not arithmetic, and this is what keeps them
    * repeatable: the same cell run the same way casts the same beads, whatever
    * frame rate it is run at, because the draw is made from the count and not
@@ -147,32 +193,28 @@ export interface Drops {
 }
 
 /**
- * Cells across the chamber the picture is worked out on.
+ * Cells across the chamber the bead field is worked out on.
  *
- * The same hundred and twenty eight the lava uses, for the same reason: the
- * field is smooth and this is not resolving detail, it is deciding how
- * accurately the *surface* lands. It matters more here than there, because a
- * pool's surface is a straight line and the eye reads a wobble in a straight
- * line that it would never see in the edge of a blob.
+ * The beads only. The *surfaces* are not on this grid and never were — where a
+ * layer's surface lies is arithmetic, worked out at the painted pixel from a
+ * chord and a meniscus, because a straight line is the one edge in this whole
+ * instrument that the eye measures and a straight line a cell wide at a time is
+ * a staircase.
  */
 export const GRID = 128;
 
 /**
  * How many pixels the cell is painted at, per cell of the bead field.
  *
- * The beads are a smooth field and do not want a finer grid; the **pools** are
- * not a field at all — where their surface is, is arithmetic, worked out at
- * the pixel from a chord and a meniscus — so painting them one pixel per cell
- * threw away resolution the cell already had. And a pool's surface is the one
- * edge in this whole instrument that the eye measures: it is *straight*, and a
- * straight line a cell wide at a time is a staircase, plain in a screenshot at
- * anything past the default zoom while the same quantisation in the edge of a
- * bead goes unnoticed. Painted two pixels a cell, with the pools evaluated at
- * each of them, the horizon is a line again.
+ * Two, and it is the surfaces that ask for it rather than the beads: the beads
+ * are a smooth field and want no more resolution than the field has, while a
+ * surface painted one pixel per cell is visibly stepped at anything past the
+ * default zoom. Painted two pixels a cell, with the column evaluated at each of
+ * them, the horizon is a line again.
  */
 const FINE = 2;
 
-/** Where a surface is, as a sum of the fields. */
+/** Where the surface of a bead is, as a sum of the fields. */
 const SURFACE = 0.5;
 
 /**
@@ -184,15 +226,14 @@ const SURFACE = 0.5;
  */
 const SEEN = 0.54;
 
-/** How far a pool's field reaches out past its own surface, in cell units. */
-const POOL_REACH = 0.14;
+/** How far a surface is smeared either side of itself, in cell units. */
+const POOL_REACH = 0.055;
 
 /**
  * How far the liquid climbs the wall, in cell units, and how far in it lets go.
  *
- * A meniscus. The heavy liquid wets the glass, so at the wall it reaches
- * further along than the level says — up at the edges of a pool on the floor,
- * down at the edges of one overhead, which is the same statement made twice.
+ * A meniscus. The heavier liquid of a pair wets the glass, so at the wall every
+ * surface in the column stands a little higher than the level says.
  *
  * It is a small thing to measure and a large one to look at: a chord across a
  * round cell is a straight line, and six mirrors turn a straight line into a
@@ -203,42 +244,33 @@ const CLIMB = 0.06;
 const WETS = 0.3;
 
 /**
- * Where a pool's surface lands above the chord its field is built on.
+ * How far Amount may push the layers away from three equal thirds.
  *
- * A pool's field is 1 inside and `(1 - a/POOL_REACH)²` at a above it, so the
- * contour at {@link SURFACE} sits at `a = (1 - √½)·POOL_REACH`. The chord is
- * therefore laid this much *beyond* where the surface is wanted, and the area
- * arithmetic gets to talk about the surface you can see.
+ * A sealed tube is always full, so "how much" cannot mean how much liquid there
+ * is — it means how much of the tube any one of the three liquids is. At
+ * nothing the column is three equal layers; at everything one of them is half
+ * again as deep as another, which moves both surfaces and changes the figure
+ * the fold makes of them.
+ *
+ * **How far it may go was decided by the mirrors, not by the liquid.** The cell
+ * is the disc the mirror triangle is inscribed in, so the triangle's edges lie
+ * at half the radius and the fold never sees the outer half of the cell at all.
+ * A thin layer's surface is a cap out at the rim, and a cap at the rim reaches
+ * the triangle only at its three corners: the first build of this had one
+ * surface and one pool, the pool settled as exactly that, and the figure came
+ * out as a lattice of little rosettes that *were* the pool — 11% of what is
+ * folded, all of it in the corners.
+ *
+ * Measured against the triangle, the share of the fold a bottom layer covers
+ * runs 0.10 of the fold at a quarter of the tube, 0.16 at a quarter and a half,
+ * 0.19 at 0.28, and 0.24 at a third. A layer of 0.26 is the thinnest that still
+ * reads as a layer rather than as three corners, and this is set so no layer
+ * ever goes under it.
  */
-const EDGE = 1 - Math.SQRT1_2;
-
-/**
- * How much of the cell the heavy liquid fills, at the two ends of Amount.
- *
- * Never all of it and never none: at nothing there is still a puddle to drip
- * into, and at everything there is still enough of the light liquid for the
- * beads to fall through. A tube of one liquid is not a timer.
- *
- * **Where the middle of that range sits was decided by the mirrors, not by the
- * liquid.** The cell is the disc the mirror triangle is inscribed in, so the
- * triangle's edges lie at half the radius and the fold never sees the outer
- * half of the cell at all. A settled pool is a cap at the rim — and measured
- * against the triangle, a pool filling a fifth of the cell covers 11% of what
- * is folded, all of it in the corners. Which is exactly what it looked like:
- * the cell drained to a flat pool and the figure came out as a lattice of
- * rosettes, because the rosettes *were* the pool, sampled at the three points
- * where it reached far enough in.
- *
- * At a shade under half the cell the surface lands within a twentieth of the
- * middle, covers 40% of the triangle, and folds into the six-pointed horizon
- * this substance is here for. So that is where the default rests, and Amount
- * runs either side of it.
- */
-const LEAST = 0.28;
-const MOST = 0.62;
+const SPREAD = 0.07;
 
 /** How wide a bead is drawn, in cell units. Surface tension picks one size. */
-const BEAD = 0.17;
+const BEAD = 0.16;
 const BEAD_SPREAD = 0.22;
 
 /**
@@ -248,30 +280,24 @@ const BEAD_SPREAD = 0.22;
  * starts from. Also the difference between a drip and a bead flickering into
  * existence two pixels across, which is what starting from nothing looked like.
  */
-const LEFT = 0.14;
+const LEFT = 0.2;
+
+/** Seconds a pair of layers takes to change places, at the thin end of Thickness. */
+const EXCHANGE = 26;
 
 /**
- * What is too little to be worth a bead of its own, as a share of one.
+ * How much slower the last of an exchange runs than the first.
  *
- * See where it is used: without it the pool halves and halves and is never
- * empty, and the cell never comes to rest — which would be a lava lamp got at
- * by accident rather than a timer.
- */
-const DREGS = 0.05;
-
-/** Seconds a bead takes to gather, with the pool overhead full. */
-const GATHER = 1.9;
-
-/**
- * How much slower the last of it drips than the first.
- *
- * A drip runs on the head of liquid above it, so a pool that is nearly gone
+ * A drip runs on the head of liquid above it, so a layer that is nearly drained
  * drips slowly — which is why the real ones have a long tail, minutes after the
  * bulk of it has gone down, and it is the best thing about them. Clamped rather
- * than left to go to nothing: `1/share` with nothing under it puts the last few
- * beads minutes apart on their own.
+ * than left to go to nothing: a rate proportional to what is left never arrives
+ * at all.
  */
-const SLOWEST = 0.4;
+const SLOWEST = 0.35;
+
+/** Seconds a bead takes to gather, at the head of an exchange. */
+const GATHER = 0.75;
 
 /** How much thicker the far end of Thickness is, for the fall and for the drip. */
 const THICKEST = 4;
@@ -281,40 +307,40 @@ const THICKEST_DRIP = 2;
  * Downward acceleration on a bead, net of what it floats in.
  *
  * Small, and it is the difference between this and anything else that falls in
- * this app. The two liquids are within a per cent or two of each other's
- * density — which is the whole trick of the toy, and why it can be made to take
- * minutes — so what is left of a bead's weight once it has floated most of
- * itself off is very little, and against the drag that is a slow drift down
- * rather than a fall. Measured, a bead crosses the cell in about eight seconds
- * at the middle of Thickness.
+ * this app. The liquids are within a per cent or two of each other's density —
+ * which is the whole trick of the toy, and why it can be made to take minutes —
+ * so what is left of a bead's weight once it has floated most of itself off is
+ * very little, and against the drag that is a slow drift down rather than a
+ * fall.
  */
-const FALL = 1.5;
+const FALL = 1;
 
 /** Speed lost per second, before the fluid is thickened. */
 const DRAG = 3.2;
 
-/** How fast a bubble of the light liquid climbs through the heavy one. */
-const RISE = 2.6;
+/** How fast a bubble of the lighter liquid climbs through the heavier one. */
+const RISE = 0.85;
 
-/** How far a falling bead wanders sideways, and how quickly. */
+/** How far a drifting bead wanders sideways, and how quickly. */
 const WANDER = 0.5;
 const WANDER_RATE = 1.1;
 
-/** How far a gathering bead hangs below the surface, as a share of its width. */
+/** How far a gathering bead hangs past the surface, as a share of its width. */
 const PENDANT = 0.85;
 
-/** Seconds a bead takes to be drawn into the pool it lands in. */
+/** Seconds a bead takes to be drawn into the layer it arrives at. */
 const SINK = 0.4;
 
 /**
- * How far off level the pools may be pushed, in radians, and how they get back.
+ * How far off level the surfaces may be pushed, in radians, and how they get
+ * back.
  *
- * A pool sloshes: turn the tube and the surface lags, stop and it rocks back
- * and settles. It is a damped oscillator driven by how fast gravity is moving
- * in the cell's frame, which is the whole of what a hand does to it — and it is
- * why this substance is worth having in a thing you hold. A still instrument
- * gets a flat surface, which is also correct, and is why the cell is not
- * pretending to be a lava lamp.
+ * A column sloshes: turn the tube and every surface in it lags, stop and they
+ * rock back and settle. It is a damped oscillator driven by how fast gravity is
+ * moving in the cell's frame, which is the whole of what a hand does to it —
+ * and it is why this substance is worth having in a thing you hold. A still
+ * instrument gets flat surfaces, which is also correct, and is why the cell is
+ * not pretending to be a lava lamp.
  */
 const LEAN_MOST = 0.32;
 const STIFF = 9;
@@ -328,70 +354,86 @@ const SWIPE = 1.4;
 const FINGER = 0.3;
 
 /**
- * How far gravity has to get from the pool's own idea of down before it lets go.
+ * How far gravity has to get from the column's own idea of down before the
+ * layers let go.
  *
  * The one interaction this substance has that no other one does: **turning the
- * instrument over runs it again.** A pool keeps its own down and re-levels
+ * instrument over runs it again.** The column keeps its own down and re-levels
  * towards gravity at {@link LEVEL}, so a slow turn is followed and nothing
  * happens — which is right, since tipping a bubbler gently on its side does not
  * set it off either. A deliberate half-turn outruns it, the alignment goes past
- * this, and everything on the floor is overhead again.
+ * this, and the whole column is upside down: every layer that was settled is
+ * now in the wrong order and the run starts again.
  */
 const TIP = 2.2;
 
-/** How fast a pool re-levels towards gravity, in radians per second. */
+/** How fast the column re-levels towards gravity, in radians per second. */
 const LEVEL = 1.5;
 
 /**
- * The pairs of liquids the tube can be filled with, light first.
+ * The sets of liquids the tube can be filled with, lightest first.
  *
- * Both are transparent and the picture is what you get looking through both, so
- * these are not the colours on the screen: the field is the light one, and the
- * beads come out at the *product* of the two. Which is the illusion the toys
- * are sold on, and the reason to model it this way rather than choosing the
- * bead colour directly — a colour that falls out of the arithmetic goes on
- * being right when a bead crosses the pool, and one that was chosen does not.
+ * All three are transparent and the picture is what you get looking through all
+ * of them, so these are not the colours on the screen: what any pixel comes out
+ * as is the product of however much of each is in the way. Which is the illusion
+ * these toys are sold on, and the reason to model it this way rather than
+ * choosing the bead colour directly — a colour that falls out of the arithmetic
+ * goes on being right when a bead crosses a layer, and one that was chosen does
+ * not.
  *
- * Picked by looking at the products. The light one of each pair is **nearly
- * white**, and that is a correction rather than a preference: it used to be a
- * butter or a sky — a light colour, but a colour — and it is most of the cell,
- * so the picture came out as two mid-tones against each other. Two mid-tones
- * is the one thing a kaleidoscope cannot carry: the mirrors take a few per
- * cent of the light at every bounce and lean it green as they go, so a figure
- * with no light in it goes to olive and brick at the rim. Pale, the same
- * arithmetic gives a clean colour on a white ground and the beads read as
- * liquid seen through liquid, which is what they are.
+ * The lightest of each set is **nearly white**, and that is a correction rather
+ * than a preference: it used to be a butter or a sky — a light colour, but a
+ * colour — and it is the top third of the tube, so the picture came out as
+ * mid-tones against each other. Two mid-tones is the one thing a kaleidoscope
+ * cannot carry: the mirrors take a few per cent of the light at every bounce
+ * and lean it green as they go, so a figure with no light in it goes to olive
+ * and brick at the rim. Pale, the same arithmetic gives clean colour on a white
+ * ground and the layers read as liquid seen through liquid, which is what they
+ * are.
  */
-const PAIRS: readonly (readonly [[number, number, number], [number, number, number]])[] = [
-  // Cream and rose: a crimson bead on a warm white.
+const SETS: readonly (readonly [
+  readonly [number, number, number],
+  readonly [number, number, number],
+  readonly [number, number, number],
+])[] = [
+  // Cream, rose and cobalt: the pair the desk toys are most often filled with,
+  // with a warm white over them.
   [
-    [252, 242, 222],
-    [226, 74, 116],
+    [252, 243, 228],
+    [231, 92, 128],
+    [54, 104, 198],
   ],
-  // Ice and cobalt: an ink blue on a cold white, which is the pair the desk
-  // toys are most often filled with.
+  // Ice, amber and viridian. The amber crossing the viridian is the one place
+  // in the set where two beads make a third colour you would not have guessed.
   [
-    [226, 242, 250],
-    [58, 116, 214],
+    [232, 244, 250],
+    [244, 158, 54],
+    [38, 150, 126],
   ],
-  // Shell and amber: a marigold bead, and the one pair where the light liquid
-  // is warmer than the heavy one is dark.
+  // Shell, orchid and ink: the deepest set, and the beads read almost black
+  // against the wall.
   [
-    [254, 240, 214],
-    [240, 146, 48],
+    [252, 240, 232],
+    [180, 108, 210],
+    [46, 70, 152],
   ],
-  // Frost and violet, which through each other make an orchid.
+  // Mist, lemon and crimson, which is the only set with a light liquid warmer
+  // than either of the ones under it.
   [
-    [238, 234, 250],
-    [128, 70, 200],
+    [246, 248, 234],
+    [246, 210, 84],
+    [206, 52, 92],
   ],
-  // Mist and viridian: the green that a pool of it makes is the deepest colour
-  // in the set, and the beads read almost black-green against the wall.
+  // Frost, turquoise and plum.
   [
-    [232, 246, 238],
-    [42, 152, 128],
+    [238, 243, 250],
+    [70, 182, 192],
+    [122, 58, 142],
   ],
 ];
+
+/** How many liquids a tube holds. */
+const LIQUIDS = 3;
 
 /** Builds a cell of it, deterministically, turned over and ready to run. */
 export function createDrops(seed: number, amount: number, scale = 1): Drops {
@@ -400,31 +442,32 @@ export function createDrops(seed: number, amount: number, scale = 1): Drops {
   // Two turns of the crank thrown away. mulberry32's opening draw lands in the
   // same part of its range for a run of nearby seeds — 0.63, 0.73, 0.72, 0.92
   // for one, two, three, four — so a cell that picks its liquids off that draw
-  // comes out the same colour for a run of nearby seeds, which is the one thing
-  // a seed is there to stop.
+  // comes out the same colours for a run of nearby seeds, which is the one
+  // thing a seed is there to stop.
   rng();
   rng();
 
-  const heavy =
-    Math.PI * CHAMBER_RADIUS * CHAMBER_RADIUS * (LEAST + (MOST - LEAST) * clamp(amount));
+  const full = Math.PI * CHAMBER_RADIUS * CHAMBER_RADIUS;
+  const spread = SPREAD * clamp(amount);
+  // Which of the three is the deep one, and by how much. Three cosines a third
+  // of a turn apart add to nothing however the dial is set, so whatever this
+  // draws the shares still come to exactly one tube.
+  const turn = rng() * Math.PI * 2;
+  const shares = [0, 1, 2].map(
+    (liquid) => 1 / 3 + spread * Math.cos(turn + (liquid * 2 * Math.PI) / 3),
+  );
 
   return {
     seed,
-    heavy,
     beadAcross: BEAD * Math.max(0.2, scale) * randomBetween(rng, 0.95, 1.05),
-    tints: PAIRS[Math.min(PAIRS.length - 1, Math.floor(rng() * PAIRS.length))]!,
+    tints: SETS[Math.min(SETS.length - 1, Math.floor(rng() * SETS.length))]!,
+    // Opens the way the toy is handed to you: upside down, every layer in the
+    // wrong place, about to run. There is nothing to catch mid-motion here the
+    // way there is with lava — the motion is the whole run, and it starts at
+    // the start.
+    bands: shares.map((share, liquid) => ({ liquid, area: share * full })),
+    swap: null,
     beads: [],
-    // Opens the way the toy is handed to you: turned over, all of it overhead,
-    // about to run. There is nothing to catch mid-motion here the way there is
-    // with lava — the motion is the whole run, and it starts at the start.
-    overhead: heavy,
-    floor: 0,
-    // Worked out here as well as every frame, so the cell is coherent before it
-    // has been advanced once — otherwise the first frame is the whole pool
-    // appearing out of nothing, which measures as by far the biggest jump in
-    // the run and would be exactly that on any screen fast enough to show it.
-    overheadAt: -CHAMBER_RADIUS * chordFor(heavy),
-    floorAt: CHAMBER_RADIUS,
     downX: 0,
     downY: 1,
     lean: 0,
@@ -446,16 +489,16 @@ export interface DropsUpdate {
   /** Which way is down in the cell's own frame, radians. */
   angle: number;
   /**
-   * A finger in the cell, dragging the beads it touches and tipping the pools.
+   * A finger in the cell, dragging the beads it touches and tipping the layers.
    *
-   * A pool is the one thing in this instrument a finger can push on that
-   * pushes back where you are not touching: swipe across a surface and the
-   * whole of it tips, because a surface is one object however wide it is.
+   * A surface is the one thing in this instrument a finger can push on that
+   * pushes back where you are not touching: swipe across one and the whole of
+   * it tips, because a surface is one object however wide it is.
    */
   stir?: { x: number; y: number; vx: number; vy: number } | null | undefined;
 }
 
-/** Advances the cell in place: the level, then the drip, then what is in flight. */
+/** Advances the cell: the level, then the sorting, then what is in flight. */
 export function updateDrops(
   drops: Drops,
   { dt, thickness, swirl, angle, stir }: DropsUpdate,
@@ -473,19 +516,19 @@ export function updateDrops(
   }
 
   // How fast gravity is moving in the cell's own frame. Turning the tube does
-  // it, tipping the phone does it, and the pool cannot tell the two apart —
-  // which is right, because neither can the liquid.
+  // it, tipping the phone does it, and the liquid cannot tell the two apart —
+  // which is right, because neither can a real one.
   const turned = wrap(angle - drops.facing);
 
   drops.facing = angle;
 
   // The slosh. Driven by that rate and by the fluid's own turning, pulled back
-  // to level, and damped: hold the instrument still and the surface settles.
+  // to level, and damped: hold the instrument still and the surfaces settle.
   drops.leaning +=
     (-STIFF * drops.lean - DAMPEN * drops.leaning) * step + (turned + swirl * step) * DRIVE;
 
   // A finger swept sideways piles the liquid up on the side it is going, and
-  // the surface tips away from where it came from — wherever on the pool the
+  // the surface tips away from where it came from — wherever on the surface the
   // finger happens to be, because a surface is one object however wide it is.
   // Down is `(sin, cos)` of the angle, so along the surface is `(-cos, sin)`,
   // and liquid piling that way is a *negative* lean.
@@ -494,19 +537,21 @@ export function updateDrops(
 
     drops.leaning -= swept * SWIPE * step;
   }
+
   drops.lean = Math.max(-LEAN_MOST, Math.min(LEAN_MOST, drops.lean + drops.leaning * step));
 
-  // The pool's own down follows gravity, but only so fast. Outrun it far enough
-  // and what is on the floor is overhead, and the whole thing runs again.
+  // The column's own down follows gravity, but only so fast. Outrun it far
+  // enough and the whole thing is upside down, and it has to sort itself out
+  // all over again.
   const off = wrap(angle - drops.rest);
 
   if (Math.abs(off) > TIP) {
-    drops.overhead += drops.floor;
-    drops.floor = 0;
+    drops.bands.reverse();
+    drops.swap = null;
     drops.rest = angle;
 
     for (const bead of drops.beads) {
-      // Anything still hanging has just been shaken off the ceiling.
+      // Anything still hanging has just been shaken off its surface.
       bead.filling = 0;
     }
   } else {
@@ -517,55 +562,165 @@ export function updateDrops(
 
   drops.downX = Math.sin(lie);
   drops.downY = Math.cos(lie);
-  drops.overheadAt = -CHAMBER_RADIUS * chordFor(drops.overhead);
-  drops.floorAt = CHAMBER_RADIUS * chordFor(drops.floor);
 
+  sort(drops, step, thickness);
   gather(drops, step, thickness);
   carry(drops, step, thickness, swirl, stir);
 }
 
 /**
- * Grows the bead hanging off the pool overhead, and starts the next one.
+ * Runs the column's own bubble sort: finds the lowest pair out of order and
+ * exchanges it, a little at a time.
  *
- * One at a time, and there is always one: a tube with two beads gathering at
- * once reads as a leak rather than a drip, and a tube with none reads as two
- * blocks of colour with nothing happening between them. The wait between beads
- * is the gathering, and the gathering is the part worth watching.
+ * See {@link Swap} for why the areas move on a clock rather than with the
+ * beads, and the module note for why one pair at a time is not a shortcut: a
+ * column of three fully reversed has its two out-of-order pairs *overlapping*,
+ * sharing their middle band, so there is never more than one exchange that
+ * could be run at once anyway.
+ */
+function sort(drops: Drops, step: number, thickness: number): void {
+  const swap = drops.swap;
+
+  if (swap) {
+    // A rate that falls away with what is left in the draining layers, clamped
+    // so the tail is long rather than endless. See SLOWEST.
+    const head = Math.max(SLOWEST, 1 - swap.progress);
+    const over = EXCHANGE * (1 + THICKEST_DRIP * clamp(thickness));
+
+    swap.progress = Math.min(1, swap.progress + (step * head) / over);
+    swap.heavy.area = swap.heavyWas * (1 - swap.progress);
+    swap.fell.area = swap.heavyWas * swap.progress;
+    swap.light.area = swap.lightWas * (1 - swap.progress);
+    swap.rose.area = swap.lightWas * swap.progress;
+
+    if (swap.progress >= 1) {
+      drops.bands = drops.bands.filter((band) => band !== swap.heavy && band !== swap.light);
+      drops.swap = null;
+    } else {
+      surfacesOf(drops, edges);
+
+      const at = drops.bands.indexOf(swap.light);
+
+      // The surface the pair meet across, and the two the beads are heading
+      // for. `edges[i]` is the *bottom* of band `i`, so the top of band `i` is
+      // the next one along.
+      swap.at = edges[at + 1]!;
+      swap.sink = edges[at]!;
+      swap.climb = edges[at + 2]!;
+
+      return;
+    }
+  }
+
+  merge(drops);
+
+  // Lowest first, which is what makes it a bubble sort and not a scramble: the
+  // heaviest thing in the tube reaches the floor by exchanging with each layer
+  // under it in turn, and every one of those exchanges is a thing to watch.
+  for (let i = 0; i + 1 < drops.bands.length; i += 1) {
+    const under = drops.bands[i]!;
+    const over = drops.bands[i + 1]!;
+
+    if (under.liquid >= over.liquid || under.area <= 0 || over.area <= 0) {
+      continue;
+    }
+
+    const fell = { liquid: over.liquid, area: 0 };
+    const rose = { liquid: under.liquid, area: 0 };
+
+    drops.bands.splice(i, 0, fell);
+    drops.bands.splice(i + 3, 0, rose);
+
+    drops.swap = {
+      fell,
+      light: under,
+      heavy: over,
+      rose,
+      progress: 0,
+      heavyWas: over.area,
+      lightWas: under.area,
+      at: 0,
+      sink: 0,
+      climb: 0,
+    };
+
+    surfacesOf(drops, edges);
+    drops.swap.at = edges[i + 2]!;
+    drops.swap.sink = edges[i + 1]!;
+    drops.swap.climb = edges[i + 4]!;
+
+    return;
+  }
+}
+
+/** Folds neighbouring layers of the same liquid together and drops empty ones. */
+function merge(drops: Drops): void {
+  const kept: Band[] = [];
+
+  for (const band of drops.bands) {
+    if (band.area <= 0) {
+      continue;
+    }
+
+    const last = kept[kept.length - 1];
+
+    if (last?.liquid === band.liquid) {
+      last.area += band.area;
+      continue;
+    }
+
+    kept.push(band);
+  }
+
+  drops.bands = kept.length > 0 ? kept : drops.bands;
+}
+
+/**
+ * Grows the bead hanging off the exchange surface, and the bubble pressed
+ * against it from the other side.
+ *
+ * One pair at a time, and there is always one while an exchange is running: a
+ * surface with two beads gathering at once reads as a leak rather than a drip,
+ * and one with none reads as two blocks of colour with nothing happening
+ * between them. The wait between beads is the gathering, and the gathering is
+ * the part worth watching.
  */
 function gather(drops: Drops, step: number, thickness: number): void {
-  const { beadAcross } = drops;
-  const full = Math.PI * beadAcross * beadAcross;
-  const filling = drops.beads.find((bead) => bead.filling > 0);
+  const swap = drops.swap;
 
-  if (filling) {
-    // Fed out of the pool overhead, so what a bead weighs was never anywhere
-    // else — and at whatever rate is left to fill it in the time it has left.
-    const rate = (filling.want - filling.area) / Math.max(step, filling.filling);
-    const wanted = Math.max(0, Math.min(rate * step, drops.overhead));
-
-    drops.overhead -= wanted;
-    filling.area += wanted;
-    filling.reach = reachOf(filling.area);
-    // Hangs lower the fuller it gets, which is what stretches the neck: the
-    // pool's field and the bead's still overlap, so what is drawn between them
-    // is a waist rather than a gap, right up until it is one.
-    const at = drops.overheadAt + filling.reach * SEEN * PENDANT;
-
-    filling.x = drops.downX * at - drops.downY * filling.across;
-    filling.y = drops.downY * at + drops.downX * filling.across;
-    // If the pool runs dry first it lets go with what it has, which is the
-    // last dribble of a real one.
-    filling.filling = drops.overhead > 1e-9 ? Math.max(0, filling.filling - step) : 0;
+  if (!swap) {
+    // Nothing left to exchange. Whatever was still gathering has no surface to
+    // gather off any more, so it lets go — and `carry` finds it nowhere to go
+    // and draws it back into the layer it is in. The alternative is a bead
+    // hanging off a settled column for ever, which is what the first go did.
+    for (const bead of drops.beads) {
+      bead.filling = 0;
+    }
 
     return;
   }
 
-  // Down to the last thousandth of it, and then it is empty. Halving what is
-  // left for ever is a way of never finishing, and this cell is meant to
-  // finish: the pool that is left when it does is the picture it rests on.
-  if (drops.overhead <= drops.heavy * 1e-6) {
-    drops.overhead = 0;
+  const { beadAcross } = drops;
+  let gathering = false;
 
+  for (const bead of drops.beads) {
+    if (bead.filling <= 0) {
+      continue;
+    }
+
+    gathering = true;
+
+    const grown = bead.reach + ((bead.wants - bead.reach) * step) / Math.max(step, bead.filling);
+
+    bead.reach = Math.min(bead.wants, grown);
+    // Hangs further off the fuller it gets, which is what stretches the neck:
+    // the surface and the bead still overlap, so what is drawn between them is
+    // a waist rather than a gap, right up until it is one.
+    place(drops, bead, swap.at + (bead.rising ? -1 : 1) * bead.reach * SEEN * PENDANT);
+    bead.filling = Math.max(0, bead.filling - step);
+  }
+
+  if (gathering) {
     return;
   }
 
@@ -573,72 +728,50 @@ function gather(drops: Drops, step: number, thickness: number): void {
 
   drops.cast += 1;
 
-  let size = Math.min(drops.overhead, full * randomBetween(rng, 1 - BEAD_SPREAD, 1 + BEAD_SPREAD));
-
-  // The last of it comes down as one dribble rather than as an endless stream
-  // of ever-smaller ones: a pool that only ever gives away a share of what is
-  // in it is never empty, and a cell that is never empty never comes to rest.
-  if (drops.overhead - size < full * DREGS) {
-    size = drops.overhead;
-  }
-
-  const wide = Math.sqrt(size / Math.PI);
+  const wide = beadAcross * randomBetween(rng, 1 - BEAD_SPREAD, 1 + BEAD_SPREAD);
   // Along the surface, and clear of the wall by its own width, or a bead would
   // be born half outside the cell and shoved in on its first frame.
-  const half = Math.sqrt(Math.max(0, CHAMBER_RADIUS * CHAMBER_RADIUS - drops.overheadAt ** 2));
+  const half = Math.sqrt(Math.max(0, CHAMBER_RADIUS * CHAMBER_RADIUS - swap.at * swap.at));
   const across = randomBetween(rng, -1, 1) * Math.max(0, half - wide * 2);
-  // A pool with less over it drips more slowly, which is why the real ones have
-  // a long tail: an hour after the flip there is still the odd bead coming
-  // down. Clamped, or the last few would be minutes apart on their own.
-  const head = Math.max(SLOWEST, drops.overhead / drops.heavy);
-  // Taken out of the pool now, like every other bit of it: what a bead is made
-  // of was in the pool a moment ago and nowhere else, and the one place that is
-  // easy to forget is the bump it starts as.
-  const born = Math.min(drops.overhead, size * LEFT);
-  // Placed by the same rule that will move it as it fills, or its second frame
-  // would jump it to where that rule says it should have been all along.
-  const at = drops.overheadAt + reachOf(born) * SEEN * PENDANT;
+  // A pair with less left to exchange drips more slowly, which is why the real
+  // ones have a long tail. The same clock the areas move on: see Swap.
+  const head = Math.max(SLOWEST, 1 - swap.progress);
+  const waits = (GATHER * (1 + THICKEST_DRIP * clamp(thickness))) / head;
 
-  drops.overhead -= born;
-
-  drops.beads.push({
-    x: drops.downX * at - drops.downY * across,
-    y: drops.downY * at + drops.downX * across,
-    vx: 0,
-    vy: 0,
-    area: born,
-    reach: reachOf(born),
-    want: size,
-    across,
-    filling: (GATHER * (1 + THICKEST_DRIP * clamp(thickness))) / head,
-    sinking: 0,
-    rising: false,
-    wander: rng() * Math.PI * 2,
-  });
-
-  // The light liquid that takes its place has to come up through the pool to
-  // get there, and while it is crossing it is a bubble. Only where there is
-  // pool enough to cross: a cap a couple of beads thick has no room for one.
-  if (drops.overheadAt + CHAMBER_RADIUS > beadAcross * 5) {
-    const climb = randomBetween(rng, -0.8, 0.8) * half;
-    const from = drops.overheadAt - beadAcross;
-    const room = full * randomBetween(rng, 0.3, 0.6);
-
-    drops.beads.push({
-      x: drops.downX * from - drops.downY * climb,
-      y: drops.downY * from + drops.downX * climb,
+  // Both at once, off the same surface, going opposite ways. It is the plainest
+  // thing in the cell to watch and it is also simply what has to happen: the
+  // heavy liquid cannot get down past the light one unless the light one is
+  // coming up past it at the same moment, because there is nowhere else in a
+  // sealed tube for either of them to go.
+  for (const rising of [false, true]) {
+    const bead: Bead = {
+      x: 0,
+      y: 0,
       vx: 0,
       vy: 0,
-      area: room,
-      reach: reachOf(room),
-      want: room,
-      across: climb,
-      filling: 0,
-      sinking: 0,
-      rising: true,
+      // Down means the heavier of the pair, which is the band above; up means
+      // the lighter, which is the one below it.
+      liquid: rising ? swap.rose.liquid : swap.fell.liquid,
+      reach: (wide / SEEN) * LEFT,
+      wants: wide / SEEN,
+      // Side by side rather than on top of each other, or the two would be born
+      // as one blob and leave the surface as one.
+      across: across + (rising ? wide * randomBetween(rng, 0.9, 1.8) : 0),
+      filling: waits,
+      landing: false,
+      rising,
       wander: rng() * Math.PI * 2,
-    });
+    };
+
+    place(drops, bead, swap.at + (rising ? -1 : 1) * bead.reach * SEEN * PENDANT);
+    drops.beads.push(bead);
   }
+}
+
+/** Puts a bead at a distance along down and a distance across it. */
+function place(drops: Drops, bead: Bead, along: number): void {
+  bead.x = drops.downX * along - drops.downY * bead.across;
+  bead.y = drops.downY * along + drops.downX * bead.across;
 }
 
 /** Moves everything that is in flight, and lands what has arrived. */
@@ -649,7 +782,7 @@ function carry(
   swirl: number,
   stir: DropsUpdate['stir'],
 ): void {
-  const { downX, downY } = drops;
+  const { downX, downY, swap } = drops;
   const damping = Math.max(0, 1 - DRAG * (1 + THICKEST * clamp(thickness)) * step);
   const alive: Bead[] = [];
 
@@ -660,38 +793,21 @@ function carry(
     }
 
     const along = bead.x * downX + bead.y * downY;
+    // Where this one is going. A bead cast by an exchange that has since
+    // finished has nowhere left to be, and is drawn into whatever it is in.
+    const home = swap ? (bead.rising ? swap.climb : swap.sink) : null;
+    const arrived = home === null || (bead.rising ? along <= home : along >= home);
 
-    if (bead.rising) {
-      // A bubble is only a bubble while it is inside the pool overhead. Above
-      // it there is nothing left to be a hole in; below it, the pool has
-      // drained past and it has joined liquid of its own kind.
-      if (along > drops.overheadAt || along < -CHAMBER_RADIUS + bead.reach * SEEN) {
-        continue;
-      }
-
-      bead.x -= downX * RISE * step;
-      bead.y -= downY * RISE * step;
-      alive.push(bead);
-      continue;
-    }
-
-    if (bead.sinking > 0 || along >= drops.floorAt) {
-      // Poured into the pool rather than deleted into it: the area crosses over
-      // a bit at a time, the bead shrinks as it goes, and the surface rises to
+    if (bead.landing || arrived) {
+      // Drawn into the layer rather than deleted into it: it shrinks over a
+      // fraction of a second and the surface it is joining is already there to
       // meet it. Neither end of that is a frame where the picture jumps.
-      const moved = Math.min(
-        bead.area,
-        (Math.PI * drops.beadAcross * drops.beadAcross * step) / SINK,
-      );
+      bead.landing = true;
+      bead.reach = Math.max(0, bead.reach - (drops.beadAcross / SEEN / SINK) * step);
+      bead.x += downX * (bead.rising ? -0.1 : 0.1) * step;
+      bead.y += downY * (bead.rising ? -0.1 : 0.1) * step;
 
-      bead.sinking = SINK;
-      bead.area -= moved;
-      drops.floor += moved;
-      bead.reach = reachOf(bead.area);
-      bead.x += downX * 0.1 * step;
-      bead.y += downY * 0.1 * step;
-
-      if (bead.area > 1e-6) {
+      if (bead.reach > 1e-4) {
         alive.push(bead);
       }
 
@@ -699,21 +815,22 @@ function carry(
     }
 
     // Terminal drift rather than a slow acceleration, which is what a bead in a
-    // liquid does: the weight it falls under is already net of what it floats
+    // liquid does: the weight it drifts under is already net of what it floats
     // in, and the drag turns that into a speed rather than a rate of gain.
     bead.wander += WANDER_RATE * step;
 
     const side = Math.sin(bead.wander) * WANDER;
+    const pull = bead.rising ? -RISE : FALL;
     const flowX = -swirl * bead.y;
     const flowY = swirl * bead.x;
-    const pushX = downX * FALL - downY * side;
-    const pushY = downY * FALL + downX * side;
+    const pushX = downX * pull - downY * side;
+    const pushY = downY * pull + downX * side;
 
     bead.vx = flowX + (bead.vx + pushX * step - flowX) * damping;
     bead.vy = flowY + (bead.vy + pushY * step - flowY) * damping;
 
-    // Carried along with the finger rather than shoved by it, the same rule
-    // the wax next door is pushed with.
+    // Carried along with the finger rather than shoved by it, the same rule the
+    // wax next door is pushed with.
     if (stir) {
       const away = Math.hypot(bead.x - stir.x, bead.y - stir.y) / (CHAMBER_RADIUS * FINGER);
 
@@ -729,16 +846,6 @@ function carry(
     bead.y += bead.vy * step;
 
     confine(bead);
-
-    // A bead that has run out of cell before it has run out of fall is on the
-    // floor: with nothing pooled yet the surface is the wall itself, and this
-    // is the puddle starting.
-    const landed = bead.x * downX + bead.y * downY;
-
-    if (landed > 0 && Math.hypot(bead.x, bead.y) >= CHAMBER_RADIUS - bead.reach * SEEN - 1e-6) {
-      bead.sinking = SINK;
-    }
-
     alive.push(bead);
   }
 
@@ -769,11 +876,34 @@ function confine(bead: Bead): void {
 }
 
 /**
- * Where the surface of a pool of this area lies, as a share of the radius.
+ * Where every surface in the column lies, in cell units along down.
+ *
+ * One more than there are bands: the first is the floor of the cell and the
+ * last is its ceiling, and `edges[i]` is the bottom of band `i`. They come out
+ * in descending order, because down is the positive direction and the bottom of
+ * the cell is the largest value in it.
+ */
+export function surfacesOf(drops: Drops, into: number[]): void {
+  let sum = 0;
+
+  into.length = 0;
+  into.push(CHAMBER_RADIUS);
+
+  for (const band of drops.bands) {
+    sum += band.area;
+    into.push(CHAMBER_RADIUS * chordFor(sum));
+  }
+}
+
+/** Scratch for the surfaces, which are wanted twice a frame. */
+const edges: number[] = [];
+
+/**
+ * Where the surface of a layer holding this much lies, as a share of the radius.
  *
  * The area of a disc beyond a chord at `u·R` is `R²(acos u - u√(1-u²))`, which
  * has no inverse worth writing down, so it is bisected. Twenty four halvings of
- * `[-1, 1]` is the last bit of a float, and it runs twice a frame.
+ * `[-1, 1]` is the last bit of a float, and it runs a handful of times a frame.
  *
  * @returns Where the chord is, from -1 at the far wall to 1 at the near one.
  */
@@ -806,11 +936,6 @@ export function chordFor(area: number): number {
   return (low + high) / 2;
 }
 
-/** How far the field of a bead of this much liquid reaches. */
-function reachOf(area: number): number {
-  return Math.sqrt(Math.max(0, area) / Math.PI) / SEEN;
-}
-
 /** The shortest way round from one angle to another. */
 function wrap(angle: number): number {
   return angle - Math.PI * 2 * Math.round(angle / (Math.PI * 2));
@@ -820,14 +945,20 @@ function clamp(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+/** Smoothstep, for an edge that eases in and out rather than ramping. */
+function smooth(at: number): number {
+  return at <= 0 ? 0 : at >= 1 ? 1 : at * at * (3 - 2 * at);
+}
+
 /**
- * Paints the cell onto a small canvas, one pixel per grid cell.
+ * Paints the cell onto a small canvas, {@link FINE} pixels per grid cell.
  *
  * Every pixel inside the wall is liquid — that is what a sealed tube is — so
- * the picture is the light liquid's tint everywhere, with the heavy one laid
- * over it where the fields say. Composited with `multiply` by the renderer, so
- * the two tints are two things light passes through rather than two coats of
- * paint, and the beads come out the product of the pair.
+ * there is nothing to make transparent and nothing to composite: what is worked
+ * out here is *how much of each liquid* the light has to cross, and the colour
+ * is the three tints raised to those shares and multiplied together. Beer and
+ * Lambert, three deep. Drawn with `multiply` by the renderer, so the tints are
+ * three things light passes through rather than three coats of paint.
  *
  * @returns The canvas, or null where there is no canvas to be had.
  */
@@ -842,52 +973,10 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
   const pixels = image.data;
   const width = (2 * CHAMBER_RADIUS) / GRID;
 
-  field.fill(0);
-
-  // The beads and the bubbles, each over the square its own field reaches into.
-  for (const bead of drops.beads) {
-    const from = Math.max(0, Math.floor((bead.x - bead.reach + CHAMBER_RADIUS) / width));
-    const to = Math.min(GRID - 1, Math.ceil((bead.x + bead.reach + CHAMBER_RADIUS) / width));
-    const start = Math.max(0, Math.floor((bead.y - bead.reach + CHAMBER_RADIUS) / width));
-    const end = Math.min(GRID - 1, Math.ceil((bead.y + bead.reach + CHAMBER_RADIUS) / width));
-    const span = bead.reach * bead.reach;
-    const sign = bead.rising ? -1 : 1;
-
-    if (span <= 0) {
-      continue;
-    }
-
-    for (let j = start; j <= end; j += 1) {
-      const y = -CHAMBER_RADIUS + (j + 0.5) * width - bead.y;
-
-      for (let i = from; i <= to; i += 1) {
-        const x = -CHAMBER_RADIUS + (i + 0.5) * width - bead.x;
-        const away = (x * x + y * y) / span;
-
-        if (away >= 1) {
-          continue;
-        }
-
-        const at = i + j * GRID;
-
-        field[at] = field[at]! + sign * (1 - away) * (1 - away);
-      }
-    }
-  }
-
   shadeFor(drops.tints);
-  // The chords the pools' fields are built on, laid past their own surfaces so
-  // the surfaces land where the areas say. See EDGE.
-  const ceiling = drops.overhead > 0 ? drops.overheadAt - EDGE * POOL_REACH : -Infinity;
-  const bed = drops.floor > 0 ? drops.floorAt + EDGE * POOL_REACH : Infinity;
-  // Wide enough that the contour crosses a grid cell or so. A pool's surface is
-  // a straight line and the eye reads a staircase in one of those that it would
-  // never notice in the edge of a bead.
-  const band = 0.12;
-  const low = SURFACE - band;
-  const high = SURFACE + band;
-  const edge = CHAMBER_RADIUS - width;
+  layers(drops);
 
+  const anyBeads = spread(drops, width);
   const across = GRID * FINE;
   const fine = width / FINE;
 
@@ -910,9 +999,10 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
     }
   }
 
+  const edge = CHAMBER_RADIUS - width;
+
   for (let j = 0; j < across; j += 1) {
     const y = -CHAMBER_RADIUS + (j + 0.5) * fine;
-    // Where this pixel sits in the bead field, in cells, at the cell centres.
     const downTo = j / FINE - 0.5;
     const j0 = Math.floor(downTo);
     const jUp = Math.min(GRID - 1, Math.max(0, j0));
@@ -942,33 +1032,78 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
       }
 
       const away = Math.sqrt(out);
-      const along = x * drops.downX + y * drops.downY;
-      // The meniscus, as a share of how near the wall this is. Both surfaces
-      // are pushed the same way by it — away from their own liquid — which for
-      // one of them is up and for the other is down.
+      // The meniscus, as a share of how near the wall this is. Every surface in
+      // the column is pushed the same way by it, which is up: the heavier
+      // liquid of any pair is the one that wets the glass.
       const near = Math.max(0, 1 - (CHAMBER_RADIUS - away) / WETS);
-      const wet = CLIMB * near * near;
+      const along = x * drops.downX + y * drops.downY + CLIMB * near * near;
+      const step = (along + SPAN) * (PROFILE / (2 * SPAN)) - 0.5;
+      const low = Math.min(PROFILE - 2, Math.max(0, Math.floor(step)));
+      const blend = Math.min(1, Math.max(0, step - low));
       const iLeft = lefts[i]!;
       const iRight = rights[i]!;
       const fx = eased[i]!;
-      // The beads, read off their own grid with eased weights so the join
-      // between two cells has no kink in it; the pools, worked out here at the
-      // pixel, because a straight surface is the one thing in this cell whose
-      // edge the eye measures. See FINE.
-      const beads =
-        (1 - fy) * ((1 - fx) * field[rowUp + iLeft]! + fx * field[rowUp + iRight]!) +
-        fy * ((1 - fx) * field[rowDown + iLeft]! + fx * field[rowDown + iRight]!);
-      const total = Math.max(pool(ceiling + wet - along), pool(along - bed + wet)) + beads;
-      const much = total <= low ? 0 : total >= high ? 1 : smooth((total - low) / (high - low));
-      // How much heavy liquid the light has to get through here, and it is the
-      // field that says: a bead is a bead-shaped body and not a disc of colour,
-      // so there is more of it to see through in the middle than at the rim.
-      const body = Math.min(1, Math.max(0, (total - SURFACE) / (1 - SURFACE)));
-      const shade = Math.round(much * (RIM + (1 - RIM) * body) * (SHADES - 1)) * 3;
+      const cell = rowUp + iLeft;
 
-      pixels[at] = shades[shade]!;
-      pixels[at + 1] = shades[shade + 1]!;
-      pixels[at + 2] = shades[shade + 2]!;
+      // Almost every pixel is layer and nothing else, and for those the colour
+      // depends only on how far down the cell they are — so it is read
+      // straight off the profile the layers were solved into, which is one
+      // interpolation rather than three fields and nine table lookups.
+      if (!anyBeads || !busy[cell]) {
+        const one = low * 3;
+        const two = one + 3;
+
+        pixels[at] = tones[one]! + (tones[two]! - tones[one]!) * blend;
+        pixels[at + 1] = tones[one + 1]! + (tones[two + 1]! - tones[one + 1]!) * blend;
+        pixels[at + 2] = tones[one + 2]! + (tones[two + 2]! - tones[one + 2]!) * blend;
+        pixels[at + 3] = away <= edge ? 255 : Math.round((1 - (away - edge) / width) * 255);
+        continue;
+      }
+
+      let total = 0;
+
+      for (let liquid = 0; liquid < LIQUIDS; liquid += 1) {
+        const held = field[liquid]!;
+        // The beads, read off their own grid with eased weights so the join
+        // between two cells has no kink in it, and then thresholded — which is
+        // what makes two beads that meet neck together rather than overlap.
+        const sum =
+          (1 - fy) * ((1 - fx) * held[rowUp + iLeft]! + fx * held[rowUp + iRight]!) +
+          fy * ((1 - fx) * held[rowDown + iLeft]! + fx * held[rowDown + iRight]!);
+        const body = Math.min(1, Math.max(0, (sum - SURFACE) / (1 - SURFACE)));
+        // How much of this liquid the light has to cross here, and it is the
+        // field that says: a bead is a bead-shaped body and not a disc of
+        // colour, so there is more of it in the middle than at the rim.
+        const much = smooth((sum - SURFACE) / (2 * BAND) + 0.5) * (RIM + (1 - RIM) * body);
+
+        parts[liquid] = much;
+        total += much;
+      }
+
+      // What the beads do not cover is the column, in the proportions the
+      // profile has at this height.
+      const rest = total > 1 ? 0 : 1 - total;
+      const scale = total > 1 ? 1 / total : 1;
+      let red = 255;
+      let green = 255;
+      let blue = 255;
+
+      for (let liquid = 0; liquid < LIQUIDS; liquid += 1) {
+        const share =
+          parts[liquid]! * scale +
+          rest *
+            (bands[low * LIQUIDS + liquid]! +
+              (bands[(low + 1) * LIQUIDS + liquid]! - bands[low * LIQUIDS + liquid]!) * blend);
+        const shade = (liquid * SHADES + Math.round(share * (SHADES - 1))) * 3;
+
+        red *= shades[shade]!;
+        green *= shades[shade + 1]!;
+        blue *= shades[shade + 2]!;
+      }
+
+      pixels[at] = red;
+      pixels[at + 1] = green;
+      pixels[at + 2] = blue;
       // Softened over the last cell of the wall, so the disc has an edge and
       // not a staircase. Everything past it is not in the tube at all.
       pixels[at + 3] = away <= edge ? 255 : Math.round((1 - (away - edge) / width) * 255);
@@ -981,70 +1116,179 @@ export function paintDrops(drops: Drops): HTMLCanvasElement | null {
 }
 
 /**
- * How thick the heavy liquid is at its own surface, as a share of the cell.
+ * How thick a liquid is at the surface of a bead, as a share of the whole.
  *
  * Not nought, or a bead would fade out at its edge instead of having one — and
- * not one, or it would be a flat disc of colour. Halfway gives a bead a dark
- * middle and a lighter rim, which is what looking through a round thing does,
- * and gives a pool a bright line along its surface, which is what looking
- * through the shallow end of one does.
+ * not one, or it would be a flat disc of colour. Half gives a bead a deep
+ * middle and a lighter rim, which is what looking through a round thing does.
  */
 const RIM = 0.5;
+
+/** How wide the soft edge of a bead is, as a share of its field. */
+const BAND = 0.12;
 
 /** Steps in the shade table. Any more is finer than a byte can tell. */
 const SHADES = 48;
 
-/** Every shade of the pair, from none of the heavy liquid to all of it. */
-const shades = new Float32Array(SHADES * 3);
+/** Every depth of every liquid, as the share of the light it passes. */
+const shades = new Float32Array(LIQUIDS * SHADES * 3);
 
 /**
- * Fills {@link shades} for a pair of liquids.
+ * Fills {@link shades} for a set of liquids.
  *
  * Beer and Lambert: each unit of liquid passes a fixed *share* of what reaches
  * it, so what comes through a depth `d` is the tint raised to `d` rather than
- * scaled by it. That is the whole of why a bead is not one flat colour, and it
- * is also why nothing in here has to choose what a bead looks like — the beads
- * come out at the product of the two liquids because that is what light does
- * on its way through both of them.
+ * scaled by it. Held as a share of one rather than as a colour, so the three
+ * are multiplied together at the pixel and the answer is what got through all
+ * of them — which is the whole of why nothing in here has to decide what a bead
+ * crossing a layer looks like.
  */
-function shadeFor([light, deep]: Drops['tints']): void {
-  for (let k = 0; k < SHADES; k += 1) {
-    const depth = k / (SHADES - 1);
+function shadeFor(tints: Drops['tints']): void {
+  for (let liquid = 0; liquid < LIQUIDS; liquid += 1) {
+    const tint = tints[liquid]!;
 
-    shades[k * 3] = light[0] * Math.pow(deep[0] / 255, depth);
-    shades[k * 3 + 1] = light[1] * Math.pow(deep[1] / 255, depth);
-    shades[k * 3 + 2] = light[2] * Math.pow(deep[2] / 255, depth);
+    for (let k = 0; k < SHADES; k += 1) {
+      const depth = k / (SHADES - 1);
+      const at = (liquid * SHADES + k) * 3;
+
+      shades[at] = Math.pow(tint[0] / 255, depth);
+      shades[at + 1] = Math.pow(tint[1] / 255, depth);
+      shades[at + 2] = Math.pow(tint[2] / 255, depth);
+    }
   }
 }
 
-/** A pool's field, given how far past its chord the point is. */
-function pool(past: number): number {
-  if (past >= 0) {
-    return 1;
+/**
+ * Steps in the column's profile, and how far it reaches past the wall.
+ *
+ * The layers are flat and perpendicular to down, so what liquid is where
+ * depends on one number — how far down the cell the pixel is — and that is a
+ * curve rather than a picture. Solved once a frame into a table a few hundred
+ * long and read back with a linear interpolation, which is what lets the
+ * painting below do a pixel of plain layer in three table reads.
+ *
+ * Reaching past the wall is the meniscus: a pixel at the very edge is asked
+ * what the column holds a little further down than it really is.
+ */
+const PROFILE = 384;
+const SPAN = CHAMBER_RADIUS + CLIMB + POOL_REACH;
+
+/** How much of each liquid the column holds at each step. Sums to one inside. */
+const bands = new Float32Array(PROFILE * LIQUIDS);
+
+/** And what colour that is, for the pixels no bead reaches. */
+const tones = new Float32Array(PROFILE * 3);
+
+/** Solves the column into {@link bands} and {@link tones}. */
+function layers(drops: Drops): void {
+  surfacesOf(drops, edges);
+  bands.fill(0);
+
+  for (let s = 0; s < PROFILE; s += 1) {
+    const along = -SPAN + ((s + 0.5) * 2 * SPAN) / PROFILE;
+    const at = s * LIQUIDS;
+
+    // Each band is what is below its top surface and not below its bottom one,
+    // with both smeared over POOL_REACH so a surface is a liquid's and not a
+    // cut-out's. Telescoping, so the three always add to exactly one.
+    for (let band = 0; band < drops.bands.length; band += 1) {
+      const liquid = drops.bands[band]!.liquid;
+      const share =
+        smooth((along - edges[band + 1]!) / POOL_REACH + 0.5) -
+        smooth((along - edges[band]!) / POOL_REACH + 0.5);
+
+      bands[at + liquid] = bands[at + liquid]! + share;
+    }
+
+    let red = 255;
+    let green = 255;
+    let blue = 255;
+
+    for (let liquid = 0; liquid < LIQUIDS; liquid += 1) {
+      const shade = (liquid * SHADES + Math.round(bands[at + liquid]! * (SHADES - 1))) * 3;
+
+      red *= shades[shade]!;
+      green *= shades[shade + 1]!;
+      blue *= shades[shade + 2]!;
+    }
+
+    tones[s * 3] = red;
+    tones[s * 3 + 1] = green;
+    tones[s * 3 + 2] = blue;
   }
-
-  if (past <= -POOL_REACH) {
-    return 0;
-  }
-
-  const at = 1 + past / POOL_REACH;
-
-  return at * at;
 }
 
-/** Where the fields are summed, before any of it is a colour. */
-const field = new Float32Array(GRID * GRID);
+/** Where the beads are, one field per liquid, and which cells they reach. */
+const field = Array.from({ length: LIQUIDS }, () => new Float32Array(GRID * GRID));
+const busy = new Uint8Array(GRID * GRID);
+
+/**
+ * Lays every bead into its own liquid's field.
+ *
+ * {@link busy} is the cheap half of it: a bead touches a few dozen cells out of
+ * sixteen thousand, and marking which ones lets the painting take the plain
+ * layer path — one interpolation instead of three fields and nine lookups — for
+ * the ninety-odd per cent of the picture that has no bead anywhere near it.
+ *
+ * @returns Whether there was anything to lay down at all.
+ */
+function spread(drops: Drops, width: number): boolean {
+  let any = false;
+
+  for (const held of field) {
+    held.fill(0);
+  }
+
+  busy.fill(0);
+
+  for (const bead of drops.beads) {
+    const span = bead.reach * bead.reach;
+
+    if (span <= 0) {
+      continue;
+    }
+
+    any = true;
+
+    const held = field[bead.liquid]!;
+    const from = Math.max(0, Math.floor((bead.x - bead.reach + CHAMBER_RADIUS) / width) - 1);
+    const to = Math.min(GRID - 1, Math.ceil((bead.x + bead.reach + CHAMBER_RADIUS) / width) + 1);
+    const start = Math.max(0, Math.floor((bead.y - bead.reach + CHAMBER_RADIUS) / width) - 1);
+    const end = Math.min(GRID - 1, Math.ceil((bead.y + bead.reach + CHAMBER_RADIUS) / width) + 1);
+
+    for (let j = start; j <= end; j += 1) {
+      const y = -CHAMBER_RADIUS + (j + 0.5) * width - bead.y;
+      const row = j * GRID;
+
+      for (let i = from; i <= to; i += 1) {
+        // A cell either side of the bead as well as under it, because the
+        // painting reads the field bilinearly and would otherwise clip the
+        // edge of the last cell the bead reaches.
+        busy[row + i] = 1;
+
+        const x = -CHAMBER_RADIUS + (i + 0.5) * width - bead.x;
+        const at = (x * x + y * y) / span;
+
+        if (at >= 1) {
+          continue;
+        }
+
+        held[row + i] = held[row + i]! + (1 - at) * (1 - at);
+      }
+    }
+  }
+
+  return any;
+}
+
+/** Scratch for one pixel's worth, which is worked out tens of thousands of times. */
+const parts = [0, 0, 0];
 
 /** Where each painted column sits, and which two cells of the field it reads. */
 let columns = new Float32Array(0);
 let lefts = new Int32Array(0);
 let rights = new Int32Array(0);
 let eased = new Float32Array(0);
-
-/** Smoothstep, for an edge that eases in and out rather than ramping. */
-function smooth(at: number): number {
-  return at * at * (3 - 2 * at);
-}
 
 /** The one surface the cell is drawn on, built once. */
 let surface: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; image: ImageData } | null =
