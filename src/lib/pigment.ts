@@ -549,12 +549,26 @@ function linear(hex: string): [number, number, number] {
  * and only shows where there is paint. {@link PAPER_FIBRE} is the shading of
  * the bare sheet — the pits are in shadow whether or not anything has been
  * painted on them — and it is the reason the white of this cell is a *white
- * sheet* rather than a flat 255. It has to be small: the folded picture repeats
- * the same square dozens of times, so anything loud enough to notice once is a
- * pattern the second time.
+ * sheet* rather than a flat 255.
+ *
+ * The bite is a third of what a first go set it to and the fibre is half, and
+ * the first go was not a near miss: at a bite of a fifth, a screenshot off a
+ * phone at the top of the zoom slider was a field of hard-edged specks with a
+ * wash somewhere underneath it. Painting the same cell with the tooth switched
+ * off showed what had been lost — a clean wash of sage and teal — and what the
+ * tooth had done to it was not texture, it was **dirt**: a tenth of the
+ * brightness either way, at the scale the specks were, breaks every mid-tone
+ * into light and dark halves, and a mid green broken in half reads as olive.
+ *
+ * The rule the numbers are set by: **the tooth is something you notice about a
+ * wash, not something you see instead of one.** It has to survive being
+ * magnified, because the zoom slider goes to three and the fold repeats the
+ * same square dozens of times, so anything loud enough to notice once is a
+ * pattern the second time. Measured against the same wash on a hot-pressed
+ * sheet, it adds about 3 of spread out of 255 to a middling wash.
  */
-const PAPER_BITE = 0.2;
-const PAPER_FIBRE = 0.028;
+const PAPER_BITE = 0.06;
+const PAPER_FIBRE = 0.014;
 
 /**
  * How coarse the tooth is, in painted pixels, and how much of each size there
@@ -575,9 +589,16 @@ const PAPER_FIBRE = 0.028;
  * plainly so at the top of the zoom slider, which is where a texture is looked
  * at hardest. Turned against each other, there is no shared lattice left to
  * see.
+ *
+ * The sizes halved and the weight moved onto the finest of them after the same
+ * screenshot that cut {@link PAPER_BITE}. Paper grain is *fine* — it is what a
+ * wash sits in, and you have to go looking for a single pit — and most of the
+ * energy in the first go was in the two coarse octaves, which at the top of the
+ * zoom slider are blobs thirty screen pixels across. Blobs that size are not a
+ * texture the eye reads as paper; they are marks on the picture.
  */
-const TOOTH_SIZES = [5, 11, 24] as const;
-const TOOTH_PARTS = [0.48, 0.33, 0.19] as const;
+const TOOTH_SIZES = [2.2, 5, 11] as const;
+const TOOTH_PARTS = [0.55, 0.29, 0.16] as const;
 
 /** Which way each octave's own lattice runs, in radians. Nothing shared. */
 const TOOTH_TURNS = [0.31, 1.19, 2.42] as const;
@@ -615,7 +636,14 @@ export function createPaper(size: number, seed: number): Paper {
           grain((i * cos - j * sin) / at, (i * sin + j * cos) / at, octave * 11.7);
       }
 
-      tooth[i + j * size] = Math.min(1, Math.max(0, 0.5 + much * 1.35));
+      // Not stretched to fill the range, and the clamp is a guard rather than
+      // a shape. Three octaves of value noise sit near the middle, so a gain
+      // that opens them out to the ends spends most of its time *at* the ends:
+      // the sheet grows plateaus of solid pit and solid peak with hard edges
+      // between them, which is a speckle and not a tooth. Left alone the field
+      // is smooth, and what it costs is that the deepest pit is nowhere near
+      // the deepest the arithmetic allows — which is also true of paper.
+      tooth[i + j * size] = Math.min(1, Math.max(0, 0.5 + much));
     }
   }
 
@@ -903,10 +931,14 @@ export function paintPigment(
       washed[at] = tone[0]! * (1 - rim);
       washed[at + 1] = tone[1]! * (1 - rim);
       washed[at + 2] = tone[2]! * (1 - rim);
-      // How hard the tooth is allowed to bite here. Granulation is a thing
-      // pigment does, so a bare sheet gets only its own shading and a loaded
-      // one gets the lot.
-      washed[at + 3] = shows(loaded[k]!, 0, 0.22);
+      // How hard the tooth is allowed to bite here, and it is a *hump* rather
+      // than a ramp. Granulation is a thing pigment does, so a bare sheet gets
+      // only its own shading; but a wash deep enough to be near its mass tone
+      // has filled the pits and the peaks alike, and there is nothing left for
+      // the tooth to separate. Ramped, the deepest greens in the cell were the
+      // most speckled part of the picture, which is the wrong way round and is
+      // most of what made the texture read as dirt.
+      washed[at + 3] = shows(loaded[k]!, 0, 0.14) * (1 - 0.7 * shows(loaded[k]!, 0.4, 1.4));
     }
   }
 

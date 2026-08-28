@@ -40,12 +40,12 @@ function colourOf(palette: Palette, parts: number[]): number[] {
 const every = Array.from({ length: PALETTE_COUNT }, (_, index) => paletteAt(index));
 
 /** An even wash of one paint, painted, with the frame left out of the reckoning. */
-function washOf(palette: Palette, paint: number, grid = 48, paper = smooth(grid)) {
+function washOf(palette: Palette, paint: number, grid = 48, paper = smooth(grid), depth = 0.9) {
   const cells = grid * grid;
   const held = [0, 1, 2].map(() => new Float32Array(cells));
   const flocs = createFlocs(grid, 4);
 
-  held[paint]!.fill(palette.paints[paint]!.pour * 0.9);
+  held[paint]!.fill(palette.paints[paint]!.pour * depth);
 
   const pixels = new Uint8ClampedArray(cells * 4);
 
@@ -312,21 +312,46 @@ describe('the paper', () => {
   // hold more water and therefore more pigment than the peaks do, and that is
   // most of what makes a watercolour look like one rather than like an
   // airbrush.
-  it('mottles an even wash that a hot-pressed sheet leaves flat', () => {
+  /**
+   * How much spread the sheet itself adds to a wash of a given depth.
+   *
+   * Against the same wash on a hot-pressed sheet, so what is left is the tooth
+   * and not the pigment's own flocculation — which is much the larger of the
+   * two on a fresh cell, and is a different thing being measured elsewhere in
+   * this file. The paint is the palette's *weakest*, the one poured at its full
+   * share, so the depth asked for is the load the tooth actually sees.
+   */
+  function toothOf(depth: number, grid = 48) {
     const palette = paletteAt(0);
-    const grid = 48;
-    // The smoothest paint of the three, so what is measured is the sheet and
-    // not the pigment's own flocculation.
-    const grains = palette.paints.map((paint) => paint.grain);
-    const fine = grains.indexOf(Math.min(...grains));
-    const flat = washOf(palette, fine, grid);
-    const rough = washOf(palette, fine, grid, createPaper(grid, 7));
+    const pours = palette.paints.map((paint) => paint.pour);
+    const weakest = pours.indexOf(Math.max(...pours));
+    const flat = washOf(palette, weakest, grid, smooth(grid), depth);
+    const rough = washOf(palette, weakest, grid, createPaper(grid, 7), depth);
 
-    expect(rough.spread).toBeGreaterThan(flat.spread * 1.5);
-    expect(rough.spread).toBeGreaterThan(5);
+    return { added: rough.spread - flat.spread, flat, rough };
+  }
+
+  it('mottles a middling wash that a hot-pressed sheet leaves flat', () => {
+    const { added, flat, rough } = toothOf(0.25);
+
+    // Measured: a spread of 8.6 out of 255 on the smooth sheet and 11.5 on the
+    // rough one.
+    expect(added).toBeGreaterThan(1.5);
+    expect(rough.spread).toBeGreaterThan(flat.spread * 1.2);
     // And it takes as much as it gives: the wash is the same weight of paint,
     // laid unevenly.
     expect(Math.abs(rough.mean - flat.mean)).toBeLessThan(3);
+  });
+
+  // The other end, and it is the correction the whole texture needed. A wash
+  // deep enough to be near its mass tone has filled the pits and the peaks
+  // alike and there is nothing left for the tooth to separate — so it lets go.
+  // Ramped instead of humped, the deepest part of a cell was the most speckled
+  // part of the picture, which is the wrong way round, and on a phone at the
+  // top of the zoom slider it read as dirt rather than as paper.
+  it('lets go of a wash deep enough to have filled the pits', () => {
+    // Measured: 2.94 of added spread at a quarter, 0.08 at one and a fifth.
+    expect(toothOf(1.2).added).toBeLessThan(toothOf(0.25).added * 0.2);
   });
 
   // The bare sheet as well as the wash. A white that is exactly 255 everywhere
