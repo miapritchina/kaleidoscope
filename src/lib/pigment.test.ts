@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createFlocs,
   createPalette,
+  createPaper,
   kubelka,
   mixture,
   paintPigment,
@@ -10,7 +11,21 @@ import {
   PALETTE_COUNT,
   stirFlocs,
   type Palette,
+  type Paper,
 } from './pigment';
+
+/**
+ * A hot-pressed sheet, one pixel per cell: no tooth at all.
+ *
+ * Everything below except the paper's own test is measuring the paint, and a
+ * tooth is a texture laid over the whole picture — it would add the same
+ * variance to a granulating wash and a smooth one alike and hide the very
+ * difference the granulation test exists to measure.
+ */
+const smooth = (grid: number): Paper => ({
+  size: grid,
+  tooth: new Float32Array(grid * grid).fill(0.5),
+});
 
 /** The colour of a mixture, as three numbers 0 to 255. */
 function colourOf(palette: Palette, parts: number[]): number[] {
@@ -25,7 +40,7 @@ function colourOf(palette: Palette, parts: number[]): number[] {
 const every = Array.from({ length: PALETTE_COUNT }, (_, index) => paletteAt(index));
 
 /** An even wash of one paint, painted, with the frame left out of the reckoning. */
-function washOf(palette: Palette, paint: number, grid = 48) {
+function washOf(palette: Palette, paint: number, grid = 48, paper = smooth(grid)) {
   const cells = grid * grid;
   const held = [0, 1, 2].map(() => new Float32Array(cells));
   const flocs = createFlocs(grid, 4);
@@ -34,7 +49,7 @@ function washOf(palette: Palette, paint: number, grid = 48) {
 
   const pixels = new Uint8ClampedArray(cells * 4);
 
-  paintPigment(palette, held, flocs, 1, pixels);
+  paintPigment(palette, held, flocs, paper, 1, pixels);
 
   // Only the inside: the rim reads the frame of the grid as an edge of the
   // wash, which it is, and that is not what this is measuring.
@@ -129,20 +144,73 @@ describe('a palette', () => {
     }
   });
 
-  // The claim the whole model is for: blue and yellow make green. Two
-  // primaries subtracted one each cannot do this — take red out with the blue
-  // and blue out with the yellow and what is left is a grey.
-  it('makes a green out of ultramarine and a green-gold yellow', () => {
+  // The claim the whole model is for: two paints from either side of green make
+  // green. Two primaries subtracted one each cannot do this — take red out with
+  // the one and blue out with the other and what is left is a grey.
+  it('makes a green out of a green-gold yellow and a turquoise', () => {
     const palette = every.find(
-      (one) => one.paints[0]!.name === 'Ultramarine' && one.paints[1]!.name === 'Irgazin Yellow',
+      (one) =>
+        one.paints[0]!.name === 'Irgazin Yellow' && one.paints[2]!.name === 'Cobalt Turquoise',
     );
 
     expect(palette).toBeDefined();
 
-    const [red, green, blue] = colourOf(palette!, [0.2, 0.15, 0]);
+    const [red, green, blue] = colourOf(palette!, [0.2, 0, 0.12]);
 
     expect(green!).toBeGreaterThan(red!);
     expect(green!).toBeGreaterThan(blue!);
+  });
+
+  /**
+   * The mud test, and it is the one the palettes were rebuilt around.
+   *
+   * The cell is sealed and it folds, so a few minutes of drifting puts a little
+   * of all three paints into most of it. Whatever that mixture comes out as is
+   * therefore the colour most of the cell will be after a while, however
+   * lovely the three paints are on their own — and with a *triad*, which is
+   * three primaries spread round the wheel, it is by construction the grey in
+   * the middle. Measured on a phone the old palettes settled to a green-grey
+   * wash inside forty seconds, which is what prompted this.
+   *
+   * So: every mixture of every palette, at every depth worth looking at, still
+   * has a colour in it. Chroma here is the plainest thing it could be — the
+   * spread between the strongest and weakest channels — and the floor is set
+   * where a colour stops being nameable rather than anywhere theoretical. The
+   * old set failed it at 20 of its lattice points and its dullest mixture came
+   * out at a chroma of 2.8 — a grey to three parts in 255. The set that
+   * replaced it has none, and its dullest is 26.
+   */
+  it('has no mixture anywhere in it that comes out grey', () => {
+    for (const palette of every) {
+      const pours = palette.paints.map((paint) => paint.pour);
+      let dullest = 255;
+      let where = '';
+
+      for (let a = 0; a <= 4; a += 1) {
+        for (let b = 0; b <= 4; b += 1) {
+          for (let c = 0; c <= 4; c += 1) {
+            const parts = [(a / 4) * pours[0]!, (b / 4) * pours[1]!, (c / 4) * pours[2]!];
+            const tone = colourOf(palette, parts);
+            const light = (tone[0]! + tone[1]! + tone[2]!) / 3;
+
+            // A mixture too dark or too pale to have a hue is not mud, it is
+            // black or it is water. What is being looked for is the middle.
+            if (light < 40 || light > 235) {
+              continue;
+            }
+
+            const chroma = Math.max(...tone) - Math.min(...tone);
+
+            if (chroma < dullest) {
+              dullest = chroma;
+              where = `${palette.paints.map((paint) => paint.name).join(' + ')} at ${a}${b}${c}`;
+            }
+          }
+        }
+      }
+
+      expect(dullest, where).toBeGreaterThan(16);
+    }
   });
 });
 
@@ -208,7 +276,7 @@ describe('paintPigment', () => {
 
     const pixels = new Uint8ClampedArray(grid * grid * 4);
 
-    paintPigment(palette, held, flocs, 1, pixels);
+    paintPigment(palette, held, flocs, smooth(grid), 1, pixels);
 
     const lightAt = (i: number, j: number) => {
       const at = (i + j * grid) * 4;
@@ -220,5 +288,68 @@ describe('paintPigment', () => {
 
     expect(edge).toBeLessThan(centre);
     expect(lightAt(1, 1)).toBe(255);
+  });
+});
+
+describe('the paper', () => {
+  it('cuts the same sheet for the same seed, and a different one otherwise', () => {
+    expect(Array.from(createPaper(24, 3).tooth)).toEqual(Array.from(createPaper(24, 3).tooth));
+    expect(Array.from(createPaper(24, 3).tooth)).not.toEqual(Array.from(createPaper(24, 4).tooth));
+  });
+
+  it('has pits and peaks either side of the middle, and stays between them', () => {
+    const { tooth } = createPaper(96, 5);
+    const mean = tooth.reduce((sum, one) => sum + one, 0) / tooth.length;
+
+    expect(Math.min(...tooth)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...tooth)).toBeLessThanOrEqual(1);
+    expect(Math.min(...tooth)).toBeLessThan(0.3);
+    expect(Math.max(...tooth)).toBeGreaterThan(0.7);
+    expect(mean).toBeCloseTo(0.5, 1);
+  });
+
+  // What the tooth is for. A flat wash on a rough sheet is not flat: the pits
+  // hold more water and therefore more pigment than the peaks do, and that is
+  // most of what makes a watercolour look like one rather than like an
+  // airbrush.
+  it('mottles an even wash that a hot-pressed sheet leaves flat', () => {
+    const palette = paletteAt(0);
+    const grid = 48;
+    // The smoothest paint of the three, so what is measured is the sheet and
+    // not the pigment's own flocculation.
+    const grains = palette.paints.map((paint) => paint.grain);
+    const fine = grains.indexOf(Math.min(...grains));
+    const flat = washOf(palette, fine, grid);
+    const rough = washOf(palette, fine, grid, createPaper(grid, 7));
+
+    expect(rough.spread).toBeGreaterThan(flat.spread * 1.5);
+    expect(rough.spread).toBeGreaterThan(5);
+    // And it takes as much as it gives: the wash is the same weight of paint,
+    // laid unevenly.
+    expect(Math.abs(rough.mean - flat.mean)).toBeLessThan(3);
+  });
+
+  // The bare sheet as well as the wash. A white that is exactly 255 everywhere
+  // is not a sheet of paper, it is a screen with nothing drawn on it — and the
+  // mirrors repeat this square dozens of times, so it has to be a whisper.
+  it('shades the white of an empty cell, faintly', () => {
+    const palette = paletteAt(0);
+    const grid = 48;
+    const held = [0, 1, 2].map(() => new Float32Array(grid * grid));
+    const pixels = new Uint8ClampedArray(grid * grid * 4);
+
+    paintPigment(palette, held, createFlocs(grid, 1), createPaper(grid, 9), 1, pixels);
+
+    let least = 255;
+    let most = 0;
+
+    for (let k = 0; k < grid * grid; k += 1) {
+      least = Math.min(least, pixels[k * 4]!);
+      most = Math.max(most, pixels[k * 4]!);
+    }
+
+    expect(most).toBe(255);
+    expect(least).toBeLessThan(253);
+    expect(least).toBeGreaterThan(238);
   });
 });

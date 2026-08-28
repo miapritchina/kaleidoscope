@@ -2,16 +2,17 @@
  * Real paint, and what it does to the light coming through the cell.
  *
  * Lifted from `paintwheel`, a wet-watercolour simulator, and simplified down to
- * what an object cell can afford. Three things came across, and every one of
+ * what an object cell can afford. Four things came across, and every one of
  * them is a thing paint does that a coloured fluid does not:
  *
  * 1. **Kubelka-Munk mixing.** Two paints overlapping are not two colours
  *    averaged. Each one takes light out (absorption, `K`) and throws light back
  *    (scattering, `S`) at its own rate per wavelength, and the pair together is
- *    solved as one layer over the white behind it. That is why ultramarine and
- *    a green-gold yellow make green rather than grey, why a stainer glazes
+ *    solved as one layer over the white behind it. That is why a green-gold
+ *    yellow and a turquoise make green rather than grey, why a stainer glazes
  *    while an earth covers, and why nothing here ever turns to mud the way
- *    averaged colours do. See {@link kubelka}.
+ *    averaged colours do. It is not the *only* defence against mud, and it
+ *    turned out not to be enough on its own — see {@link PALETTES}.
  * 2. **Every paint has a weight.** Quinacridone is a fine stain that hangs in
  *    water almost indefinitely; magnetite black is coarse and heavy and falls
  *    out of it. So a mixture does not stay a mixture — it *separates*, the
@@ -22,12 +23,20 @@
  *    granulating wash its mottle. Ultramarine does it violently and phthalo
  *    not at all, and that difference is per-paint and measured. See
  *    {@link Pigment.grain} and {@link stirFlocs}.
+ * 4. **The tooth of the paper.** A wash sits in a texture rather than lying
+ *    flat on one: the pits hold the water and therefore the pigment, and the
+ *    peaks are skipped. See {@link Paper}.
  *
- * What did *not* come across is everything to do with paper — deposition,
- * lifting, staining, drying, backruns. There is no paper in a kaleidoscope's
- * object cell; there is a round glass wall and water. The paint stays in
- * suspension for as long as anyone is watching, which is the one case the
- * watercolour model does not have to work for.
+ * What did *not* come across is everything to do with paper as a *process* —
+ * deposition, lifting, staining, drying, backruns. Nothing dries in a sealed
+ * cell, so none of it has anything to act on. What did come across, on second
+ * thoughts and against the note that used to stand here, is the paper's
+ * **tooth**: see {@link Paper}. A wash on a cold-pressed sheet is not a smooth
+ * field of colour and never has been — it is a field of colour sitting in a
+ * texture, darker in the pits and skipped on the peaks — and a watercolour with
+ * that taken out reads as an airbrush. It is the one thing about paper that is
+ * visible in a single frame rather than over a drying time, and it is the only
+ * one worth the cost.
  *
  * The paints are the real ones, by Colour Index number, with their measured
  * mass tone and undertone inverted to K/S by the method in Curtis, Anderson,
@@ -191,6 +200,20 @@ const PAINTS = [
     weight: 0.03,
     grain: 0.1,
   },
+  {
+    // The warm yellow the box was missing. Every other yellow in here leans
+    // green — the cadmium is a lemon, the irgazin is an olive-gold — and the
+    // instrument leans green as well: the mirrors take a few per cent of the
+    // light at every bounce and tint what is left as they go, so a pale cool
+    // yellow arrives at the eye as khaki. It is the one place a palette of real
+    // paints had to answer to the optics rather than to the paint box.
+    name: 'New Gamboge',
+    over: '#eda31e',
+    under: '#4a2b05',
+    tint: 1.4,
+    weight: 0.05,
+    grain: 0.2,
+  },
   { name: 'Raw Siena', over: '#b98a3a', under: '#271a08', tint: 0.8, weight: 0.07, grain: 0.7 },
   { name: 'Burnt Siena', over: '#b46325', under: '#1f0f05', tint: 0.9, weight: 0.06, grain: 0.65 },
   {
@@ -250,32 +273,59 @@ const PAINTS = [
  * The sets of three the cell is filled from.
  *
  * Not three paints drawn at random, for the reason the lava's palette had to be
- * fixed as well: some triples are lovely and some are a puddle. These are
- * limited palettes a watercolourist would actually set out — a triad that can
- * reach the whole wheel between them — and every one of them is chosen so the
- * three are of *different weights and different grains*, because that is what
- * makes the separating and the mottling visible. A cell of three fine stainers
- * behaves impeccably and looks like coloured water.
+ * fixed as well: some triples are lovely and some are a puddle. Every one is
+ * chosen so the three are of *different weights and different grains*, because
+ * that is what makes the separating and the mottling visible. A cell of three
+ * fine stainers behaves impeccably and looks like coloured water.
+ *
+ * **And every one of them is analogous** — the three sit inside about a third
+ * of the colour wheel — which is a correction, and it is the same correction
+ * the lava's own palette note records arriving at from the other direction.
+ * These used to be *triads*: primaries spread evenly round the wheel, which is
+ * what a painter sets out because a triad can reach every colour there is
+ * between them. That is the right palette for a person choosing two of the
+ * three at a time and the worst possible one for a cell that mixes all of them
+ * with everything. The cell is sealed, so nothing ever leaves it: half a minute
+ * of folding puts a little of all three into most of it, and a little of all
+ * three of a triad is by construction the grey in the middle of the wheel.
+ * Measured on a phone, a triad cell settled to a green-grey wash with two
+ * ribbons of colour left in it inside forty seconds.
+ *
+ * Analogous, the same arithmetic has nowhere muddy to go: blue mixed with
+ * violet is a blue-violet, and blue mixed with violet mixed with magenta is
+ * still one. What is given up is the reach of the palette in any one cell,
+ * which is what the seed is for — the reach is across the six of them.
  */
 const PALETTES: readonly (readonly [string, string, string])[] = [
-  // The transparent triad: the one most watercolour boxes are built around.
-  // Ultramarine granulates hard against two stainers that do not at all.
-  ['Ultramarine', 'Irgazin Yellow', 'Quinacridone Pink'],
-  // The earth triad, which is what a landscape is painted with. Two heavy
-  // granulators and one cadmium, and it makes every grey worth having.
-  ['Ultramarine', 'Burnt Siena', 'Cadmium Lemon'],
-  // Bright and cool: the turquoise is the heaviest thing in the box short of
-  // the black, and it drops out of a mix with the pink almost as you watch.
-  ['Cobalt Turquoise', 'Quinacridone Pink', 'Cadmium Lemon'],
-  // Prussian overpowers everything, which is why it is poured at a sixth of
-  // what the siena is. Against the scarlet it goes to a near-black green.
-  ['Prussian Blue', 'Pyrrole Scarlet', 'Raw Siena'],
-  // Potter's pink is the second most granulating pigment there is and it is
-  // also the weakest, so it fills the cell and the other two thread through it.
-  ['Dioxazine Purple', 'Green', "Potter's Pink"],
-  // Magnetite: coarse, heavy, and the fastest thing in the box to fall out of
-  // suspension. Watch it sink out of the turquoise and leave it clean.
-  ['Granulating Black', 'Cobalt Turquoise', 'Pyrrole Scarlet'],
+  // Violet through blue to a dusty rose. Potter's pink is the second most
+  // granulating pigment there is and also the weakest, so it fills the cell and
+  // the other two thread through it — and it is four times the dioxazine's
+  // weight, which is what makes the pair come apart as they drift.
+  ['Ultramarine', 'Dioxazine Purple', "Potter's Pink"],
+  // Magenta through scarlet to a raw earth: the warm end, and the siena is
+  // three times the weight of the quinacridone and eight times the grain.
+  ['Quinacridone Pink', 'Pyrrole Scarlet', 'Raw Siena'],
+  // Gold through burnt orange to magenta, and the warmest cell there is. It was
+  // built on the cadmium lemon and had to be rebuilt: a cool yellow through six
+  // green-leaning mirrors is khaki, and a cell of khaki and magenta was the
+  // ugliest thing the substance made.
+  ['New Gamboge', 'Burnt Siena', 'Quinacridone Pink'],
+  // A green-gold yellow through green to turquoise. The turquoise is the
+  // heaviest thing in the box short of the black and nearly three times the
+  // irgazin, so it drops out of the mix almost as you watch.
+  ['Irgazin Yellow', 'Green', 'Cobalt Turquoise'],
+  // Green through turquoise to a deep blue. Prussian overpowers everything,
+  // which is why it is poured at a sixth of what the turquoise is.
+  ['Green', 'Cobalt Turquoise', 'Prussian Blue'],
+  // Turquoise through blue to violet, and the coolest cell there is.
+  ['Cobalt Turquoise', 'Ultramarine', 'Dioxazine Purple'],
+  // There is no seventh, and what is missing from it is the magnetite black —
+  // the best granulator in the box, coarse, the heaviest thing in it, and the
+  // fastest to fall out of suspension. It had a palette of its own and it lost
+  // it: a black paint has no hue, so half a cell of it is a grey whatever it is
+  // standing next to, which is the exact complaint these palettes were rebuilt
+  // to answer. It stays in {@link PAINTS} — it is a measured paint, and if this
+  // cell ever grows an ink-wash mode meant to be grey it is the paint for it.
 ];
 
 /**
@@ -483,6 +533,96 @@ function linear(hex: string): [number, number, number] {
 }
 
 /**
+ * The tooth of the paper, and what it does to a wash.
+ *
+ * A sheet of cold-pressed watercolour paper is a felted mat of fibres pressed
+ * between blankets, and what it leaves is a landscape of pits and peaks about a
+ * fifth of a millimetre across. A wash floods it, the water drains into the
+ * pits, and the pigment goes with the water: a flat wash on a rough sheet is
+ * not flat, it is a field of little dark hollows and little pale ridges. That
+ * texture is most of what makes a watercolour look like one, it is the thing a
+ * digital wash is always missing, and unlike everything else the paper does it
+ * is visible in a single frame rather than over a drying time.
+ *
+ * Two numbers, and they are separate on purpose. {@link PAPER_BITE} is how much
+ * more pigment the pits hold than the peaks, which is the granulating texture
+ * and only shows where there is paint. {@link PAPER_FIBRE} is the shading of
+ * the bare sheet — the pits are in shadow whether or not anything has been
+ * painted on them — and it is the reason the white of this cell is a *white
+ * sheet* rather than a flat 255. It has to be small: the folded picture repeats
+ * the same square dozens of times, so anything loud enough to notice once is a
+ * pattern the second time.
+ */
+const PAPER_BITE = 0.2;
+const PAPER_FIBRE = 0.028;
+
+/**
+ * How coarse the tooth is, in painted pixels, and how much of each size there
+ * is.
+ *
+ * Three sizes, not one, and for the reason the flocs have two: a single size of
+ * noise reads as a screen door laid over the picture, and paper does not have
+ * one size. The finest is the individual pits, the middle one the grain of the
+ * felt, the coarsest the way the sheet's own making varies across it.
+ *
+ * The sizes are not multiples of each other, and each octave is read along its
+ * own axis — see {@link TOOTH_TURNS}. `lib/noise.ts` is value noise, which is
+ * smooth but lattice-aligned: it has a faint square grid in it, harmless where
+ * that module is used (buried inside a fluid, differentiated first) and not
+ * harmless at all here, where the field is looked at directly and magnified.
+ * Stacked in register, three octaves of it agreed about where their squares
+ * were and the sheet came out as a dither pattern rather than as paper —
+ * plainly so at the top of the zoom slider, which is where a texture is looked
+ * at hardest. Turned against each other, there is no shared lattice left to
+ * see.
+ */
+const TOOTH_SIZES = [5, 11, 24] as const;
+const TOOTH_PARTS = [0.48, 0.33, 0.19] as const;
+
+/** Which way each octave's own lattice runs, in radians. Nothing shared. */
+const TOOTH_TURNS = [0.31, 1.19, 2.42] as const;
+
+export interface Paper {
+  /** Pixels across. This is the size of the *picture*, not of the fluid's grid. */
+  readonly size: number;
+  /** The tooth, 0 in the deepest pit to 1 on the highest peak, middling a half. */
+  readonly tooth: Float32Array;
+}
+
+/**
+ * Cuts a sheet of paper for a cell, deterministically.
+ *
+ * Made once when the cell is filled and never again: it is a property of the
+ * sheet and not of anything in the water, and every frame of a cell is painted
+ * on the same sheet. Thirty-odd thousand samples of two-octave value noise,
+ * which is a couple of milliseconds the one time it is done.
+ */
+export function createPaper(size: number, seed: number): Paper {
+  const grain = createNoise(seed ^ 0x9e37);
+  const tooth = new Float32Array(size * size);
+  const turns = TOOTH_TURNS.map((angle) => ({ cos: Math.cos(angle), sin: Math.sin(angle) }));
+
+  for (let j = 0; j < size; j += 1) {
+    for (let i = 0; i < size; i += 1) {
+      let much = 0;
+
+      for (let octave = 0; octave < TOOTH_SIZES.length; octave += 1) {
+        const at = TOOTH_SIZES[octave]!;
+        const { cos, sin } = turns[octave]!;
+
+        much +=
+          TOOTH_PARTS[octave]! *
+          grain((i * cos - j * sin) / at, (i * sin + j * cos) / at, octave * 11.7);
+      }
+
+      tooth[i + j * size] = Math.min(1, Math.max(0, 0.5 + much * 1.35));
+    }
+  }
+
+  return { size, tooth };
+}
+
+/**
  * How coarse the clumps are, in grid cells.
  *
  * Two sizes together, because real flocculation has both: a fine speckle where
@@ -659,9 +799,9 @@ function wrap(at: number, side: number): number {
 }
 
 /**
- * Paints a cell of watercolour, one pixel per grid cell, over a white ground.
+ * Paints a cell of watercolour onto a sheet of paper, over a white ground.
  *
- * Three things happen here and none of them is a colour being mixed with
+ * Four things happen here and none of them is a colour being mixed with
  * another colour:
  *
  * 1. **Clumping.** How much of each paint a pixel holds is pushed either side
@@ -674,15 +814,26 @@ function wrap(at: number, side: number): number {
  *    colour comes out. See {@link mixture}.
  * 3. **The rim.** Where the amount of paint changes fastest, it darkens. See
  *    {@link RIM}.
+ * 4. **The paper.** All of the above is solved on the fluid's own grid, and
+ *    then laid onto a sheet several times finer than that: the wash is
+ *    reconstructed between cells with an eased weight, and the tooth darkens
+ *    the pits and skips the peaks. See {@link Paper}.
  *
- * Writes RGBA into `pixels`, which is `grid` by `grid`. Subtractive, so a cell
- * holding no paint comes out as white and the whole thing is drawn with
- * `multiply` over the chamber's own ground.
+ * The last of those is why this is two passes rather than one. Kubelka-Munk is
+ * the expensive part and it wants the coarse grid, because the concentrations
+ * are the fluid's and the fluid has no detail finer than a cell; the paper is
+ * the cheap part and wants the fine one, because a tooth quantised to the
+ * fluid's grid is not a tooth, it is a checkerboard.
+ *
+ * Writes RGBA into `pixels`, which is {@link Paper.size} square. Subtractive,
+ * so a pixel holding no paint comes out as the white of the sheet and the whole
+ * thing is drawn with `multiply` over the chamber's own ground.
  */
 export function paintPigment(
   palette: Palette,
   held: Float32Array[],
   flocs: Flocs,
+  paper: Paper,
   strength: number,
   pixels: Uint8ClampedArray,
 ): void {
@@ -692,6 +843,10 @@ export function paintPigment(
 
   if (loaded.length !== cells) {
     loaded = new Float32Array(cells);
+  }
+
+  if (washed.length !== cells * 4) {
+    washed = new Float32Array(cells * 4);
   }
 
   for (let k = 0; k < cells; k += 1) {
@@ -715,10 +870,10 @@ export function paintPigment(
       // sixth of the pass on a cell three-quarters full of paint, and more on
       // any cell holding less than that.
       if (loaded[k]! < CLEAR) {
-        pixels[at] = 255;
-        pixels[at + 1] = 255;
-        pixels[at + 2] = 255;
-        pixels[at + 3] = 255;
+        washed[at] = 255;
+        washed[at + 1] = 255;
+        washed[at + 2] = 255;
+        washed[at + 3] = 0;
         continue;
       }
 
@@ -745,13 +900,103 @@ export function paintPigment(
       const rim =
         Math.min(RIM, Math.hypot(across, down) * 0.5 * RIM_GAIN) * shows(loaded[k]!, 0.03, 0.35);
 
-      pixels[at] = tone[0]! * (1 - rim);
-      pixels[at + 1] = tone[1]! * (1 - rim);
-      pixels[at + 2] = tone[2]! * (1 - rim);
+      washed[at] = tone[0]! * (1 - rim);
+      washed[at + 1] = tone[1]! * (1 - rim);
+      washed[at + 2] = tone[2]! * (1 - rim);
+      // How hard the tooth is allowed to bite here. Granulation is a thing
+      // pigment does, so a bare sheet gets only its own shading and a loaded
+      // one gets the lot.
+      washed[at + 3] = shows(loaded[k]!, 0, 0.22);
+    }
+  }
+
+  laydown(paper, grid, pixels);
+}
+
+/**
+ * Lays a wash solved on the fluid's grid onto the sheet it is painted on.
+ *
+ * The eased bilinear is the same one the lava and the oil film reconstruct
+ * their fields with, and it is here for the same reason: a straight bilinear
+ * has a kink in it at every cell boundary, and a kink every three pixels is a
+ * texture of its own competing with the one this function exists to draw.
+ */
+function laydown(paper: Paper, grid: number, pixels: Uint8ClampedArray): void {
+  const { size, tooth } = paper;
+
+  if (lowAt.length !== size || spanned !== grid) {
+    lowAt = new Int32Array(size);
+    highAt = new Int32Array(size);
+    blend = new Float32Array(size);
+    spanned = grid;
+
+    for (let i = 0; i < size; i += 1) {
+      // Cell centres to pixel centres, so the two grids share a middle and the
+      // wash does not creep half a cell towards one corner.
+      const at = ((i + 0.5) * grid) / size - 0.5;
+      const cell = Math.floor(at);
+
+      lowAt[i] = Math.min(grid - 1, Math.max(0, cell));
+      highAt[i] = Math.min(grid - 1, Math.max(0, cell + 1));
+      blend[i] = smooth(at - cell);
+    }
+  }
+
+  for (let j = 0; j < size; j += 1) {
+    const up = lowAt[j]! * grid;
+    const down = highAt[j]! * grid;
+    const fy = blend[j]!;
+
+    for (let i = 0; i < size; i += 1) {
+      const fx = blend[i]!;
+      const a = (up + lowAt[i]!) * 4;
+      const b = (up + highAt[i]!) * 4;
+      const c = (down + lowAt[i]!) * 4;
+      const d = (down + highAt[i]!) * 4;
+      const wa = (1 - fy) * (1 - fx);
+      const wb = (1 - fy) * fx;
+      const wc = fy * (1 - fx);
+      const wd = fy * fx;
+      const k = i + j * size;
+      const at = k * 4;
+      // Positive in a pit and negative on a peak. The pits hold the water, the
+      // water holds the pigment, and the peaks are where a wash skips.
+      const hollow = 1 - 2 * tooth[k]!;
+      const bite =
+        1 -
+        hollow *
+          (PAPER_FIBRE +
+            PAPER_BITE *
+              (washed[a + 3]! * wa +
+                washed[b + 3]! * wb +
+                washed[c + 3]! * wc +
+                washed[d + 3]! * wd));
+
+      pixels[at] = (washed[a]! * wa + washed[b]! * wb + washed[c]! * wc + washed[d]! * wd) * bite;
+      pixels[at + 1] =
+        (washed[a + 1]! * wa + washed[b + 1]! * wb + washed[c + 1]! * wc + washed[d + 1]! * wd) *
+        bite;
+      pixels[at + 2] =
+        (washed[a + 2]! * wa + washed[b + 2]! * wb + washed[c + 2]! * wc + washed[d + 2]! * wd) *
+        bite;
       pixels[at + 3] = 255;
     }
   }
 }
+
+/** Smoothstep, so the join between two cells of the wash has no kink in it. */
+function smooth(at: number): number {
+  return at * at * (3 - 2 * at);
+}
+
+/** The wash, solved on the fluid's grid: three channels and how loaded it is. */
+let washed = new Float32Array(0);
+
+/** Which two cells of the wash each painted pixel reads, and how far between. */
+let lowAt = new Int32Array(0);
+let highAt = new Int32Array(0);
+let blend = new Float32Array(0);
+let spanned = 0;
 
 /** How much paint a cell holds, with nothing beyond the grid. */
 function loadAt(grid: number, i: number, j: number): number {

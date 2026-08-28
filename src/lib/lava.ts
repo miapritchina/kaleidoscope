@@ -303,6 +303,32 @@ const DRAWN = 2.5;
 const FASTEST = 1.6;
 
 /**
+ * How much of the wax's own time a second of the clock buys, thin to gel.
+ *
+ * The Thickness slider, and it is the only honest place to put it. Everything
+ * else that could slow the wax down changes what the wax *is*: more drag and
+ * the terminal speed falls under what it takes to stretch a body until it
+ * necks, so the cell ends as one sausage circling the tube — which is the
+ * finding recorded on {@link DRAG} and on {@link HEAT_SPREAD}, arrived at twice
+ * from different directions. Dilating time changes nothing at all. The wax
+ * still reaches the same speeds in its own frame, still breaks up at the same
+ * places, still holds the same number of bodies; a second of watching just
+ * buys less of it.
+ *
+ * It had to be put somewhere, because before this the slider did almost
+ * nothing. Every drop rides the {@link FASTEST} cap nearly all the time — the
+ * heat cycle drives at several times the speed the drag can spend, so terminal
+ * speed is above the cap at *both* ends of the slider and what is left of the
+ * difference is the cold wax hanging. Measured over twenty seconds at the top
+ * of the slider the wax averaged 0.53 cell widths a second, against 1.14 at
+ * the bottom: a gel that ran at half the speed of a thin oil and crossed the
+ * whole cell in four seconds, which is not what a lamp does and is what
+ * prompted this.
+ */
+const PACE_THIN = 0.55;
+const PACE_GEL = 0.26;
+
+/**
  * Steps of the wax per second, and the most of them one frame may run.
  *
  * A *fixed* step, banked, rather than whatever the frame happened to be —
@@ -319,6 +345,13 @@ const FASTEST = 1.6;
  * once and it looks the same everywhere; below about twenty frames a second
  * the cap takes over and the wax runs slow rather than wrong, which is the
  * right way round. The fluids in `lib/flow.ts` bank on the same reasoning.
+ *
+ * This is a rate of *steps*, not a rate of the wax's own time: how much time
+ * each step advances is {@link PACE_THIN}. Sixty steps a second is what keeps
+ * the motion smooth, and it stays sixty however slowly the wax is running —
+ * a gel taken by running six full steps a second instead of sixty small ones
+ * would judder, which is the trap the obvious way of slowing it down walks
+ * into.
  */
 const RATE = 60;
 const MOST_STEPS = 3;
@@ -445,30 +478,50 @@ export function updateLava(lava: Lava, update: LavaUpdate): void {
     return;
   }
 
-  const step = 1 / RATE;
+  // Real seconds between steps, and how much of the wax's own time each one
+  // advances. The first is fixed so the motion is smooth; the second is the
+  // Thickness slider. See {@link PACE_THIN}.
+  const beat = 1 / RATE;
+  const pace = PACE_THIN + (PACE_GEL - PACE_THIN) * clamp(update.thickness);
 
   lava.due += update.dt;
 
   // Banked, and never more than a few at once: a tab that has been in the
   // background for a minute comes back to a cell that has moved on a little,
   // not to one that has run a minute of wax in a single frame.
-  for (let run = 0; run < MOST_STEPS && lava.due >= step; run += 1) {
-    lava.due -= step;
-    stepLava(lava, update, step);
+  for (let run = 0; run < MOST_STEPS && lava.due >= beat; run += 1) {
+    lava.due -= beat;
+    stepLava(lava, update, beat * pace, pace);
   }
 
-  if (lava.due > MOST_STEPS * step) {
-    lava.due = MOST_STEPS * step;
+  if (lava.due > MOST_STEPS * beat) {
+    lava.due = MOST_STEPS * beat;
   }
 }
 
-/** One fixed step of the wax. See {@link updateLava}, which banks the time. */
-function stepLava(lava: Lava, { thickness, swirl, angle, stir }: LavaUpdate, step: number): void {
+/**
+ * One fixed step of the wax. See {@link updateLava}, which banks the time.
+ *
+ * @param step How much of the wax's own time to advance.
+ * @param pace How much of that time a second of the clock buys. The wall's
+ *   turning is quoted in real seconds and has to be divided through by it: the
+ *   wax runs in slow motion, the hand holding the tube does not, and a gel that
+ *   turned at a quarter of the speed of the tube it was sealed in would be a
+ *   plain mistake rather than a thick liquid. A finger is not — see the note
+ *   where the stir is applied.
+ */
+function stepLava(
+  lava: Lava,
+  { thickness, swirl, angle, stir }: LavaUpdate,
+  step: number,
+  pace: number,
+): void {
   const { drops, reach } = lava;
   const downX = Math.sin(angle);
   const downY = Math.cos(angle);
   const thick = 1 + THICKEST * clamp(thickness);
   const h = reach * NEIGHBOURHOOD;
+  const turning = swirl / pace;
 
   for (let i = 0; i < drops.length; i += 1) {
     const drop = drops[i]!;
@@ -483,8 +536,8 @@ function stepLava(lava: Lava, { thickness, swirl, angle, stir }: LavaUpdate, ste
     // Warm is lighter than what it floats in and climbs; cold is heavier and
     // sinks. Nothing else lifts the wax, which is why the cell circulates.
     const lift = (0.5 - drop.heat) * 2 * BUOYANCY;
-    const flowX = -swirl * drop.y;
-    const flowY = swirl * drop.x;
+    const flowX = -turning * drop.y;
+    const flowY = turning * drop.x;
     // Cold wax is stiffer: what has cooled at the top slumps and hangs while
     // the hot risers run. One factor, a lot of wax-ness.
     const damping = Math.max(0, 1 - DRAG * thick * (1 + COLD_STIFF * (1 - drop.heat)) * step);
@@ -493,11 +546,30 @@ function stepLava(lava: Lava, { thickness, swirl, angle, stir }: LavaUpdate, ste
     drop.vy = flowY + (drop.vy + downY * GRAVITY * lift * step - flowY) * damping;
 
     if (stir) {
-      const away = Math.hypot(drop.x - stir.x, drop.y - stir.y) / (CHAMBER_RADIUS * 0.3);
+      // How far a finger's push reaches, and it widens with the Thickness
+      // slider because that is what viscosity *is*: how far momentum spreads
+      // sideways before the drag has spent it. A narrow push through a gel is
+      // a hole cut in it, and a cell of wax stirred that way comes apart into
+      // a spray of droplets that then takes the whole of its own slow clock to
+      // gather again. A wide one takes a body of wax along with it, which is
+      // what stirring treacle does.
+      const finger = CHAMBER_RADIUS * (0.3 + 0.4 * clamp(thickness));
+      const away = Math.hypot(drop.x - stir.x, drop.y - stir.y) / finger;
 
       if (away < 1) {
         const much = (1 - away) * (1 - away);
 
+        // In the wax's own time, and *not* divided through by the pace the way
+        // the wall's turning is. The two are different in kind: the wall turns
+        // the whole cell rigidly and a rigid turn cannot deform anything, so it
+        // has to be right in real seconds or the wax visibly lags the tube it
+        // is sealed in. A finger is a local shear, and quoted in real seconds
+        // it becomes, in the wax's own frame, a shear four times anything these
+        // constants were tuned against — four flicks at the top of the
+        // Thickness slider tore a cell of wax into a spray of separate
+        // droplets, which is the failure mode {@link RATE} exists to prevent
+        // arriving by another road. Left in the wax's time, a gel follows a
+        // finger slowly, which is what a gel does.
         drop.vx += (stir.vx - drop.vx) * much;
         drop.vy += (stir.vy - drop.vy) * much;
       }
