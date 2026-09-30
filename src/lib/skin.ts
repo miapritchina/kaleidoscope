@@ -318,8 +318,13 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
   // point that can see all of it.
   const fromX = sumX / pixels.length;
   const fromY = sumY / pixels.length;
-  const half = Math.max(width, height) / 2;
   const reach = Math.hypot(width, height);
+  // The sample is square whatever the picture's shape, so one of its pixels is
+  // a rectangle of the picture's. Shapes are measured in the picture's own
+  // pixels, or every round bead on a portrait photograph comes out an oval.
+  const acrossX = size.width / SAMPLE;
+  const acrossY = size.height / SAMPLE;
+  const half = Math.max(width * acrossX, height * acrossY) / 2;
 
   // Bilinear between pixel centres, which turns the blob's staircase edge into
   // a ramp that crosses a half exactly where the edge really is. Reading whole
@@ -389,13 +394,10 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
     // Pulled in along the ray, so the silhouette erodes towards the object's
     // own middle rather than towards the corner of its bounding box.
     return {
-      x: (fromX + Math.cos(angle) * hit * OUTLINE_TRIM - middleX) / half,
-      y: (fromY + Math.sin(angle) * hit * OUTLINE_TRIM - middleY) / half,
+      x: ((fromX + Math.cos(angle) * hit * OUTLINE_TRIM - middleX) * acrossX) / half,
+      y: ((fromY + Math.sin(angle) * hit * OUTLINE_TRIM - middleY) * acrossY) / half,
     };
   });
-
-  const acrossX = size.width / SAMPLE;
-  const acrossY = size.height / SAMPLE;
 
   return {
     outline,
@@ -405,7 +407,7 @@ function traceObject(pixels: readonly number[], size: Size): SkinCut | null {
       width: width * acrossX,
       height: height * acrossY,
     },
-    extent: { x: width / (half * 2), y: height / (half * 2) },
+    extent: { x: (width * acrossX) / (half * 2), y: (height * acrossY) / (half * 2) },
     area: polygonArea(outline),
   };
 }
