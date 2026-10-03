@@ -48,8 +48,8 @@ a white diamond in the middle keeps its middle.
 
 Only put files in here that this repository is allowed to redistribute.
 
-`glass-shards`, `stone-beads`, `cut-gems`, `rough-jewels` and `flowers` are the
-owner's own work.
+`glass-shards`, `stone-beads`, `cut-gems`, `rough-jewels`, `flowers` and
+`round-gems` are the owner's own work.
 
 `bright-gems` and `cut-stones` are not. They are stand-ins from an earlier
 round, keyed back out of flattened stock previews, and they are not cleared for

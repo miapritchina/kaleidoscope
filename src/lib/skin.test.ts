@@ -284,6 +284,42 @@ describe('cutting objects out of a picture', () => {
     }
   });
 
+  // The sample the objects are found in is square whatever the picture's
+  // shape. Measured in its pixels, every round gem on a portrait sheet came out
+  // half as wide again as it was tall.
+  it('traces a round object round on a picture that is not square', () => {
+    const width = 400;
+    const height = 700;
+    const beads = (x: number, y: number): [number, number, number] => {
+      const spots: [number, number, number][] = [
+        [0.25, 0.15, 60],
+        [0.7, 0.2, 50],
+        [0.3, 0.5, 55],
+        [0.72, 0.6, 65],
+        [0.5, 0.85, 45],
+      ];
+
+      return spots.some(([cx, cy, r]) => Math.hypot((x - cx) * width, (y - cy) * height) < r)
+        ? [40, 20, 140]
+        : [250, 250, 250];
+    };
+    const found = cuts(beads, width, height);
+
+    expect(found).toHaveLength(5);
+
+    for (const cut of found) {
+      expect(cut.extent.x / cut.extent.y).toBeGreaterThan(0.9);
+      expect(cut.extent.x / cut.extent.y).toBeLessThan(1.1);
+
+      const radii = cut.outline.map((at) => Math.hypot(at.x, at.y));
+      expect(Math.min(...radii) / Math.max(...radii)).toBeGreaterThan(0.85);
+
+      // And the rectangle it is cut from is square in the picture too.
+      expect(cut.source.width / cut.source.height).toBeGreaterThan(0.9);
+      expect(cut.source.width / cut.source.height).toBeLessThan(1.1);
+    }
+  });
+
   // And without rounding off the shapes that are genuinely not round.
   it('leaves a corner where the object has one', () => {
     for (const cut of cuts(splinters)) {
